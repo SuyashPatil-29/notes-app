@@ -19,19 +19,19 @@ import {
 import { CSS } from '@dnd-kit/utilities'
 import { useDraggable, useDroppable } from '@dnd-kit/core'
 import {
-  Sidebar,
-  SidebarContent,
-  SidebarGroup,
-  SidebarGroupContent,
-  SidebarHeader,
-  SidebarMenu,
-  SidebarMenuItem,
-  SidebarMenuButton,
-  SidebarMenuSub,
-  SidebarMenuSubItem,
-  SidebarMenuSubButton,
-  SidebarRail,
-} from "@/components/ui/sidebar"
+  LeftSidebar,
+  LeftSidebarContent as LeftSidebarContentWrapper,
+  LeftSidebarGroup,
+  LeftSidebarGroupContent,
+  LeftSidebarHeader,
+  LeftSidebarMenu,
+  LeftSidebarMenuItem,
+  LeftSidebarMenuButton,
+  LeftSidebarMenuSub,
+  LeftSidebarMenuSubItem,
+  LeftSidebarMenuSubButton,
+  LeftSidebarRail,
+} from "@/components/ui/left-sidebar"
 import {
   Collapsible,
   CollapsibleContent,
@@ -51,7 +51,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 
-interface NotebookSidebarProps {
+interface LeftSidebarContentProps {
   notebooks: Notebook[] | undefined
   loading: boolean
   onCreateNotebook?: () => void
@@ -65,7 +65,7 @@ interface NotebookSidebarProps {
   onDeleteNote?: (noteId: string) => void
 }
 
-export function NotebookSidebar({
+export function LeftSidebarContent({
   notebooks,
   loading,
   onCreateNotebook,
@@ -77,7 +77,7 @@ export function NotebookSidebar({
   onDeleteChapter,
   onRenameNote,
   onDeleteNote
-}: NotebookSidebarProps) {
+}: LeftSidebarContentProps) {
   const navigate = useNavigate()
   const location = useLocation()
   const queryClient = useQueryClient()
@@ -353,63 +353,63 @@ export function NotebookSidebar({
 
   if (loading) {
     return (
-      <Sidebar collapsible="icon">
-        <SidebarHeader className="h-16 border-b">
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <SidebarMenuButton size="lg">
+      <LeftSidebar collapsible="icon">
+        <LeftSidebarHeader className="h-16 border-b">
+          <LeftSidebarMenu>
+            <LeftSidebarMenuItem>
+              <LeftSidebarMenuButton size="lg">
                 <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
                   <Loader className="size-4" />
                 </div>
                 <div className="grid flex-1 text-left text-sm leading-tight">
                   <span className="truncate font-semibold">Notebooks</span>
                 </div>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          </SidebarMenu>
-        </SidebarHeader>
-        <SidebarContent>
-          <SidebarGroup>
-            <SidebarGroupContent>
+              </LeftSidebarMenuButton>
+            </LeftSidebarMenuItem>
+          </LeftSidebarMenu>
+        </LeftSidebarHeader>
+        <LeftSidebarContentWrapper>
+          <LeftSidebarGroup>
+            <LeftSidebarGroupContent>
               <div className="px-2 py-4 text-sm text-muted-foreground">
                 Loading...
               </div>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        </SidebarContent>
-        <SidebarRail />
-      </Sidebar>
+            </LeftSidebarGroupContent>
+          </LeftSidebarGroup>
+        </LeftSidebarContentWrapper>
+        <LeftSidebarRail />
+      </LeftSidebar>
     )
   }
 
   if (!notebooks || notebooks.length === 0) {
     return (
-      <Sidebar collapsible="icon">
-        <SidebarHeader className="h-16 border-b">
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <SidebarMenuButton size="lg">
+      <LeftSidebar collapsible="icon">
+        <LeftSidebarHeader className="h-16 border-b">
+          <LeftSidebarMenu>
+            <LeftSidebarMenuItem>
+              <LeftSidebarMenuButton size="lg">
                 <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
                   <Book className="size-4" />
                 </div>
                 <div className="grid flex-1 text-left text-sm leading-tight">
                   <span className="truncate font-semibold">Notebooks</span>
                 </div>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          </SidebarMenu>
-        </SidebarHeader>
+              </LeftSidebarMenuButton>
+            </LeftSidebarMenuItem>
+          </LeftSidebarMenu>
+        </LeftSidebarHeader>
         <ContextMenu>
           <ContextMenuTrigger asChild>
-            <SidebarContent>
-              <SidebarGroup>
-                <SidebarGroupContent>
+            <LeftSidebarContentWrapper>
+              <LeftSidebarGroup>
+                <LeftSidebarGroupContent>
                   <div className="px-2 py-4 text-sm text-muted-foreground">
                     No notebooks yet. Create one to get started!
                   </div>
-                </SidebarGroupContent>
-              </SidebarGroup>
-            </SidebarContent>
+                </LeftSidebarGroupContent>
+              </LeftSidebarGroup>
+            </LeftSidebarContentWrapper>
           </ContextMenuTrigger>
           <ContextMenuContent>
             <ContextMenuItem onClick={() => onCreateNotebook?.()}>
@@ -418,8 +418,8 @@ export function NotebookSidebar({
             </ContextMenuItem>
           </ContextMenuContent>
         </ContextMenu>
-        <SidebarRail />
-      </Sidebar>
+        <LeftSidebarRail />
+      </LeftSidebar>
     )
   }
 
@@ -432,27 +432,27 @@ export function NotebookSidebar({
       onDragEnd={handleDragEnd}
       onDragCancel={handleDragCancel}
     >
-      <Sidebar collapsible="icon">
-        <SidebarHeader className="h-16 border-b">
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <SidebarMenuButton size="lg">
+      <LeftSidebar collapsible="icon">
+        <LeftSidebarHeader className="h-16 border-b">
+          <LeftSidebarMenu>
+            <LeftSidebarMenuItem>
+              <LeftSidebarMenuButton size="lg">
                 <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
                   <Book className="size-4" />
                 </div>
                 <div className="grid flex-1 text-left text-sm leading-tight">
                   <span className="truncate font-semibold">Notebooks</span>
           </div>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          </SidebarMenu>
-        </SidebarHeader>
+              </LeftSidebarMenuButton>
+            </LeftSidebarMenuItem>
+          </LeftSidebarMenu>
+        </LeftSidebarHeader>
         <ContextMenu>
           <ContextMenuTrigger asChild>
-        <SidebarContent>
-            <SidebarGroup>
-              <SidebarGroupContent>
-                <SidebarMenu>
+        <LeftSidebarContentWrapper>
+            <LeftSidebarGroup>
+              <LeftSidebarGroupContent>
+                <LeftSidebarMenu>
           {notebooks.map((notebook) => (
                         <Collapsible
                           key={notebook.id}
@@ -461,7 +461,7 @@ export function NotebookSidebar({
                           onOpenChange={() => toggleNotebook(notebook.id)}
                           className="group/collapsible"
                         >
-                          <SidebarMenuItem>
+                          <LeftSidebarMenuItem>
                             <ContextMenu>
                               <ContextMenuTrigger asChild>
                                 <DroppableNotebook 
@@ -469,11 +469,11 @@ export function NotebookSidebar({
                                   isOver={overId === `notebook:${notebook.id}`}
                                 >
                                   <CollapsibleTrigger asChild>
-                                    <SidebarMenuButton tooltip={notebook.name}>
+                                    <LeftSidebarMenuButton tooltip={notebook.name}>
                                       <Book />
                                       <span>{notebook.name}</span>
                                       <ChevronRight className="ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
-                                    </SidebarMenuButton>
+                                    </LeftSidebarMenuButton>
                                   </CollapsibleTrigger>
                                 </DroppableNotebook>
                               </ContextMenuTrigger>
@@ -501,7 +501,7 @@ export function NotebookSidebar({
                           </ContextMenuContent>
                         </ContextMenu>
                         <CollapsibleContent>
-                          <SidebarMenuSub>
+                          <LeftSidebarMenuSub>
                             {notebook.chapters?.map((chapter) => (
                               <Collapsible
                                 key={chapter.id}
@@ -510,7 +510,7 @@ export function NotebookSidebar({
                                 onOpenChange={() => toggleChapter(chapter.id)}
                                 className="group/chapter-collapsible"
                               >
-                                <SidebarMenuSubItem>
+                                <LeftSidebarMenuSubItem>
                                   <DroppableChapter 
                                     id={chapter.id}
                                     isOver={overId === `chapter:${chapter.id}`}
@@ -519,11 +519,11 @@ export function NotebookSidebar({
                                       <ContextMenu>
                                         <ContextMenuTrigger asChild>
                                           <CollapsibleTrigger asChild>
-                                            <SidebarMenuSubButton>
+                                            <LeftSidebarMenuSubButton>
                                               <BookOpen />
                                               <span>{chapter.name}</span>
                                               <ChevronRight className="ml-auto transition-transform duration-200 group-data-[state=open]/chapter-collapsible:rotate-90" />
-                                            </SidebarMenuSubButton>
+                                            </LeftSidebarMenuSubButton>
                                           </CollapsibleTrigger>
                                         </ContextMenuTrigger>
                                       <ContextMenuContent>
@@ -552,19 +552,19 @@ export function NotebookSidebar({
                                     </DraggableChapter>
                                   </DroppableChapter>
                                   <CollapsibleContent>
-                                    <SidebarMenuSub>
+                                    <LeftSidebarMenuSub>
                                       {chapter.notes?.map((note) => {
                                         const isActive = currentNoteId === note.id
                                         
                                         return (
-                                        <SidebarMenuSubItem key={note.id}>
+                                        <LeftSidebarMenuSubItem key={note.id}>
                                           <DraggableNote id={note.id}>
                                             <TooltipProvider delayDuration={300}>
                                               <Tooltip>
                                                 <ContextMenu>
                                                   <ContextMenuTrigger asChild>
                                                     <TooltipTrigger asChild>
-                                                      <SidebarMenuSubButton
+                                                      <LeftSidebarMenuSubButton
                                                         asChild
                                                         isActive={isActive}
                                                       >
@@ -575,7 +575,7 @@ export function NotebookSidebar({
                                                           <FileText className={`shrink-0 ${isActive ? 'text-primary' : ''}`} />
                                                           <span className={`truncate block ${isActive ? 'text-foreground' : ''}`}>{note.name}</span>
                                                         </button>
-                                                      </SidebarMenuSubButton>
+                                                      </LeftSidebarMenuSubButton>
                                                     </TooltipTrigger>
                                                   </ContextMenuTrigger>
                                                   <ContextMenuContent>
@@ -598,23 +598,23 @@ export function NotebookSidebar({
                                               </Tooltip>
                                             </TooltipProvider>
                                           </DraggableNote>
-                                        </SidebarMenuSubItem>
+                                        </LeftSidebarMenuSubItem>
                                         )
                                       })}
-                                    </SidebarMenuSub>
+                                    </LeftSidebarMenuSub>
                                   </CollapsibleContent>
-                                </SidebarMenuSubItem>
+                                </LeftSidebarMenuSubItem>
                               </Collapsible>
                             ))}
-                          </SidebarMenuSub>
+                          </LeftSidebarMenuSub>
                         </CollapsibleContent>
-                      </SidebarMenuItem>
+                      </LeftSidebarMenuItem>
                     </Collapsible>
                   ))}
-                </SidebarMenu>
-              </SidebarGroupContent>
-            </SidebarGroup>
-      </SidebarContent>
+                </LeftSidebarMenu>
+              </LeftSidebarGroupContent>
+            </LeftSidebarGroup>
+      </LeftSidebarContentWrapper>
         </ContextMenuTrigger>
         <ContextMenuContent>
           <ContextMenuItem onClick={() => onCreateNotebook?.()}>
@@ -623,8 +623,8 @@ export function NotebookSidebar({
           </ContextMenuItem>
         </ContextMenuContent>
       </ContextMenu>
-      <SidebarRail />
-    </Sidebar>
+      <LeftSidebarRail />
+    </LeftSidebar>
     </DndContext>
   )
 }
@@ -710,3 +710,4 @@ function DroppableChapter({ id, isOver, children }: { id: string, isOver: boolea
     </div>
   )
 }
+

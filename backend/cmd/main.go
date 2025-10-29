@@ -44,6 +44,10 @@ func main() {
 		protected.GET("/auth/user", auth.GetCurrentUser)
 		protected.GET("/logout/:provider", auth.Logout)
 
+		// Chat/AI routes
+		protected.POST("/api/chat", controllers.ChatHandler)
+		protected.GET("/api/dump", controllers.DumpHandler)
+
 		// Notebook routes
 		protected.POST("/notebook", controllers.CreateNotebook)
 		protected.GET("/notebooks", controllers.GetUserNotebooks)

@@ -5,7 +5,8 @@ import { createChapter, updateChapter, deleteChapter } from '@/utils/chapter'
 import { createNote, updateNote, deleteNote } from '@/utils/notes'
 import { useUser } from '@/hooks/auth'
 import { toast, Toaster } from 'sonner'
-import { NotebookSidebar } from '@/components/notebook-sidebar'
+import { LeftSidebarContent } from '@/components/left-sidebar-content'
+import { RightSidebarContent } from '@/components/right-sidebar-content'
 import { Dashboard } from '@/components/Dashboard'
 import { NotebookView } from '@/components/NotebookView'
 import { ChapterView } from '@/components/ChapterView'
@@ -15,7 +16,8 @@ import { CreateChapterDialog } from '@/components/SidebarDialogs/CreateChapterDi
 import { CreateNoteDialog } from '@/components/SidebarDialogs/CreateNoteDialog'
 import { RenameDialog } from '@/components/SidebarDialogs/RenameDialog'
 import { DeleteConfirmDialog } from '@/components/SidebarDialogs/DeleteConfirmDialog'
-import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
+import { LeftSidebarProvider, LeftSidebarInset } from '@/components/ui/left-sidebar'
+import { RightSidebarProvider, RightSidebarInset } from '@/components/ui/right-sidebar'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import type { Chapter, Notes, Notebook } from '@/types/backend'
 import { createId } from '@paralleldrive/cuid2'
@@ -454,8 +456,8 @@ function App() {
   return (
     <>
       <Toaster />
-      <SidebarProvider defaultOpen>
-        <NotebookSidebar 
+      <LeftSidebarProvider defaultOpen>
+        <LeftSidebarContent 
           notebooks={userNotebooks}
           loading={userNotebooksLoading}
           onCreateNotebook={handleCreateNotebook}
@@ -468,15 +470,20 @@ function App() {
           onRenameNote={handleRenameNote}
           onDeleteNote={handleDeleteNote}
         />
-        <SidebarInset>
-          <Routes>
-            <Route path="/" element={<Dashboard user={user} />} />
-            <Route path="/:notebookId" element={<NotebookView user={user} onCreateChapter={handleCreateChapter} />} />
-            <Route path="/:notebookId/:chapterId" element={<ChapterView user={user} onCreateNote={handleCreateNote} />} />
-            <Route path="/:notebookId/:chapterId/:noteId" element={<NoteEditor user={user} />} />
-          </Routes>
-        </SidebarInset>
-      </SidebarProvider>
+        <LeftSidebarInset>
+          <RightSidebarProvider defaultOpen={false}>
+            <RightSidebarInset>
+              <Routes>
+                <Route path="/" element={<Dashboard user={user} />} />
+                <Route path="/:notebookId" element={<NotebookView user={user} onCreateChapter={handleCreateChapter} />} />
+                <Route path="/:notebookId/:chapterId" element={<ChapterView user={user} onCreateNote={handleCreateNote} />} />
+                <Route path="/:notebookId/:chapterId/:noteId" element={<NoteEditor user={user} />} />
+              </Routes>
+            </RightSidebarInset>
+            <RightSidebarContent />
+          </RightSidebarProvider>
+        </LeftSidebarInset>
+      </LeftSidebarProvider>
 
       <CreateNotebookDialog
         open={createNotebookDialog}

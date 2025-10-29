@@ -16,7 +16,8 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Separator } from '@/components/ui/separator'
-import { SidebarTrigger } from '@/components/ui/sidebar'
+import { LeftSidebarTrigger } from '@/components/ui/left-sidebar'
+import { RightSidebarTrigger } from '@/components/ui/right-sidebar'
 import { ModeToggle } from '@/components/ModeToggle'
 import { Button } from '@/components/ui/button'
 import { LogOut, User, X } from 'lucide-react'
@@ -39,7 +40,7 @@ export function Header({ user, breadcrumbs = [{ label: 'Dashboard' }], showClose
   return (
     <header className="flex h-16 shrink-0 items-center border-b bg-background sticky top-0 z-10">
       <div className="flex items-center gap-2 px-4 w-full">
-        <SidebarTrigger />
+        <LeftSidebarTrigger />
         <Separator orientation="vertical" className="h-4" />
         
         {/* Breadcrumbs */}
@@ -78,6 +79,7 @@ export function Header({ user, breadcrumbs = [{ label: 'Dashboard' }], showClose
             </Button>
           )}
           <ModeToggle />
+          <RightSidebarTrigger />
           {user && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
