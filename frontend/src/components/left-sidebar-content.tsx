@@ -570,10 +570,10 @@ export function LeftSidebarContent({
                                                       >
                                                         <button 
                                                           onClick={() => navigate(`/${notebook.id}/${chapter.id}/${note.id}`)}
-                                                          className={`w-full min-w-0 ${isActive ? 'font-bold bg-accent' : ''}`}
+                                                          className="w-full min-w-0"
                                                         >
-                                                          <FileText className={`shrink-0 ${isActive ? 'text-primary' : ''}`} />
-                                                          <span className={`truncate block ${isActive ? 'text-foreground' : ''}`}>{note.name}</span>
+                                                          <FileText className="shrink-0" />
+                                                          <span className="truncate block">{note.name}</span>
                                                         </button>
                                                       </LeftSidebarMenuSubButton>
                                                     </TooltipTrigger>
@@ -663,7 +663,7 @@ function DroppableNotebook({ id, isOver, children }: { id: string, isOver: boole
   return (
     <div
       ref={setNodeRef}
-      className={`transition-colors ${isOver ? 'bg-accent rounded-md ring-2 ring-primary' : ''}`}
+      className={`transition-colors ${isOver ? 'bg-sidebar-accent rounded-md ring-2 ring-sidebar-ring' : ''}`}
     >
       {children}
     </div>
@@ -704,7 +704,7 @@ function DroppableChapter({ id, isOver, children }: { id: string, isOver: boolea
   return (
     <div
       ref={setNodeRef}
-      className={`transition-colors ${isOver ? 'bg-accent rounded-md ring-2 ring-primary' : ''}`}
+      className={`transition-colors ${isOver ? 'bg-sidebar-accent rounded-md ring-2 ring-sidebar-ring' : ''}`}
     >
       {children}
     </div>

@@ -37,14 +37,30 @@ import { Tool, ToolHeader, ToolContent, ToolInput, ToolOutput } from "@/componen
 import { Input } from "@/components/ui/input"
 import { useUser } from "@/hooks/auth"
 import api from "@/utils/api"
+import { SelectGroup, SelectLabel, SelectSeparator } from "@/components/ui/select"
 
 const modelToProvider = {
+    // OpenAI models (cheap to expensive)
+    "gpt-5-mini": "openai",
+    "gpt-5": "openai",
     "gpt-4o-mini": "openai",
     "gpt-4o": "openai",
-    "claude-3-7-sonnet-latest": "anthropic",
-    "o1": "openai",
-    "gemini-2.5-pro-preview-03-25": "google",
-} as const
+    "gpt-3.5-turbo": "openai",
+
+    // Anthropic models (cheap to expensive)
+    "claude-haiku-4.5": "anthropic",
+    "claude-haiku-3.5": "anthropic",
+    "claude-sonnet-4.5": "anthropic",
+    "claude-sonnet-3.5": "anthropic",
+
+    // Google models (cheap to expensive)
+    "gemini-2.5-flash-lite": "google",
+    "gemini-2.5-flash": "google",
+    "gemini-2.0-flash-lite": "google",
+    "gemini-2.0-flash": "google",
+    "gemini-2.5-pro": "google",
+} as const;
+
 
 type Model = keyof typeof modelToProvider
 
@@ -56,7 +72,7 @@ interface ApiKeyStatus {
 
 export function RightSidebarContent() {
     const { user } = useUser()
-    const [model, setModel] = useState<Model>("gpt-4o-mini")
+    const [model, setModel] = useState<Model>("gpt-5-mini")
     const [files, setFiles] = useState<FileList | null>(null)
     const { open } = useRightSidebar()
     const inputRef = useRef<HTMLTextAreaElement>(null)
@@ -296,11 +312,38 @@ export function RightSidebarContent() {
                                         <PromptInputModelSelectValue />
                                     </PromptInputModelSelectTrigger>
                                     <PromptInputModelSelectContent>
-                                        {Object.entries(modelToProvider).map(([modelName, provider]) => (
+                                        <SelectGroup>
+                                            <SelectLabel>OpenAI</SelectLabel>
+                                            {Object.entries(modelToProvider)
+                                                .filter(([, provider]) => provider === "openai")
+                                                .map(([modelName]) => (
+                                                    <PromptInputModelSelectItem key={modelName} value={modelName}>
+                                                        {modelName} (openai)
+                                                    </PromptInputModelSelectItem>
+                                                ))}
+                                        </SelectGroup>
+                                        <SelectSeparator />
+                                        <SelectGroup>
+                                            <SelectLabel>Anthropic</SelectLabel>
+                                            {Object.entries(modelToProvider)
+                                                .filter(([, provider]) => provider === "anthropic")
+                                                .map(([modelName]) => (
+                                                    <PromptInputModelSelectItem key={modelName} value={modelName}>
+                                                        {modelName} (anthropic)
+                                                    </PromptInputModelSelectItem>
+                                                ))}
+                                        </SelectGroup>
+                                        <SelectSeparator />
+                                        <SelectGroup>
+                                            <SelectLabel>Google</SelectLabel>
+                                            {Object.entries(modelToProvider)
+                                                .filter(([, provider]) => provider === "google")
+                                                .map(([modelName]) => (
                                             <PromptInputModelSelectItem key={modelName} value={modelName}>
-                                                {modelName} ({provider})
+                                                        {modelName} (google)
                                             </PromptInputModelSelectItem>
                                         ))}
+                                        </SelectGroup>
                                     </PromptInputModelSelectContent>
                                 </PromptInputModelSelect>
 

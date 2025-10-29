@@ -61,15 +61,15 @@ export function Header({ user, breadcrumbs = [{ label: 'Dashboard' }], onOnboard
   return (
     <header className="flex h-16 shrink-0 items-center border-b bg-background sticky top-0 z-10">
       <div className="flex items-center gap-2 px-4 w-full">
-        <Button
-          variant="ghost"
-          size="icon"
+          <Button
+            variant="ghost"
+            size="icon"
           onClick={() => window.history.back()}
-          className="hover:bg-accent"
+            className="hover:bg-accent"
           title="Go back"
-        >
+          >
           <ArrowLeft className="h-5 w-5" />
-        </Button>
+          </Button>
         <LeftSidebarTrigger />
         <Separator orientation="vertical" className="h-4" />
 

@@ -5,8 +5,17 @@ import { Header } from '@/components/Header'
 import { handleGoogleLogin } from '@/utils/auth'
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { getUserNotebooks } from '@/utils/notebook'
+import { getUserNotebooks, createNotebook } from '@/utils/notebook'
 import type { AuthenticatedUser } from '@/types/backend'
+import { createId } from '@paralleldrive/cuid2'
+import { useQueryClient } from '@tanstack/react-query'
+import { createNote } from '@/utils/notes'
+import { createChapter as createChapterApi } from '@/utils/chapter'
+import { toast } from 'sonner'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '@/components/ui/select'
 
 interface DashboardProps {
   user: AuthenticatedUser | null
@@ -15,6 +24,22 @@ interface DashboardProps {
 export function Dashboard({ user }: DashboardProps) {
   const navigate = useNavigate()
   const [activeTab, setActiveTab] = useState<'notebooks' | 'chapters' | 'notes'>('notebooks')
+  const queryClient = useQueryClient()
+
+  // Create Note modal state
+  const [createNoteOpen, setCreateNoteOpen] = useState(false)
+  const [newNoteName, setNewNoteName] = useState('')
+  const [selectedNotebookId, setSelectedNotebookId] = useState<string>('')
+  const [selectedChapterId, setSelectedChapterId] = useState<string>('')
+
+  // Create Notebook modal state
+  const [createNotebookOpen, setCreateNotebookOpen] = useState(false)
+  const [newNotebookName, setNewNotebookName] = useState('')
+
+  // Create Chapter modal state
+  const [createChapterOpen, setCreateChapterOpen] = useState(false)
+  const [newChapterName, setNewChapterName] = useState('')
+  const [selectedNotebookIdForChapter, setSelectedNotebookIdForChapter] = useState<string>('')
 
   const { data: notebooks, isLoading } = useQuery({
     queryKey: ['userNotebooks'],
@@ -46,6 +71,103 @@ export function Dashboard({ user }: DashboardProps) {
       ) || []
     ) || []
   }, [notebooks])
+
+  const openCreateNote = () => {
+    // Default notebook/chapter selections
+    const firstNotebook = notebooks && notebooks[0]
+    const firstChapter = firstNotebook?.chapters?.[0]
+    setSelectedNotebookId(firstNotebook?.id || '')
+    setSelectedChapterId(firstChapter?.id || '')
+    setNewNoteName('')
+    setCreateNoteOpen(true)
+  }
+
+  const openCreateNotebook = () => {
+    setNewNotebookName('')
+    setCreateNotebookOpen(true)
+  }
+
+  const openCreateChapter = () => {
+    const firstNotebook = notebooks && notebooks[0]
+    setSelectedNotebookIdForChapter(firstNotebook?.id || '')
+    setNewChapterName('')
+    setCreateChapterOpen(true)
+  }
+
+  const handleNotebookChange = (nbId: string) => {
+    setSelectedNotebookId(nbId)
+    const nb = notebooks?.find(n => n.id === nbId)
+    const firstChapter = nb?.chapters?.[0]
+    setSelectedChapterId(firstChapter?.id || '')
+  }
+
+  const handleCreateNoteSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!selectedChapterId || !newNoteName.trim()) return
+    try {
+      const id = createId()
+      await createNote({
+        id,
+        name: newNoteName.trim(),
+        content: '',
+        chapterId: selectedChapterId,
+        chapter: {} as any,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      })
+      toast.success('Note created successfully!')
+      setCreateNoteOpen(false)
+      await queryClient.invalidateQueries({ queryKey: ['userNotebooks'] })
+      navigate(`/${selectedNotebookId}/${selectedChapterId}/${id}`)
+    } catch (err: any) {
+      toast.error('Failed to create note')
+    }
+  }
+
+  const handleCreateNotebookSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!user || !newNotebookName.trim()) return
+    try {
+      const id = createId()
+      await createNotebook({
+        id,
+        name: newNotebookName.trim(),
+        userId: user.id,
+        chapters: [],
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      })
+      toast.success('Notebook created successfully!')
+      setCreateNotebookOpen(false)
+      await queryClient.invalidateQueries({ queryKey: ['userNotebooks'] })
+      navigate(`/${id}`)
+    } catch (err: any) {
+      toast.error('Failed to create notebook')
+    }
+  }
+
+  const handleCreateChapterSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!selectedNotebookIdForChapter || !newChapterName.trim()) return
+    try {
+      const id = createId()
+      await createChapterApi({
+        id,
+        name: newChapterName.trim(),
+        notebookId: selectedNotebookIdForChapter,
+        notebook: {} as any,
+        notes: [],
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      })
+      toast.success('Chapter created successfully!')
+      setCreateChapterOpen(false)
+      await queryClient.invalidateQueries({ queryKey: ['userNotebooks'] })
+      navigate(`/${selectedNotebookIdForChapter}/${id}`)
+    } catch (err: any) {
+      toast.error('Failed to create chapter')
+    }
+  }
 
   return (
     <div className="flex flex-col h-screen">
@@ -121,9 +243,16 @@ export function Dashboard({ user }: DashboardProps) {
                 {/* Notebooks Tab */}
                 {activeTab === 'notebooks' && (
                   <>
-                    {notebooks && notebooks.length > 0 ? (
                       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                        {notebooks.map((notebook) => (
+                      {/* Create Note tile */}
+                      <button
+                        onClick={openCreateNotebook}
+                        className="border-2 border-dashed border-border/80 rounded-2xl p-6 h-40 flex items-center justify-center text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors"
+                        title="Create new note"
+                      >
+                        <span className="text-4xl leading-none">+</span>
+                      </button>
+                      {(notebooks ?? []).map((notebook) => (
                           <button
                             key={notebook.id}
                             onClick={() => navigate(`/${notebook.id}`)}
@@ -144,7 +273,7 @@ export function Dashboard({ user }: DashboardProps) {
                           </button>
                         ))}
                       </div>
-                    ) : (
+                    {!notebooks?.length && (
                       <div className="flex flex-col items-center justify-center py-16 space-y-4">
                         <Book className="h-16 w-16 text-muted-foreground" />
                         <div className="text-center space-y-2">
@@ -159,9 +288,16 @@ export function Dashboard({ user }: DashboardProps) {
                 {/* Chapters Tab */}
                 {activeTab === 'chapters' && (
                   <>
-                    {allChapters.length > 0 ? (
                       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                        {allChapters.map((chapter) => (
+                      {/* Create Note tile */}
+                      <button
+                        onClick={openCreateChapter}
+                        className="border-2 border-dashed border-border/80 rounded-2xl p-6 h-40 flex items-center justify-center text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors"
+                        title="Create new note"
+                      >
+                        <span className="text-4xl leading-none">+</span>
+                      </button>
+                      {allChapters.length > 0 && allChapters.map((chapter) => (
                           <button
                             key={chapter.id}
                             onClick={() => navigate(`/${chapter.notebookId}/${chapter.id}`)}
@@ -182,7 +318,7 @@ export function Dashboard({ user }: DashboardProps) {
                           </button>
                         ))}
                       </div>
-                    ) : (
+                    {allChapters.length === 0 && (
                       <div className="flex flex-col items-center justify-center py-16 space-y-4">
                         <BookOpen className="h-16 w-16 text-muted-foreground" />
                         <div className="text-center space-y-2">
@@ -197,9 +333,16 @@ export function Dashboard({ user }: DashboardProps) {
                 {/* Notes Tab */}
                 {activeTab === 'notes' && (
                   <>
-                    {allNotes.length > 0 ? (
                       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                        {allNotes.map((note) => (
+                      {/* Create Note tile */}
+                      <button
+                        onClick={openCreateNote}
+                        className="border-2 border-dashed border-border/80 rounded-2xl p-6 h-40 flex items-center justify-center text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors"
+                        title="Create new note"
+                      >
+                        <span className="text-4xl leading-none">+</span>
+                      </button>
+                      {allNotes.length > 0 && allNotes.map((note) => (
                           <button
                             key={note.id}
                             onClick={() => navigate(`/${note.notebookId}/${note.chapterId}/${note.id}`)}
@@ -220,7 +363,7 @@ export function Dashboard({ user }: DashboardProps) {
                           </button>
                         ))}
                       </div>
-                    ) : (
+                    {allNotes.length === 0 && (
                       <div className="flex flex-col items-center justify-center py-16 space-y-4">
                         <FileText className="h-16 w-16 text-muted-foreground" />
                         <div className="text-center space-y-2">
@@ -248,6 +391,120 @@ export function Dashboard({ user }: DashboardProps) {
           </div>
         )}
       </main>
+
+      {/* Create Note Modal */}
+      <Dialog open={createNoteOpen} onOpenChange={setCreateNoteOpen}>
+        <DialogContent className="sm:max-w-[480px]">
+          <form onSubmit={handleCreateNoteSubmit}>
+            <DialogHeader>
+              <DialogTitle>Create Note</DialogTitle>
+              <DialogDescription>Select a destination and name your note.</DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <div className="grid gap-2">
+                <Label>Notebook</Label>
+                <Select value={selectedNotebookId} onValueChange={handleNotebookChange}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select a notebook" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup>
+                      <SelectLabel>Notebooks</SelectLabel>
+                      {notebooks?.map(nb => (
+                        <SelectItem key={nb.id} value={nb.id}>{nb.name}</SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-2">
+                <Label>Chapter</Label>
+                <Select value={selectedChapterId} onValueChange={setSelectedChapterId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select a chapter" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup>
+                      <SelectLabel>Chapters</SelectLabel>
+                      {notebooks?.find(n => n.id === selectedNotebookId)?.chapters?.map(ch => (
+                        <SelectItem key={ch.id} value={ch.id}>{ch.name}</SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-2">
+                <Label>Note name</Label>
+                <Input value={newNoteName} onChange={e => setNewNoteName(e.target.value)} placeholder="e.g. Daily notes" />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setCreateNoteOpen(false)}>Cancel</Button>
+              <Button type="submit" disabled={!selectedChapterId || !newNoteName.trim()}>Create</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Create Notebook Modal */}
+      <Dialog open={createNotebookOpen} onOpenChange={setCreateNotebookOpen}>
+        <DialogContent className="sm:max-w-[480px]">
+          <form onSubmit={handleCreateNotebookSubmit}>
+            <DialogHeader>
+              <DialogTitle>Create Notebook</DialogTitle>
+              <DialogDescription>Name your new notebook.</DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <div className="grid gap-2">
+                <Label>Notebook name</Label>
+                <Input value={newNotebookName} onChange={e => setNewNotebookName(e.target.value)} placeholder="e.g. My Ideas" />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setCreateNotebookOpen(false)}>Cancel</Button>
+              <Button type="submit" disabled={!newNotebookName.trim()}>Create</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Create Chapter Modal */}
+      <Dialog open={createChapterOpen} onOpenChange={setCreateChapterOpen}>
+        <DialogContent className="sm:max-w-[480px]">
+          <form onSubmit={handleCreateChapterSubmit}>
+            <DialogHeader>
+              <DialogTitle>Create Chapter</DialogTitle>
+              <DialogDescription>Select a notebook and name your chapter.</DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <div className="grid gap-2">
+                <Label>Notebook</Label>
+                <Select value={selectedNotebookIdForChapter} onValueChange={setSelectedNotebookIdForChapter}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select a notebook" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup>
+                      <SelectLabel>Notebooks</SelectLabel>
+                      {notebooks?.map(nb => (
+                        <SelectItem key={nb.id} value={nb.id}>{nb.name}</SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-2">
+                <Label>Chapter name</Label>
+                <Input value={newChapterName} onChange={e => setNewChapterName(e.target.value)} placeholder="e.g. Basics" />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setCreateChapterOpen(false)}>Cancel</Button>
+              <Button type="submit" disabled={!selectedNotebookIdForChapter || !newChapterName.trim()}>Create</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
