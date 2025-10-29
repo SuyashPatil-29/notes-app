@@ -22,11 +22,14 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import type { Chapter, Notes, Notebook } from '@/types/backend'
 import { createId } from '@paralleldrive/cuid2'
 import CommandMenu from './components/cmdk'
+import { OnboardingWizard } from './components/OnboardingWizard'
+import { Profile } from './components/Profile'
 
 function App() {
-  const { user, loading: userLoading } = useUser()
+  const { user, loading: userLoading, refetch: refetchUser } = useUser()
   const queryClient = useQueryClient()
   const [createNotebookDialog, setCreateNotebookDialog] = useState(false)
+  const [onboardingCompleted, setOnboardingCompleted] = useState(false)
 
   const [createChapterDialog, setCreateChapterDialog] = useState<{
     open: boolean
@@ -445,12 +448,23 @@ function App() {
     }
   }
 
+  const handleOnboardingComplete = async () => {
+    setOnboardingCompleted(true)
+    // Refresh user data to get updated onboarding status
+    await refetchUser()
+  }
+
   if (userLoading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-muted-foreground text-lg">Loading...</div>
       </div>
     )
+  }
+
+  // Show onboarding wizard if user exists but hasn't completed onboarding
+  if (user && !user.onboardingCompleted && !onboardingCompleted) {
+    return <OnboardingWizard onComplete={handleOnboardingComplete} />
   }
 
   return (
@@ -475,6 +489,7 @@ function App() {
             <RightSidebarInset>
               <Routes>
                 <Route path="/" element={<Dashboard user={user} />} />
+                <Route path="/profile" element={<Profile />} />
                 <Route path="/:notebookId" element={<NotebookView user={user} onCreateChapter={handleCreateChapter} />} />
                 <Route path="/:notebookId/:chapterId" element={<ChapterView user={user} onCreateNote={handleCreateNote} />} />
                 <Route path="/:notebookId/:chapterId/:noteId" element={<NoteEditor user={user} />} />

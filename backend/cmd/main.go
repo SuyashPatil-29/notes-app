@@ -44,6 +44,16 @@ func main() {
 		protected.GET("/auth/user", auth.GetCurrentUser)
 		protected.GET("/logout/:provider", auth.Logout)
 
+		// Onboarding routes
+		protected.GET("/onboarding", auth.GetOnboardingStatus)
+		protected.POST("/onboarding", auth.CompleteOnboarding)
+		protected.DELETE("/onboarding", auth.ResetOnboarding) // Dev: Reset onboarding
+
+		// AI credentials routes
+		protected.GET("/settings/ai-credentials", auth.GetAICredentials)
+		protected.POST("/settings/ai-credentials", auth.SetAICredential)
+		protected.DELETE("/settings/ai-credentials", auth.DeleteAICredential)
+
 		// Chat/AI routes
 		protected.POST("/api/chat", controllers.ChatHandler)
 		protected.GET("/api/dump", controllers.DumpHandler)

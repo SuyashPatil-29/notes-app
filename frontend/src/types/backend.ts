@@ -37,4 +37,7 @@ export type Notes = {
   updatedAt: string;
 };
 
-export type AuthenticatedUser = Pick<User, 'id' | 'name' | 'email' | 'imageUrl'>;
+export type AuthenticatedUser = Pick<User, 'id' | 'name' | 'email' | 'imageUrl'> & {
+  onboardingCompleted: boolean;
+  hasApiKey: boolean;
+};

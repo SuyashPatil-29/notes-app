@@ -357,7 +357,7 @@ export function LeftSidebarContent({
         <LeftSidebarHeader className="h-16 border-b">
           <LeftSidebarMenu>
             <LeftSidebarMenuItem>
-              <LeftSidebarMenuButton size="lg">
+              <LeftSidebarMenuButton size="lg" onClick={() => navigate("/")}>
                 <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
                   <Loader className="size-4" />
                 </div>
@@ -388,7 +388,7 @@ export function LeftSidebarContent({
         <LeftSidebarHeader className="h-16 border-b">
           <LeftSidebarMenu>
             <LeftSidebarMenuItem>
-              <LeftSidebarMenuButton size="lg">
+              <LeftSidebarMenuButton size="lg" onClick={() => navigate("/")}>
                 <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
                   <Book className="size-4" />
                 </div>
@@ -436,7 +436,7 @@ export function LeftSidebarContent({
         <LeftSidebarHeader className="h-16 border-b">
           <LeftSidebarMenu>
             <LeftSidebarMenuItem>
-              <LeftSidebarMenuButton size="lg">
+              <LeftSidebarMenuButton size="lg" onClick={() => navigate("/")}>
                 <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
                   <Book className="size-4" />
                 </div>

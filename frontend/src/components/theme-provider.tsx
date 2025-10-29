@@ -1,58 +1,78 @@
 import { createContext, useContext, useEffect, useState } from "react"
 
-type Theme = "dark" | "light" | "system"
+type ColorScheme = "dark" | "light" | "system"
+type ThemeVariant = "notebook" | "grayscale" | "tech" | "minimal" | "orange" | "pink"
 
 type ThemeProviderProps = {
   children: React.ReactNode
-  defaultTheme?: Theme
+  defaultTheme?: ThemeVariant
+  defaultColorScheme?: ColorScheme
   storageKey?: string
+  themeStorageKey?: string
 }
 
 type ThemeProviderState = {
-  theme: Theme
-  setTheme: (theme: Theme) => void
+  theme: ThemeVariant
+  colorScheme: ColorScheme
+  setTheme: (theme: ThemeVariant) => void
+  setColorScheme: (scheme: ColorScheme) => void
 }
 
 const initialState: ThemeProviderState = {
-  theme: "system",
+  theme: "notebook",
+  colorScheme: "system",
   setTheme: () => null,
+  setColorScheme: () => null,
 }
 
 const ThemeProviderContext = createContext<ThemeProviderState>(initialState)
 
 export function ThemeProvider({
   children,
-  defaultTheme = "system",
-  storageKey = "vite-ui-theme",
+  defaultTheme = "notebook",
+  defaultColorScheme = "system",
+  storageKey = "vite-ui-color-scheme",
+  themeStorageKey = "vite-ui-theme",
   ...props
 }: ThemeProviderProps) {
-  const [theme, setTheme] = useState<Theme>(
-    () => (localStorage.getItem(storageKey) as Theme) || defaultTheme
+  const [colorScheme, setColorSchemeState] = useState<ColorScheme>(
+    () => (localStorage.getItem(storageKey) as ColorScheme) || defaultColorScheme
+  )
+  const [theme, setThemeState] = useState<ThemeVariant>(
+    () => (localStorage.getItem(themeStorageKey) as ThemeVariant) || defaultTheme
   )
 
   useEffect(() => {
     const root = window.document.documentElement
 
+    // Set data-theme attribute
+    root.setAttribute("data-theme", theme)
+
+    // Handle color scheme (dark/light)
     root.classList.remove("light", "dark")
 
-    if (theme === "system") {
+    if (colorScheme === "system") {
       const systemTheme = window.matchMedia("(prefers-color-scheme: dark)")
         .matches
         ? "dark"
         : "light"
 
       root.classList.add(systemTheme)
-      return
+    } else {
+      root.classList.add(colorScheme)
     }
-
-    root.classList.add(theme)
-  }, [theme])
+  }, [theme, colorScheme])
 
   const value = {
     theme,
-    setTheme: (theme: Theme) => {
-      localStorage.setItem(storageKey, theme)
-      setTheme(theme)
+    colorScheme,
+    setTheme: (newTheme: ThemeVariant) => {
+      localStorage.setItem(themeStorageKey, newTheme)
+      setThemeState(newTheme)
+    },
+    setColorScheme: (scheme: ColorScheme) => {
+      localStorage.setItem(storageKey, scheme)
+      setColorSchemeState(scheme)
     },
   }
 

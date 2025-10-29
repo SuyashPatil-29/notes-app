@@ -5,13 +5,15 @@ import (
 )
 
 type User struct {
-	ID        uint       `json:"id" gorm:"primaryKey"`
-	Name      string     `json:"name"`
-	Email     string     `json:"email" gorm:"index:idx_email,unique"`
-	ImageUrl  *string    `json:"imageUrl"`
-	Notebooks []Notebook `json:"notebooks,omitempty" gorm:"foreignKey:UserID"`
-	CreatedAt time.Time  `json:"createdAt"`
-	UpdatedAt time.Time  `json:"updatedAt"`
+	ID                  uint       `json:"id" gorm:"primaryKey"`
+	Name                string     `json:"name"`
+	Email               string     `json:"email" gorm:"index:idx_email,unique"`
+	ImageUrl            *string    `json:"imageUrl"`
+	OnboardingCompleted bool       `json:"onboardingCompleted" gorm:"default:false"`
+	OnboardingType      *string    `json:"onboardingType"`
+	Notebooks           []Notebook `json:"notebooks,omitempty" gorm:"foreignKey:UserID"`
+	CreatedAt           time.Time  `json:"createdAt"`
+	UpdatedAt           time.Time  `json:"updatedAt"`
 }
 
 type AuthenticatedUser struct {

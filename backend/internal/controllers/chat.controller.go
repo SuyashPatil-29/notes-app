@@ -3,8 +3,15 @@ package controllers
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
+	"strings"
+
+	"backend/db"
+	"backend/internal/middleware"
+	"backend/internal/models"
+	"backend/pkg/utils"
 
 	"github.com/anthropics/anthropic-sdk-go"
 	anthropicoption "github.com/anthropics/anthropic-sdk-go/option"
@@ -28,21 +35,45 @@ var (
 	lastMessages []aisdk.Message
 )
 
-func getOpenAIClient() *openai.Client {
-	client := openai.NewClient(openaioption.WithAPIKey(os.Getenv("OPENAI_API_KEY")))
+func getOpenAIClient(apiKey string) *openai.Client {
+	client := openai.NewClient(openaioption.WithAPIKey(apiKey))
 	return &client
 }
 
-func getAnthropicClient() *anthropic.Client {
-	client := anthropic.NewClient(anthropicoption.WithAPIKey(os.Getenv("ANTHROPIC_API_KEY")))
+func getAnthropicClient(apiKey string) *anthropic.Client {
+	client := anthropic.NewClient(anthropicoption.WithAPIKey(apiKey))
 	return &client
 }
 
-func getGoogleClient(ctx context.Context) (*genai.Client, error) {
+func getGoogleClient(ctx context.Context, apiKey string) (*genai.Client, error) {
 	return genai.NewClient(ctx, &genai.ClientConfig{
-		APIKey:  os.Getenv("GOOGLE_API_KEY"),
+		APIKey:  apiKey,
 		Backend: genai.BackendGeminiAPI,
 	})
+}
+
+// getUserAPIKey retrieves the user's API key for a specific provider
+func getUserAPIKey(userID uint, provider string) (string, error) {
+	var credential models.AICredential
+	if err := db.DB.Where("user_id = ? AND provider = ?", userID, provider).First(&credential).Error; err != nil {
+		return "", err
+	}
+
+	// Decrypt the API key
+	apiKey, err := utils.Decrypt(credential.KeyCipher)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to decrypt API key")
+		return "", err
+	}
+
+	// Trim whitespace (leading/trailing spaces/newlines that might have been accidentally saved)
+	apiKey = strings.TrimSpace(apiKey)
+
+	if apiKey == "" {
+		return "", fmt.Errorf("decrypted API key is empty")
+	}
+
+	return apiKey, nil
 }
 
 // DumpHandler dumps the last messages to a JSON file
@@ -66,6 +97,21 @@ func ChatHandler(c *gin.Context) {
 	if err := c.ShouldBindJSON(&req); err != nil {
 		log.Error().Err(err).Msg("Failed to parse chat request")
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+		return
+	}
+
+	// Get user ID from session
+	userID, exists := middleware.GetUserID(c)
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+		return
+	}
+
+	// Get user's API key for the requested provider
+	apiKey, err := getUserAPIKey(userID, req.Provider)
+	if err != nil {
+		log.Error().Err(err).Str("provider", req.Provider).Uint("userID", userID).Msg("Failed to get user API key")
+		c.JSON(http.StatusBadRequest, gin.H{"error": "API key not configured for this provider. Please set up your API key in settings."})
 		return
 	}
 
@@ -119,7 +165,7 @@ func ChatHandler(c *gin.Context) {
 				reasoningEffort = openai.ReasoningEffortMedium
 			}
 
-			client := getOpenAIClient()
+			client := getOpenAIClient(apiKey)
 			stream = aisdk.OpenAIToDataStream(client.Chat.Completions.NewStreaming(ctx, openai.ChatCompletionNewParams{
 				Model:               req.Model,
 				Messages:            messages,
@@ -141,7 +187,7 @@ func ChatHandler(c *gin.Context) {
 				thinking = anthropic.ThinkingConfigParamOfEnabled(2048)
 			}
 
-			client := getAnthropicClient()
+			client := getAnthropicClient(apiKey)
 			stream = aisdk.AnthropicToDataStream(client.Messages.NewStreaming(ctx, anthropic.MessageNewParams{
 				Model:     anthropic.Model(req.Model),
 				Messages:  messages,
@@ -152,7 +198,7 @@ func ChatHandler(c *gin.Context) {
 			}))
 
 		case "google":
-			googleClient, err := getGoogleClient(ctx)
+			googleClient, err := getGoogleClient(ctx, apiKey)
 			if err != nil {
 				log.Error().Err(err).Msg("Google client not initialized")
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Google client not configured"})
@@ -206,6 +252,27 @@ func ChatHandler(c *gin.Context) {
 		err := stream.Pipe(c.Writer)
 		if err != nil {
 			log.Error().Err(err).Msg("Error piping AI response stream")
+
+			// Try to extract error message from the error
+			errorMsg := err.Error()
+			userFriendlyMsg := errorMsg
+
+			// Check if it's an API key error
+			if strings.Contains(errorMsg, "401") || strings.Contains(errorMsg, "Unauthorized") || strings.Contains(errorMsg, "invalid_api_key") || strings.Contains(errorMsg, "Incorrect API key") {
+				userFriendlyMsg = "Invalid API key. Please check your API key in Profile settings and ensure it's correct."
+			} else if strings.Contains(errorMsg, "insufficient_quota") {
+				userFriendlyMsg = "API quota exceeded. Please check your API usage limits."
+			} else if strings.Contains(errorMsg, "rate_limit") {
+				userFriendlyMsg = "Rate limit exceeded. Please try again in a moment."
+			} else if strings.Contains(errorMsg, "model_not_found") {
+				userFriendlyMsg = "The selected model is not available. Please try a different model."
+			} else {
+				// Generic error message
+				userFriendlyMsg = "An error occurred while processing your request. Please try again."
+			}
+
+			// Return JSON error response instead of trying to write to stream
+			c.JSON(http.StatusInternalServerError, gin.H{"error": userFriendlyMsg})
 			return
 		}
 

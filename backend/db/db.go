@@ -42,6 +42,7 @@ func InitDB() {
 		&models.Notebook{},
 		&models.Chapter{},
 		&models.Notes{},
+		&models.AICredential{},
 	); err != nil {
 		log.Fatal().Err(err).Msg("Failed to migrate schema")
 	}

@@ -88,8 +88,6 @@ export function NoteEditor({ user }: NoteEditorProps) {
       <Header
         user={user}
         breadcrumbs={breadcrumbs}
-        showCloseButton={true}
-        onClose={() => navigate('/')}
       />
       <div className="flex-1 overflow-auto">
         <div className="max-w-4xl mx-auto px-6 py-8 space-y-6">

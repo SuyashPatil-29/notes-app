@@ -1,4 +1,3 @@
-import { Link } from 'react-router-dom'
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -18,11 +17,15 @@ import {
 import { Separator } from '@/components/ui/separator'
 import { LeftSidebarTrigger } from '@/components/ui/left-sidebar'
 import { RightSidebarTrigger } from '@/components/ui/right-sidebar'
-import { ModeToggle } from '@/components/ModeToggle'
+import { ThemeSelector } from '@/components/ThemeSelector'
 import { Button } from '@/components/ui/button'
-import { LogOut, User, X } from 'lucide-react'
+import { LogOut, User, ArrowLeft, RotateCcw, Settings } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import { handleGoogleLogout } from '@/utils/auth'
 import type { AuthenticatedUser } from '@/types/backend'
+import api from '@/utils/api'
+import { toast } from 'sonner'
+import { ModeToggle } from './ModeToggle'
 
 export interface HeaderBreadcrumbItem {
   label: string
@@ -32,17 +35,44 @@ export interface HeaderBreadcrumbItem {
 interface HeaderProps {
   user: AuthenticatedUser | null
   breadcrumbs?: HeaderBreadcrumbItem[]
-  showCloseButton?: boolean
-  onClose?: () => void
+  onOnboardingReset?: () => void
 }
 
-export function Header({ user, breadcrumbs = [{ label: 'Dashboard' }], showCloseButton = false, onClose }: HeaderProps) {
+export function Header({ user, breadcrumbs = [{ label: 'Dashboard' }], onOnboardingReset }: HeaderProps) {
+  const handleResetOnboarding = async () => {
+    if (!confirm("Reset onboarding? This will require you to complete onboarding again.")) {
+      return;
+    }
+
+    try {
+      await api.delete("/onboarding");
+      toast.success("Onboarding reset. Please refresh the page.");
+      if (onOnboardingReset) {
+        onOnboardingReset();
+      } else {
+        // Fallback: reload the page
+        window.location.reload();
+      }
+    } catch (error: any) {
+      console.error("Reset onboarding error:", error);
+      toast.error("Failed to reset onboarding");
+    }
+  };
   return (
     <header className="flex h-16 shrink-0 items-center border-b bg-background sticky top-0 z-10">
       <div className="flex items-center gap-2 px-4 w-full">
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => window.history.back()}
+          className="hover:bg-accent"
+          title="Go back"
+        >
+          <ArrowLeft className="h-5 w-5" />
+        </Button>
         <LeftSidebarTrigger />
         <Separator orientation="vertical" className="h-4" />
-        
+
         {/* Breadcrumbs */}
         <Breadcrumb>
           <BreadcrumbList>
@@ -67,18 +97,8 @@ export function Header({ user, breadcrumbs = [{ label: 'Dashboard' }], showClose
 
         {/* Right Side Actions */}
         <div className="ml-auto flex items-center gap-2">
-          {showCloseButton && onClose && (
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={onClose}
-              className="hover:bg-accent"
-              title="Close note"
-            >
-              <X className="h-5 w-5" />
-            </Button>
-          )}
           <ModeToggle />
+          <ThemeSelector />
           <RightSidebarTrigger />
           {user && (
             <DropdownMenu>
@@ -106,6 +126,22 @@ export function Header({ user, breadcrumbs = [{ label: 'Dashboard' }], showClose
                     </p>
                   </div>
                 </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem asChild className="cursor-pointer">
+                  <Link to="/profile">
+                    <Settings className="mr-2 h-4 w-4" />
+                    <span>Profile & Settings</span>
+                  </Link>
+                </DropdownMenuItem>
+                {import.meta.env.DEV && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={handleResetOnboarding} className="cursor-pointer text-yellow-600 dark:text-yellow-400">
+                      <RotateCcw className="mr-2 h-4 w-4" />
+                      <span>Reset Onboarding (Dev)</span>
+                    </DropdownMenuItem>
+                  </>
+                )}
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={handleGoogleLogout} className="cursor-pointer">
                   <LogOut className="mr-2 h-4 w-4" />

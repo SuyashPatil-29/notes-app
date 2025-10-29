@@ -1,4 +1,5 @@
 import { MessageSquare } from "lucide-react"
+import { toast } from "sonner"
 import {
     RightSidebar,
     RightSidebarContent as RightSidebarContentWrapper,
@@ -11,6 +12,7 @@ import {
 } from "@/components/ui/right-sidebar"
 import { useChat } from "@ai-sdk/react"
 import React, { useState, useRef, useEffect } from "react"
+import { useQuery } from "@tanstack/react-query"
 import {
     Conversation,
     ConversationContent,
@@ -34,6 +36,7 @@ import { Reasoning, ReasoningTrigger, ReasoningContent } from "@/components/ai/r
 import { Tool, ToolHeader, ToolContent, ToolInput, ToolOutput } from "@/components/ai/tool"
 import { Input } from "@/components/ui/input"
 import { useUser } from "@/hooks/auth"
+import api from "@/utils/api"
 
 const modelToProvider = {
     "gpt-4o-mini": "openai",
@@ -45,20 +48,59 @@ const modelToProvider = {
 
 type Model = keyof typeof modelToProvider
 
+interface ApiKeyStatus {
+    openai: boolean;
+    anthropic: boolean;
+    google: boolean;
+}
+
 export function RightSidebarContent() {
+    const { user } = useUser()
     const [model, setModel] = useState<Model>("gpt-4o-mini")
     const [files, setFiles] = useState<FileList | null>(null)
-    const { user } = useUser()
     const { open } = useRightSidebar()
     const inputRef = useRef<HTMLTextAreaElement>(null)
+    // Use useQuery to manage API key status so it can react to invalidations
+    const { data: fetchedApiKeyStatus } = useQuery<ApiKeyStatus>({
+        queryKey: ['api-key-status'],
+        queryFn: async () => {
+            const response = await api.get("/settings/ai-credentials");
+            const providers = response.data.providers || {};
+            return {
+                openai: providers.openai || false,
+                anthropic: providers.anthropic || false,
+                google: providers.google || false,
+            };
+        },
+        enabled: open, // Only fetch when sidebar is open
+        staleTime: 0, // Always refetch when invalidated
+    });
 
-    const { messages, input, handleInputChange, handleSubmit, status, error } = useChat({
+    // Default to false if data is not yet loaded
+    const apiKeyStatus = fetchedApiKeyStatus || { openai: false, anthropic: false, google: false };
+
+    // Check if the selected model's API key is configured
+    const selectedProvider = modelToProvider[model];
+    const hasSelectedApiKey = apiKeyStatus[selectedProvider as keyof ApiKeyStatus] || false;
+
+    const { messages, input, handleInputChange, handleSubmit, status } = useChat({
         api: "http://localhost:8080/api/chat",
         body: {
             provider: modelToProvider[model],
             model,
         },
         credentials: "include",
+        onError: (error) => {
+            console.error("Chat error:", error);
+            // Show toast notification for errors
+            const errorMessage = error.message || "An error occurred while processing your request";
+            toast.error(errorMessage, {
+                description: errorMessage.includes("API key") 
+                    ? "You can update your API key in Profile settings"
+                    : undefined,
+                duration: 5000,
+            });
+        },
     })
 
     const handleSubmitWithFiles = (e: React.FormEvent<HTMLFormElement>) => {
@@ -111,12 +153,6 @@ export function RightSidebarContent() {
                 </RightSidebarMenu>
             </RightSidebarHeader>
             <RightSidebarContentWrapper className="flex flex-col h-full p-0">
-                {error && (
-                    <div className="mx-4 mt-4 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
-                        Error: {error.message}
-                    </div>
-                )}
-
                 <Conversation className="flex-1">
                     <ConversationContent className="px-6">
                         {messages.length === 0 && (
@@ -125,9 +161,14 @@ export function RightSidebarContent() {
                                     <MessageSquare className="size-8 text-muted-foreground" />
                                 </div>
                                 <div>
-                                    <h3 className="font-semibold text-lg">Start a conversation</h3>
+                                    <h3 className="font-semibold text-lg">
+                                        {hasSelectedApiKey ? "Start a conversation" : "Set up your API keys"}
+                                    </h3>
                                     <p className="text-sm text-muted-foreground mt-1">
-                                        Ask me anything or try using tools
+                                        {hasSelectedApiKey
+                                            ? "Ask me anything or try using tools"
+                                            : "Configure your API keys in settings to start chatting"
+                                        }
                                     </p>
                                 </div>
                             </div>
@@ -244,9 +285,9 @@ export function RightSidebarContent() {
                         <PromptInputTextarea
                             ref={inputRef}
                             value={input}
-                            placeholder="Ask me anything..."
+                            placeholder={hasSelectedApiKey ? "Ask me anything..." : "Set up API keys in settings to start chatting..."}
                             onChange={handleInputChange}
-                            disabled={status === "streaming"}
+                            disabled={status === "streaming" || !hasSelectedApiKey}
                         />
                         <PromptInputToolbar>
                             <PromptInputTools>
@@ -271,7 +312,10 @@ export function RightSidebarContent() {
                                     className="hidden"
                                 />
                             </PromptInputTools>
-                            <PromptInputSubmit status={status} disabled={!input.trim() || status === "streaming"} />
+                            <PromptInputSubmit
+                                status={status}
+                                disabled={!input.trim() || status === "streaming" || !hasSelectedApiKey}
+                            />
                         </PromptInputToolbar>
                     </PromptInput>
                 </div>
