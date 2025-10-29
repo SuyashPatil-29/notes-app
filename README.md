@@ -2,16 +2,77 @@
 
 A full-stack notes application with hierarchical organization (Users → Notebooks → Chapters → Notes) built with Go (Gin + GORM) backend and React (TypeScript + Vite) frontend.
 
-## Features
+## ✨ Features
 
-- 🔐 **Google OAuth Authentication** - Secure login with Google
-- 📚 **Hierarchical Organization** - Users → Notebooks (Drives) → Chapters (Folders) → Notes (Files)
-- 🎯 **RESTful API** - Clean and well-structured endpoints
-- 🔄 **Session Management** - Cookie-based authentication
-- 🎨 **Modern Frontend** - React with TypeScript and Vite
-- 🗄️ **PostgreSQL Database** - Reliable data storage with GORM
+### 🔐 Authentication & Security
+- **Google OAuth Integration** - Secure login with Google accounts
+- **Session Management** - Cookie-based authentication with secure storage
+- **Protected Routes** - Client-side route protection for authenticated users
 
-## Architecture
+### 📚 Hierarchical Organization
+- **4-Level Structure** - Users → Notebooks → Chapters → Notes
+- **Drag & Drop** - Move chapters between notebooks and notes between chapters
+- **Collapsible Navigation** - Expandable/collapsible sidebar with smooth animations
+- **Active State Tracking** - Visual indication of currently selected note
+
+### ✏️ Rich Text Editing
+- **TipTap Editor** - Powerful WYSIWYG editor with markdown support
+- **Real-time Preview** - Instant rendering of formatted content
+- **Auto-save** - Automatic saving with visual feedback
+- **Formatting Tools** - Bold, italic, headings, lists, code blocks, and more
+- **Keyboard Shortcuts** - Efficient editing with standard shortcuts
+
+### 🎨 Theming & Customization
+- **7 Beautiful Themes**:
+  - Claude (Orange)
+  - Dark Matter (Tech)
+  - Graphite (Minimal)
+  - Gruvbox
+  - Notebook
+  - Supabase
+  - T3 Chat (Pink)
+- **Dark/Light Mode** - Per-theme light and dark variants with system preference support
+- **Persistent Preferences** - Theme selection saved across sessions
+
+### 🖱️ Context Menus
+- **Right-click Actions** - Context-sensitive menus for all items
+- **Quick Operations**:
+  - View, Create, Rename, Delete for notebooks, chapters, and notes
+  - Create new items in parent context
+  - Consistent menu ordering across all levels
+
+### 📱 Responsive Design
+- **Collapsible Sidebars** - Left navigation and right metadata panels
+- **Adaptive Layout** - Works on desktop and tablet devices
+- **Tooltips** - Helpful hints on hover for truncated items
+- **Smooth Animations** - Polished transitions and state changes
+
+### 🔍 User Experience
+- **Optimistic Updates** - Instant UI feedback with background sync
+- **Error Handling** - Toast notifications for success/error states
+- **Loading States** - Clear indicators during data operations
+- **Keyboard Navigation** - Support for keyboard-first workflows
+
+### 🗂️ Organization Tools
+- **Nested Structure** - Unlimited notebooks, chapters, and notes
+- **Bulk Operations** - Efficient management of multiple items
+- **Smart Defaults** - Auto-expand active branches in navigation
+- **Visual Hierarchy** - Icons and indentation for clear structure
+
+### 🔄 Data Management
+- **CRUD Operations** - Full create, read, update, delete for all entities
+- **Cascade Delete** - Proper cleanup of child items
+- **Move Operations** - Reorganize content via drag & drop
+- **Query Optimization** - Efficient data fetching with React Query
+
+The app features a modern, intuitive interface with:
+- **Dual Sidebar Layout** - Navigation on the left, metadata on the right
+- **Rich Text Editor** - Full-featured TipTap editor with formatting toolbar
+- **Theme Selector** - Visual theme picker with color previews
+- **Context Menus** - Right-click menus throughout the interface
+- **Drag & Drop** - Intuitive content reorganization
+
+## 🏗️ Architecture
 
 ```
 Users
@@ -20,63 +81,110 @@ Users
             └── Notes (Files)
 ```
 
-## Tech Stack
+**Data Flow:**
+1. User authenticates via Google OAuth
+2. Frontend fetches user's notebooks with nested chapters and notes
+3. TanStack Query manages caching and optimistic updates
+4. User edits are auto-saved to the backend
+5. Changes sync across all components via query invalidation
+
+## 🛠️ Tech Stack
 
 ### Backend
-- **Go** - Programming language
-- **Gin** - Web framework
-- **GORM** - ORM for database operations
-- **Goth/Gothic** - OAuth authentication
-- **PostgreSQL** - Database
-- **Zerolog** - Structured logging
+- **Go 1.21+** - Modern, performant programming language
+- **Gin** - Fast HTTP web framework
+- **GORM** - Feature-rich ORM for database operations
+- **Goth/Gothic** - Multi-provider OAuth authentication
+- **PostgreSQL** - Robust relational database
+- **Zerolog** - High-performance structured logging
 
 ### Frontend
-- **React** - UI library
-- **TypeScript** - Type safety
-- **Vite** - Build tool
-- **Axios** - HTTP client
+- **React 18** - Modern UI library with hooks
+- **TypeScript** - Type-safe JavaScript
+- **Vite** - Lightning-fast build tool and dev server
+- **TanStack Query** - Powerful data synchronization and caching
+- **TipTap** - Headless WYSIWYG editor framework
+- **Tailwind CSS v4** - Utility-first CSS framework
+- **shadcn/ui** - Beautifully designed component library
+- **Radix UI** - Unstyled, accessible component primitives
+- **React Router** - Client-side routing
+- **Axios** - Promise-based HTTP client
+- **Sonner** - Toast notifications
+- **dnd-kit** - Modern drag and drop toolkit
+- **Lucide React** - Beautiful icon library
+- **Zod** - TypeScript-first schema validation
 
-## Project Structure
+## 📁 Project Structure
 
 ```
 notes-app/
 ├── backend/
 │   ├── cmd/
-│   │   └── main.go                 # Application entry point
+│   │   └── main.go                      # Application entry point
+│   │
 │   ├── db/
-│   │   ├── db.go                   # Database connection
-│   │   └── migrations/             # Database migrations
+│   │   ├── db.go                        # Database connection setup
+│   │   └── migrations/                  # SQL migration files
+│   │
 │   ├── internal/
 │   │   ├── auth/
-│   │   │   └── auth.go            # Authentication logic
+│   │   │   └── auth.go                  # OAuth configuration
+│   │   │
 │   │   ├── controllers/
-│   │   │   ├── notebook.controller.go
-│   │   │   └── chapter.controller.go
+│   │   │   ├── notebook.controller.go   # Notebook HTTP handlers
+│   │   │   ├── chapter.controller.go    # Chapter HTTP handlers
+│   │   │   └── note.controller.go       # Note HTTP handlers
+│   │   │
 │   │   ├── models/
-│   │   │   ├── user.model.go
-│   │   │   ├── notebook.model.go
-│   │   │   ├── chapter.model.go
-│   │   │   └── notes.model.go
-│   │   └── middleware/             # Custom middleware
-│   ├── go.mod
-│   └── .env.example
+│   │   │   ├── user.model.go            # User entity
+│   │   │   ├── notebook.model.go        # Notebook entity
+│   │   │   ├── chapter.model.go         # Chapter entity
+│   │   │   └── note.model.go            # Note entity
+│   │   │
+│   │   └── middleware/
+│   │       └── auth.middleware.go       # Authentication middleware
+│   │
+│   ├── .env.example                     # Environment template
+│   ├── go.mod                           # Go dependencies
+│   ├── go.sum                           # Dependency checksums
+│   └── README.md                        # Backend documentation
 │
 └── frontend/
     ├── src/
-    │   ├── components/             # React components
+    │   ├── components/
+    │   │   ├── ui/                      # shadcn/ui components
+    │   │   ├── Dashboard.tsx            # Main dashboard layout
+    │   │   ├── Header.tsx               # Top navigation bar
+    │   │   ├── left-sidebar-content.tsx # Navigation sidebar
+    │   │   ├── right-sidebar-content.tsx# Metadata sidebar
+    │   │   ├── ThemeSelector.tsx        # Theme picker dropdown
+    │   │   ├── ModeToggle.tsx           # Light/dark mode toggle
+    │   │   └── theme-provider.tsx       # Theme context provider
+    │   │
     │   ├── hooks/
-    │   │   └── auth.ts            # Authentication hooks
+    │   │   └── auth.ts                  # Authentication hooks
+    │   │
     │   ├── types/
-    │   │   └── backend.ts         # TypeScript types
+    │   │   └── backend.ts               # TypeScript type definitions
+    │   │
     │   ├── utils/
-    │   │   ├── api.ts             # Axios configuration
-    │   │   ├── auth.ts            # Auth utilities
-    │   │   ├── notebook.ts        # Notebook API calls
-    │   │   └── chapter.ts         # Chapter API calls
-    │   ├── App.tsx
-    │   └── main.tsx
-    ├── package.json
-    └── .env.example
+    │   │   ├── api.ts                   # Axios instance configuration
+    │   │   ├── auth.ts                  # Auth utilities
+    │   │   ├── notebook.ts              # Notebook API calls
+    │   │   ├── chapter.ts               # Chapter API calls
+    │   │   └── notes.ts                 # Notes API calls
+    │   │
+    │   ├── index.css                    # Global styles & theme tokens
+    │   ├── App.tsx                      # Root component
+    │   └── main.tsx                     # Application entry point
+    │
+    ├── public/                          # Static assets
+    ├── .env.example                     # Environment variables template
+    ├── package.json                     # Dependencies
+    ├── tsconfig.json                    # TypeScript configuration
+    ├── tailwind.config.js               # Tailwind CSS configuration
+    ├── vite.config.ts                   # Vite configuration
+    └── README.md                        # Frontend documentation
 ```
 
 ## Getting Started
@@ -145,25 +253,36 @@ notes-app/
 
    Frontend will start on `http://localhost:5173`
 
-## API Endpoints
+## 🔌 API Endpoints
 
 ### Authentication
-- `GET /auth/google` - Start Google OAuth flow
-- `GET /auth/google/callback` - OAuth callback
-- `GET /auth/user` - Get current authenticated user
-- `GET /logout/google` - Logout
+- `GET /auth/google` - Initiate Google OAuth flow
+- `GET /auth/google/callback` - OAuth callback handler
+- `GET /auth/user` - Get current authenticated user details
+- `GET /logout/google` - End user session and logout
 
 ### Notebooks
-- `POST /notebook` - Create a notebook
-- `GET /notebook/:id` - Get notebook by ID
-- `PUT /notebook/:id` - Update notebook
-- `DELETE /notebook/:id` - Delete notebook
+- `POST /notebook` - Create a new notebook
+- `GET /notebook/:id` - Get notebook by ID with nested chapters and notes
+- `GET /notebooks` - Get all notebooks for authenticated user
+- `PUT /notebook/:id` - Update notebook name/properties
+- `DELETE /notebook/:id` - Delete notebook and cascade delete children
 
 ### Chapters
-- `POST /chapter` - Create a chapter
-- `GET /chapter/:id` - Get chapter by ID
-- `PUT /chapter/:id` - Update chapter
-- `DELETE /chapter/:id` - Delete chapter
+- `POST /chapter` - Create a new chapter in a notebook
+- `GET /chapter/:id` - Get chapter by ID with nested notes
+- `PUT /chapter/:id` - Update chapter name/properties
+- `PUT /chapter/:id/move` - Move chapter to different notebook
+- `DELETE /chapter/:id` - Delete chapter and cascade delete notes
+
+### Notes
+- `POST /note` - Create a new note in a chapter
+- `GET /note/:id` - Get note by ID with full content
+- `PUT /note/:id` - Update note name/content
+- `PUT /note/:id/move` - Move note to different chapter
+- `DELETE /note/:id` - Delete note
+
+**Authentication:** All endpoints (except auth routes) require valid session cookie.
 
 ## Database Models
 
@@ -291,11 +410,68 @@ Before deploying to production:
 
 This project is licensed under the MIT License.
 
-## Acknowledgments
+## ⌨️ Keyboard Shortcuts
+
+### Editor
+- `Ctrl/Cmd + B` - Bold
+- `Ctrl/Cmd + I` - Italic
+- `Ctrl/Cmd + Shift + X` - Strikethrough
+- `Ctrl/Cmd + Shift + H` - Highlight
+- `Ctrl/Cmd + Alt + 1-6` - Headings 1-6
+- `Ctrl/Cmd + Shift + 7` - Ordered list
+- `Ctrl/Cmd + Shift + 8` - Bullet list
+- `Ctrl/Cmd + Shift + 9` - Blockquote
+- `Ctrl/Cmd + E` - Code
+- `Ctrl/Cmd + Shift + E` - Code block
+- `Ctrl/Cmd + Z` - Undo
+- `Ctrl/Cmd + Shift + Z` - Redo
+
+## 🎯 Key Features Explained
+
+### Drag & Drop
+- **Chapters** - Drag chapters between notebooks to reorganize
+- **Notes** - Drag notes between chapters for better organization
+- **Visual Feedback** - Highlighted drop zones during drag operations
+
+### Auto-save
+- Debounced saving (500ms after last edit)
+- Visual indicator shows save status
+- Optimistic updates for instant feedback
+
+### Theme System
+- CSS custom properties for consistent theming
+- Separate light/dark variants per theme
+- System preference detection
+- Persistent storage in localStorage
+
+### Context Menus
+- Right-click on notebooks for notebook actions
+- Right-click on chapters for chapter actions
+- Right-click on notes for note actions
+- Right-click on empty space to create notebooks
+
+## 🚀 Future Enhancements
+
+- [ ] Full-text search across all notes
+- [ ] Tags and categories
+- [ ] Markdown import/export
+- [ ] Real-time collaboration
+- [ ] Version history
+- [ ] File attachments
+- [ ] Mobile responsive design
+- [ ] Offline support with PWA
+- [ ] Keyboard shortcuts customization
+- [ ] Templates for common note types
+
+## 📝 Acknowledgments
 
 - [Gin Web Framework](https://gin-gonic.com/)
 - [GORM](https://gorm.io/)
 - [Goth](https://github.com/markbates/goth)
 - [React](https://react.dev/)
 - [Vite](https://vitejs.dev/)
+- [TipTap](https://tiptap.dev/)
+- [shadcn/ui](https://ui.shadcn.com/)
+- [TanStack Query](https://tanstack.com/query)
+- [dnd-kit](https://dndkit.com/)
 

@@ -81,7 +81,7 @@ export function LeftSidebarContent({
   const navigate = useNavigate()
   const location = useLocation()
   const queryClient = useQueryClient()
-  
+
   // Extract noteId and chapterId from URL path
   // URL format: /:notebookId/:chapterId/:noteId
   const pathParts = location.pathname.split('/').filter(Boolean)
@@ -91,10 +91,10 @@ export function LeftSidebarContent({
   // Controlled state for expanded notebooks and chapters
   const [expandedNotebooks, setExpandedNotebooks] = useState<Set<string>>(new Set())
   const [expandedChapters, setExpandedChapters] = useState<Set<string>>(new Set())
-  
+
   // Drag and drop state with dnd-kit
   const [overId, setOverId] = useState<string | null>(null)
-  
+
   // Configure sensors for dnd-kit
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -103,25 +103,25 @@ export function LeftSidebarContent({
       },
     })
   )
-  
+
   // Optimistic chapter move mutation
   const moveChapterMutation = useMutation({
-    mutationFn: ({ chapterId, targetNotebookId }: { chapterId: string, targetNotebookId: string }) => 
+    mutationFn: ({ chapterId, targetNotebookId }: { chapterId: string, targetNotebookId: string }) =>
       moveChapter(chapterId, targetNotebookId),
     onMutate: async ({ chapterId, targetNotebookId }) => {
       // Cancel outgoing refetches
       await queryClient.cancelQueries({ queryKey: ['userNotebooks'] })
-      
+
       // Snapshot the previous value
       const previousNotebooks = queryClient.getQueryData<Notebook[]>(['userNotebooks'])
-      
+
       // Optimistically update
       queryClient.setQueryData<Notebook[]>(['userNotebooks'], (old) => {
         if (!old) return old
-        
+
         const newNotebooks = JSON.parse(JSON.stringify(old)) as Notebook[]
         let movedChapter: any = null
-        
+
         // Find and remove chapter from source notebook
         for (const notebook of newNotebooks) {
           const chapterIndex = notebook.chapters?.findIndex(ch => ch.id === chapterId)
@@ -130,7 +130,7 @@ export function LeftSidebarContent({
             break
           }
         }
-        
+
         // Add chapter to target notebook
         if (movedChapter) {
           const targetNotebook = newNotebooks.find(nb => nb.id === targetNotebookId)
@@ -141,15 +141,15 @@ export function LeftSidebarContent({
             targetNotebook.chapters.push(movedChapter)
           }
         }
-        
+
         return newNotebooks
       })
-      
+
       // If we're currently viewing a note in this chapter, navigate to the new location
       if (currentChapterId === chapterId && currentNoteId) {
         navigate(`/${targetNotebookId}/${chapterId}/${currentNoteId}`)
       }
-      
+
       return { previousNotebooks }
     },
     onError: (err, _variables, context) => {
@@ -168,18 +168,18 @@ export function LeftSidebarContent({
       queryClient.invalidateQueries({ queryKey: ['userNotebooks'] })
     }
   })
-  
+
   // Optimistic note move mutation
   const moveNoteMutation = useMutation({
-    mutationFn: ({ noteId, targetChapterId }: { noteId: string, targetChapterId: string }) => 
+    mutationFn: ({ noteId, targetChapterId }: { noteId: string, targetChapterId: string }) =>
       moveNote(noteId, targetChapterId),
     onMutate: async ({ noteId, targetChapterId }) => {
       // Cancel outgoing refetches
       await queryClient.cancelQueries({ queryKey: ['userNotebooks'] })
-      
+
       // Snapshot the previous value
       const previousNotebooks = queryClient.getQueryData<Notebook[]>(['userNotebooks'])
-      
+
       // Find the target notebook ID for navigation
       let targetNotebookId: string | null = null
       if (previousNotebooks) {
@@ -192,14 +192,14 @@ export function LeftSidebarContent({
           }
         }
       }
-      
+
       // Optimistically update
       queryClient.setQueryData<Notebook[]>(['userNotebooks'], (old) => {
         if (!old) return old
-        
+
         const newNotebooks = JSON.parse(JSON.stringify(old)) as Notebook[]
         let movedNote: any = null
-        
+
         // Find and remove note from source chapter
         for (const notebook of newNotebooks) {
           if (!notebook.chapters) continue
@@ -212,7 +212,7 @@ export function LeftSidebarContent({
           }
           if (movedNote) break
         }
-        
+
         // Add note to target chapter
         if (movedNote) {
           for (const notebook of newNotebooks) {
@@ -227,15 +227,15 @@ export function LeftSidebarContent({
             }
           }
         }
-        
+
         return newNotebooks
       })
-      
+
       // If we're currently viewing this note, navigate to the new location
       if (currentNoteId === noteId && targetNotebookId) {
         navigate(`/${targetNotebookId}/${targetChapterId}/${noteId}`)
       }
-      
+
       return { previousNotebooks }
     },
     onError: (err, _variables, context) => {
@@ -254,7 +254,7 @@ export function LeftSidebarContent({
       queryClient.invalidateQueries({ queryKey: ['userNotebooks'] })
     }
   })
-  
+
   // Initialize and update expanded states when notebooks change
   useEffect(() => {
     if (notebooks && notebooks.length > 0) {
@@ -264,7 +264,7 @@ export function LeftSidebarContent({
         notebooks.forEach(notebook => newSet.add(notebook.id))
         return newSet
       })
-      
+
       // Expand chapter if we're viewing a note
       if (currentChapterId) {
         setExpandedChapters(prev => {
@@ -275,7 +275,7 @@ export function LeftSidebarContent({
       }
     }
   }, [notebooks, currentChapterId])
-  
+
   // Toggle functions
   const toggleNotebook = (notebookId: string) => {
     setExpandedNotebooks(prev => {
@@ -288,7 +288,7 @@ export function LeftSidebarContent({
       return newSet
     })
   }
-  
+
   const toggleChapter = (chapterId: string) => {
     setExpandedChapters(prev => {
       const newSet = new Set(prev)
@@ -300,35 +300,35 @@ export function LeftSidebarContent({
       return newSet
     })
   }
-  
+
   // Helper to parse drag/drop IDs
   const parseId = (id: string) => {
     const [type, itemId] = id.split(':')
     return { type, itemId }
   }
-  
+
   // dnd-kit handlers
   const handleDragStart = (_event: DragStartEvent) => {
     // Drag started
   }
-  
+
   const handleDragOver = (event: DragOverEvent) => {
     const newOverId = event.over?.id as string || null
     setOverId(newOverId)
   }
-  
+
   const handleDragEnd = (event: DragEndEvent) => {
     const activeId = event.active.id as string
     const overIdValue = event.over?.id as string
-    
+
     if (!activeId || !overIdValue || activeId === overIdValue) {
       setOverId(null)
       return
     }
-    
+
     const active = parseId(activeId)
     const over = parseId(overIdValue)
-    
+
     // Move chapter to notebook
     if (active.type === 'chapter' && over.type === 'notebook') {
       moveChapterMutation.mutate({
@@ -343,10 +343,10 @@ export function LeftSidebarContent({
         targetChapterId: over.itemId
       })
     }
-    
+
     setOverId(null)
   }
-  
+
   const handleDragCancel = () => {
     setOverId(null)
   }
@@ -442,90 +442,91 @@ export function LeftSidebarContent({
                 </div>
                 <div className="grid flex-1 text-left text-sm leading-tight">
                   <span className="truncate font-semibold">Notebooks</span>
-          </div>
+                </div>
               </LeftSidebarMenuButton>
             </LeftSidebarMenuItem>
           </LeftSidebarMenu>
         </LeftSidebarHeader>
         <ContextMenu>
           <ContextMenuTrigger asChild>
-        <LeftSidebarContentWrapper>
-            <LeftSidebarGroup>
-              <LeftSidebarGroupContent>
-                <LeftSidebarMenu>
-          {notebooks.map((notebook) => (
-                        <Collapsible
-                          key={notebook.id}
-                          asChild
-                          open={expandedNotebooks.has(notebook.id)}
-                          onOpenChange={() => toggleNotebook(notebook.id)}
-                          className="group/collapsible"
-                        >
-                          <LeftSidebarMenuItem>
+            <LeftSidebarContentWrapper>
+              <LeftSidebarGroup>
+                <LeftSidebarGroupContent>
+                  <LeftSidebarMenu>
+                    {notebooks.map((notebook) => (
+                      <Collapsible
+                        key={notebook.id}
+                        asChild
+                        open={expandedNotebooks.has(notebook.id)}
+                        onOpenChange={() => toggleNotebook(notebook.id)}
+                        className="group/collapsible"
+                      >
+                        <LeftSidebarMenuItem>
+                          <DroppableNotebook
+                            id={notebook.id}
+                            isOver={overId === `notebook:${notebook.id}`}
+                          >
                             <ContextMenu>
                               <ContextMenuTrigger asChild>
-                                <DroppableNotebook 
-                                  id={notebook.id}
-                                  isOver={overId === `notebook:${notebook.id}`}
-                                >
-                                  <CollapsibleTrigger asChild>
-                                    <LeftSidebarMenuButton tooltip={notebook.name}>
-                                      <Book />
-                                      <span>{notebook.name}</span>
-                                      <ChevronRight className="ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
-                                    </LeftSidebarMenuButton>
-                                  </CollapsibleTrigger>
-                                </DroppableNotebook>
+                                <CollapsibleTrigger asChild>
+                                  <LeftSidebarMenuButton tooltip={notebook.name}>
+                                    <Book />
+                                    <span>{notebook.name}</span>
+                                    <ChevronRight className="ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
+                                  </LeftSidebarMenuButton>
+                                </CollapsibleTrigger>
                               </ContextMenuTrigger>
                           <ContextMenuContent>
                             <ContextMenuItem onClick={() => navigate(`/${notebook.id}`)}>
                               <Eye className="mr-2 h-4 w-4" />
                               View Notebook
                             </ContextMenuItem>
+                            <ContextMenuSeparator />
                             <ContextMenuItem onClick={() => onCreateChapter?.(notebook.id)}>
                               <Plus className="mr-2 h-4 w-4" />
-                              Create Chapter
+                              New Chapter
                             </ContextMenuItem>
-                            <ContextMenuSeparator />
                             <ContextMenuItem onClick={() => onRenameNotebook?.(notebook.id)}>
                               <Pencil className="mr-2 h-4 w-4" />
-                              Rename Notebook
+                              Rename
                             </ContextMenuItem>
+                            <ContextMenuSeparator />
                             <ContextMenuItem
                               onClick={() => onDeleteNotebook?.(notebook.id)}
                               className="text-destructive focus:text-destructive"
                             >
                               <Trash2 className="mr-2 h-4 w-4" />
-                              Delete Notebook
+                              Delete
                             </ContextMenuItem>
                           </ContextMenuContent>
                         </ContextMenu>
-                        <CollapsibleContent>
-                          <LeftSidebarMenuSub>
-                            {notebook.chapters?.map((chapter) => (
-                              <Collapsible
-                                key={chapter.id}
-                                asChild
-                                open={expandedChapters.has(chapter.id) || currentChapterId === chapter.id}
-                                onOpenChange={() => toggleChapter(chapter.id)}
-                                className="group/chapter-collapsible"
-                              >
-                                <LeftSidebarMenuSubItem>
-                                  <DroppableChapter 
-                                    id={chapter.id}
-                                    isOver={overId === `chapter:${chapter.id}`}
-                                  >
-                                    <DraggableChapter id={chapter.id}>
-                                      <ContextMenu>
-                                        <ContextMenuTrigger asChild>
-                                          <CollapsibleTrigger asChild>
-                                            <LeftSidebarMenuSubButton>
-                                              <BookOpen />
-                                              <span>{chapter.name}</span>
-                                              <ChevronRight className="ml-auto transition-transform duration-200 group-data-[state=open]/chapter-collapsible:rotate-90" />
-                                            </LeftSidebarMenuSubButton>
-                                          </CollapsibleTrigger>
-                                        </ContextMenuTrigger>
+                      </DroppableNotebook>
+                      <CollapsibleContent>
+                        <LeftSidebarMenuSub>
+                          {notebook.chapters?.map((chapter) => (
+                            <Collapsible
+                              key={chapter.id}
+                              asChild
+                              open={expandedChapters.has(chapter.id) || currentChapterId === chapter.id}
+                              onOpenChange={() => toggleChapter(chapter.id)}
+                              className="group/chapter-collapsible"
+                            >
+                              <LeftSidebarMenuSubItem>
+                                <DroppableChapter
+                                  id={chapter.id}
+                                  isOver={overId === `chapter:${chapter.id}`}
+                                >
+                                  <DraggableChapter id={chapter.id}>
+                                    <ContextMenu>
+                                      <ContextMenuTrigger asChild>
+                                        <CollapsibleTrigger asChild>
+                                          <LeftSidebarMenuSubButton>
+                                            <BookOpen />
+                                            <span>{chapter.name}</span>
+                                            <ChevronRight className="ml-auto transition-transform duration-200 group-data-[state=open]/chapter-collapsible:rotate-90" />
+                                          </LeftSidebarMenuSubButton>
+                                        </CollapsibleTrigger>
+                                      </ContextMenuTrigger>
                                       <ContextMenuContent>
                                         <ContextMenuItem onClick={() => navigate(`/${notebook.id}/${chapter.id}`)}>
                                           <Eye className="mr-2 h-4 w-4" />
@@ -533,30 +534,31 @@ export function LeftSidebarContent({
                                         </ContextMenuItem>
                                         <ContextMenuItem onClick={() => onCreateNote?.(chapter.id)}>
                                           <Plus className="mr-2 h-4 w-4" />
-                                          Create Note
+                                          New Note
                                         </ContextMenuItem>
                                         <ContextMenuSeparator />
                                         <ContextMenuItem onClick={() => onRenameChapter?.(chapter.id)}>
                                           <Pencil className="mr-2 h-4 w-4" />
-                                          Rename Chapter
+                                          Rename
                                         </ContextMenuItem>
+                                        <ContextMenuSeparator />
                                         <ContextMenuItem
                                           onClick={() => onDeleteChapter?.(chapter.id)}
                                           className="text-destructive focus:text-destructive"
                                         >
                                           <Trash2 className="mr-2 h-4 w-4" />
-                                          Delete Chapter
+                                          Delete
                                         </ContextMenuItem>
-                                        </ContextMenuContent>
-                                      </ContextMenu>
-                                    </DraggableChapter>
-                                  </DroppableChapter>
-                                  <CollapsibleContent>
-                                    <LeftSidebarMenuSub>
-                                      {chapter.notes?.map((note) => {
-                                        const isActive = currentNoteId === note.id
-                                        
-                                        return (
+                                      </ContextMenuContent>
+                                    </ContextMenu>
+                                  </DraggableChapter>
+                                </DroppableChapter>
+                                <CollapsibleContent>
+                                  <LeftSidebarMenuSub>
+                                    {chapter.notes?.map((note) => {
+                                      const isActive = currentNoteId === note.id
+                                      
+                                      return (
                                         <LeftSidebarMenuSubItem key={note.id}>
                                           <DraggableNote id={note.id}>
                                             <TooltipProvider delayDuration={300}>
@@ -568,7 +570,7 @@ export function LeftSidebarContent({
                                                         asChild
                                                         isActive={isActive}
                                                       >
-                                                        <button 
+                                                        <button
                                                           onClick={() => navigate(`/${notebook.id}/${chapter.id}/${note.id}`)}
                                                           className="w-full min-w-0"
                                                         >
@@ -579,16 +581,26 @@ export function LeftSidebarContent({
                                                     </TooltipTrigger>
                                                   </ContextMenuTrigger>
                                                   <ContextMenuContent>
+                                                    <ContextMenuItem onClick={() => navigate(`/${notebook.id}/${chapter.id}/${note.id}`)}>
+                                                      <Eye className="mr-2 h-4 w-4" />
+                                                      View Note
+                                                    </ContextMenuItem>
+                                                    <ContextMenuSeparator />
+                                                    <ContextMenuItem onClick={() => onCreateNote?.(chapter.id)}>
+                                                      <Plus className="mr-2 h-4 w-4" />
+                                                      New Note
+                                                    </ContextMenuItem>
                                                     <ContextMenuItem onClick={() => onRenameNote?.(note.id)}>
                                                       <Pencil className="mr-2 h-4 w-4" />
-                                                      Rename Note
+                                                      Rename
                                                     </ContextMenuItem>
+                                                    <ContextMenuSeparator />
                                                     <ContextMenuItem
                                                       onClick={() => onDeleteNote?.(note.id)}
                                                       className="text-destructive focus:text-destructive"
                                                     >
                                                       <Trash2 className="mr-2 h-4 w-4" />
-                                                      Delete Note
+                                                      Delete
                                                     </ContextMenuItem>
                                                   </ContextMenuContent>
                                                 </ContextMenu>
@@ -599,32 +611,32 @@ export function LeftSidebarContent({
                                             </TooltipProvider>
                                           </DraggableNote>
                                         </LeftSidebarMenuSubItem>
-                                        )
-                                      })}
-                                    </LeftSidebarMenuSub>
-                                  </CollapsibleContent>
-                                </LeftSidebarMenuSubItem>
-                              </Collapsible>
-                            ))}
-                          </LeftSidebarMenuSub>
-                        </CollapsibleContent>
-                      </LeftSidebarMenuItem>
-                    </Collapsible>
-                  ))}
-                </LeftSidebarMenu>
-              </LeftSidebarGroupContent>
-            </LeftSidebarGroup>
-      </LeftSidebarContentWrapper>
-        </ContextMenuTrigger>
-        <ContextMenuContent>
-          <ContextMenuItem onClick={() => onCreateNotebook?.()}>
-            <Plus className="mr-2 h-4 w-4" />
-            New Notebook
-          </ContextMenuItem>
-        </ContextMenuContent>
-      </ContextMenu>
-      <LeftSidebarRail />
-    </LeftSidebar>
+                                      )
+                                    })}
+                                  </LeftSidebarMenuSub>
+                                </CollapsibleContent>
+                              </LeftSidebarMenuSubItem>
+                            </Collapsible>
+                          ))}
+                        </LeftSidebarMenuSub>
+                      </CollapsibleContent>
+                    </LeftSidebarMenuItem>
+                  </Collapsible>
+                ))}
+                  </LeftSidebarMenu>
+                </LeftSidebarGroupContent>
+              </LeftSidebarGroup>
+            </LeftSidebarContentWrapper>
+          </ContextMenuTrigger>
+          <ContextMenuContent>
+            <ContextMenuItem onClick={() => onCreateNotebook?.()}>
+              <Plus className="mr-2 h-4 w-4" />
+              New Notebook
+            </ContextMenuItem>
+          </ContextMenuContent>
+        </ContextMenu>
+        <LeftSidebarRail />
+      </LeftSidebar>
     </DndContext>
   )
 }
@@ -634,13 +646,13 @@ function DraggableChapter({ id, children }: { id: string, children: React.ReactN
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: `chapter:${id}`,
   })
-  
+
   const style = {
     transform: CSS.Translate.toString(transform),
     opacity: isDragging ? 0.5 : 1,
     cursor: 'grab',
   }
-  
+
   return (
     <div
       ref={setNodeRef}
@@ -659,7 +671,7 @@ function DroppableNotebook({ id, isOver, children }: { id: string, isOver: boole
   const { setNodeRef } = useDroppable({
     id: `notebook:${id}`,
   })
-  
+
   return (
     <div
       ref={setNodeRef}
@@ -675,13 +687,13 @@ function DraggableNote({ id, children }: { id: string, children: React.ReactNode
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: `note:${id}`,
   })
-  
+
   const style = {
     transform: CSS.Translate.toString(transform),
     opacity: isDragging ? 0.5 : 1,
     cursor: 'grab',
   }
-  
+
   return (
     <div
       ref={setNodeRef}
@@ -700,7 +712,7 @@ function DroppableChapter({ id, isOver, children }: { id: string, isOver: boolea
   const { setNodeRef } = useDroppable({
     id: `chapter:${id}`,
   })
-  
+
   return (
     <div
       ref={setNodeRef}
