@@ -12,7 +12,7 @@ createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <BrowserRouter>
       <QueryClientProvider client={queryClient}>
-        <ThemeProvider defaultTheme='light' defaultColorScheme='dark'>
+        <ThemeProvider defaultTheme='notebook' defaultColorScheme='dark'>
           <App />
         </ThemeProvider>
         <ReactQueryDevtools initialIsOpen={false} />

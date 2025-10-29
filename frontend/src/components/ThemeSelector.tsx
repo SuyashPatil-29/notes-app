@@ -12,13 +12,13 @@ import { useEffect, useState } from "react";
 
 const themes = [
   {
-    name: "Notebook",
-    value: "notebook",
+    name: "Claude",
+    value: "orange",
     colors: [
-      "hsl(0, 0%, 97.6471%)",
-      "hsl(0, 0%, 22.7451%)",
-      "hsl(47.4419, 64.1791%, 86.8627%)",
-      "hsl(0, 0%, 45.0980%)",
+      "hsl(15.1111, 55.5556%, 52.3529%)",
+      "hsl(46.1538, 22.8070%, 88.8235%)",
+      "hsl(46.1538, 22.8070%, 88.8235%)",
+      "hsl(50, 7.5000%, 84.3137%)",
     ],
   },
   {
@@ -42,13 +42,33 @@ const themes = [
     ],
   },
   {
-    name: "Claude",
-    value: "orange",
+    name: "Gruvbox",
+    value: "gruvbox",
     colors: [
-      "hsl(15.1111, 55.5556%, 52.3529%)",
-      "hsl(46.1538, 22.8070%, 88.8235%)",
-      "hsl(46.1538, 22.8070%, 88.8235%)",
-      "hsl(50, 7.5000%, 84.3137%)",
+      "hsl(23.7, 87.7193%, 44.7059%)",
+      "hsl(43.1579, 58.7629%, 80.9804%)",
+      "hsl(48.4615, 86.6667%, 88.2353%)",
+      "hsl(41.9704, 95.3052%, 58.2353%)",
+    ],
+  },
+  {
+    name: "Notebook",
+    value: "notebook",
+    colors: [
+      "hsl(0, 0%, 97.6471%)",
+      "hsl(0, 0%, 22.7451%)",
+      "hsl(47.4419, 64.1791%, 86.8627%)",
+      "hsl(0, 0%, 45.0980%)",
+    ],
+  },
+  {
+    name: "Supabase",
+    value: "supabase",
+    colors: [
+      "hsl(151.3274, 66.8639%, 66.8627%)",
+      "hsl(0, 0%, 99.2157%)",
+      "hsl(0, 0%, 98.8235%)",
+      "hsl(0, 0%, 92.9412%)",
     ],
   },
   {
@@ -82,7 +102,7 @@ export function ThemeSelector() {
       <DropdownMenuContent align="end" className="w-56">
         <DropdownMenuRadioGroup 
           value={theme} 
-          onValueChange={(value) => setTheme(value as "notebook" | "tech" | "minimal" | "orange" | "pink")}
+          onValueChange={(value) => setTheme(value as "notebook" | "tech" | "minimal" | "orange" | "pink" | "supabase" | "gruvbox")}
         >
         {themes.map((themeOption) => (
             <DropdownMenuRadioItem

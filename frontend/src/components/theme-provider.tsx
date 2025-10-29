@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useState } from "react"
 
 type ColorScheme = "dark" | "light" | "system"
-type ThemeVariant = "notebook" | "grayscale" | "tech" | "minimal" | "orange" | "pink"
+type ThemeVariant = "notebook" | "grayscale" | "tech" | "minimal" | "orange" | "pink" | "supabase" | "gruvbox"
 
 type ThemeProviderProps = {
   children: React.ReactNode
