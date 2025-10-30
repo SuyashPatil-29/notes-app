@@ -168,14 +168,18 @@ func handleNotesToolCall(toolCall aisdk.ToolCall, userID uint) any {
 		return deleteNote(userID, noteID)
 
 	case "updateNoteContent":
+		log.Info().Interface("args", toolCall.Args).Msg("updateNoteContent tool called")
 		noteID, ok := toolCall.Args["noteId"].(string)
 		if !ok {
+			log.Error().Interface("noteId", toolCall.Args["noteId"]).Msg("Invalid noteId parameter")
 			return map[string]string{"error": "Invalid noteId parameter"}
 		}
 		content, ok := toolCall.Args["content"].(string)
 		if !ok {
+			log.Error().Interface("content", toolCall.Args["content"]).Msg("Invalid content parameter")
 			return map[string]string{"error": "Invalid content parameter"}
 		}
+		log.Info().Str("noteID", noteID).Int("contentLen", len(content)).Msg("Calling updateNoteContent")
 		return updateNoteContent(userID, noteID, content)
 
 	default:
@@ -635,6 +639,18 @@ func deleteNote(userID uint, noteID string) any {
 
 // updateNoteContent updates the content of a note
 func updateNoteContent(userID uint, noteID string, content string) any {
+	log.Info().
+		Uint("userID", userID).
+		Str("noteID", noteID).
+		Int("contentLength", len(content)).
+		Str("contentPreview", func() string {
+			if len(content) > 100 {
+				return content[:100] + "..."
+			}
+			return content
+		}()).
+		Msg("updateNoteContent called")
+
 	// Verify note belongs to user
 	var note models.Notes
 	err := db.DB.Preload("Chapter.Notebook").
@@ -644,16 +660,20 @@ func updateNoteContent(userID uint, noteID string, content string) any {
 		First(&note).Error
 
 	if err != nil {
-		log.Error().Err(err).Msg("Note not found")
+		log.Error().Err(err).Str("noteID", noteID).Msg("Note not found")
 		return map[string]string{"error": "Note not found or access denied"}
 	}
+
+	log.Info().Str("noteID", noteID).Str("noteName", note.Name).Msg("Note found, attempting update")
 
 	// Update note's content using Select to force update
 	result := db.DB.Model(&note).Select("Content").Updates(models.Notes{Content: content})
 	if result.Error != nil {
-		log.Error().Err(result.Error).Msg("Failed to update note")
+		log.Error().Err(result.Error).Str("noteID", noteID).Msg("Failed to update note")
 		return map[string]string{"error": "Failed to update note"}
 	}
+
+	log.Info().Str("noteID", noteID).Int64("rowsAffected", result.RowsAffected).Msg("Database update executed")
 
 	// Reload to get updated timestamp
 	err = db.DB.Preload("Chapter.Notebook").First(&note, "id = ?", note.ID).Error
@@ -862,7 +882,7 @@ func ChatHandler(c *gin.Context) {
 		},
 		{
 			Name:        "updateNoteContent",
-			Description: "Update the content of an existing note. Use this when the user wants to modify or add to a note's content.",
+			Description: "Update and save the content of an existing note. REQUIRED: You must call this tool whenever the user asks to update, modify, edit, or change a note's content. First call getNoteContent to read the current content, then call this tool with the complete updated markdown content to save it permanently. This is the ONLY way to save changes to a note.",
 			Schema: aisdk.Schema{
 				Required: []string{"noteId", "content"},
 				Properties: map[string]any{
@@ -872,7 +892,7 @@ func ChatHandler(c *gin.Context) {
 					},
 					"content": map[string]any{
 						"type":        "string",
-						"description": "The new markdown content for the note",
+						"description": "The complete new markdown content for the note. This will replace the entire note content.",
 					},
 				},
 			},
@@ -881,7 +901,10 @@ func ChatHandler(c *gin.Context) {
 
 	// Tool handler
 	handleToolCall := func(toolCall aisdk.ToolCall) any {
-		return handleNotesToolCall(toolCall, userID)
+		log.Info().Str("toolName", toolCall.Name).Str("toolCallId", toolCall.ID).Msg("handleToolCall invoked")
+		result := handleNotesToolCall(toolCall, userID)
+		log.Info().Str("toolName", toolCall.Name).Interface("result", result).Msg("handleToolCall completed")
+		return result
 	}
 
 	// Set data stream headers
@@ -891,7 +914,7 @@ func ChatHandler(c *gin.Context) {
 	if len(req.Messages) == 0 || req.Messages[0].Role != "system" {
 		req.Messages = append([]aisdk.Message{{
 			Role:    "system",
-			Content: "You are a helpful AI assistant integrated into a notes application. You have access to tools that can search, list, retrieve, create, update, move, rename, and delete notes and chapters.\n\nAvailable tools:\n- searchNotes: Search through all notes by content or title\n- listNotebooks: List all notebooks\n- listChapters: List chapters in a notebook\n- listNotesInChapter: List notes in a chapter\n- getNoteContent: Get the full content of a specific note\n- createNote: Create a new note with markdown content in a chapter\n- moveNote: Move a note to a different chapter\n- moveChapter: Move an entire chapter (with all its notes) to a different notebook\n- renameNote: Rename a note\n- updateNoteContent: Update the content of an existing note\n- deleteNote: Delete a note permanently\n\nWhen managing notes and chapters:\n1. For create/move operations: If the user doesn't specify which chapter/notebook, list available options first\n2. For moving chapters: Use moveChapter to move entire chapters between notebooks in one operation\n3. For delete operations: Confirm the user really wants to delete before executing\n4. For rename operations: Keep the name concise and descriptive\n5. When creating/updating content: Generate high-quality markdown with proper formatting\n\nAlways provide a clear, helpful text response after using tools. Be conversational and helpful.",
+			Content: "You are a helpful AI assistant integrated into a notes application. You have access to tools that can search, list, retrieve, create, update, move, rename, and delete notes and chapters.\n\nAvailable tools:\n- searchNotes: Search through all notes by content or title\n- listNotebooks: List all notebooks\n- listChapters: List chapters in a notebook\n- listNotesInChapter: List notes in a chapter\n- getNoteContent: Get the full content of a specific note\n- createNote: Create a new note with markdown content in a chapter\n- moveNote: Move a note to a different chapter\n- moveChapter: Move an entire chapter (with all its notes) to a different notebook\n- renameNote: Rename a note\n- updateNoteContent: Update the content of an existing note\n- deleteNote: Delete a note permanently\n\nWhen managing notes and chapters:\n1. For create/move operations: If the user doesn't specify which chapter/notebook, list available options first\n2. For moving chapters: Use moveChapter to move entire chapters between notebooks in one operation\n3. For delete operations: Confirm the user really wants to delete before executing\n4. For rename operations: Keep the name concise and descriptive\n5. When creating/updating content: Generate high-quality markdown with proper formatting, then IMMEDIATELY call the appropriate tool (createNote or updateNoteContent) to save it\n6. IMPORTANT: If user asks to update/modify/edit note content, you MUST call getNoteContent first to read current content, then call updateNoteContent with the new content to save it. Never just describe what to write - always actually save it using the tool.\n\nAlways provide a clear, helpful text response after using tools. Be conversational and helpful.",
 		}}, req.Messages...)
 	}
 
@@ -919,7 +942,7 @@ func ChatHandler(c *gin.Context) {
 				Messages:            messages,
 				ReasoningEffort:     reasoningEffort,
 				Tools:               aisdk.ToolsToOpenAI(tools),
-				MaxCompletionTokens: openai.Int(2048),
+				MaxCompletionTokens: openai.Int(16384),
 			}))
 
 		case "anthropic":
@@ -940,7 +963,7 @@ func ChatHandler(c *gin.Context) {
 				Model:     anthropic.Model(req.Model),
 				Messages:  messages,
 				System:    system,
-				MaxTokens: 4096,
+				MaxTokens: 16384,
 				Thinking:  thinking,
 				Tools:     aisdk.ToolsToAnthropic(tools),
 			}))
@@ -1028,11 +1051,16 @@ func ChatHandler(c *gin.Context) {
 		req.Messages = append(req.Messages, acc.Messages()...)
 		lastMessages = req.Messages[:]
 
+		// Log finish reason for debugging
+		log.Info().Str("finishReason", string(acc.FinishReason())).Int("messageCount", len(acc.Messages())).Msg("Stream completed")
+
 		// Continue if tool calls need to be processed
 		if acc.FinishReason() == aisdk.FinishReasonToolCalls {
+			log.Info().Msg("Tool calls detected, continuing loop")
 			continue
 		}
 
+		log.Info().Msg("Streaming loop finished")
 		break
 	}
 }
