@@ -121,9 +121,10 @@ func handleNotesToolCall(toolCall aisdk.ToolCall, userID uint) any {
 		if !ok {
 			return map[string]string{"error": "Invalid title parameter"}
 		}
-		content, ok := toolCall.Args["content"].(string)
-		if !ok {
-			return map[string]string{"error": "Invalid content parameter"}
+		// Content is now optional - defaults to empty string
+		content := ""
+		if contentArg, ok := toolCall.Args["content"].(string); ok {
+			content = contentArg
 		}
 		return createNote(userID, chapterID, title, content)
 
@@ -456,7 +457,9 @@ func createNote(userID uint, chapterID string, title string, content string) any
 		"message":      "Note created successfully!",
 		"noteId":       note.ID,
 		"noteName":     note.Name,
+		"chapterId":    chapter.ID,
 		"chapterName":  chapter.Name,
+		"notebookId":   chapter.Notebook.ID,
 		"notebookName": chapter.Notebook.Name,
 		"contentSize":  len(content),
 		"createdAt":    note.CreatedAt.Format("2006-01-02 15:04:05"),
@@ -688,9 +691,11 @@ func updateNoteContent(userID uint, noteID string, content string) any {
 		"message":      "Note content updated successfully!",
 		"noteId":       note.ID,
 		"noteName":     note.Name,
-		"contentSize":  len(content),
+		"chapterId":    note.Chapter.ID,
 		"chapterName":  note.Chapter.Name,
+		"notebookId":   note.Chapter.Notebook.ID,
 		"notebookName": note.Chapter.Notebook.Name,
+		"contentSize":  len(content),
 		"updatedAt":    note.UpdatedAt.Format("2006-01-02 15:04:05"),
 	}
 }
@@ -797,9 +802,9 @@ func ChatHandler(c *gin.Context) {
 		},
 		{
 			Name:        "createNote",
-			Description: "Create a new note with markdown content in a specific chapter. The content should be well-formatted markdown. If the user doesn't specify a chapter, list available chapters first.",
+			Description: "Create a new note in a specific chapter. IMPORTANT: When the user asks you to create a note with content, you should: 1) First call this tool with just the title (content is optional, defaults to empty), which will create the note and allow navigation to it. 2) Then immediately call updateNoteContent with the full markdown content to populate the note. This two-step process allows the user to see the note being created and filled in real-time. If the user doesn't specify a chapter, list available chapters first.",
 			Schema: aisdk.Schema{
-				Required: []string{"chapterId", "title", "content"},
+				Required: []string{"chapterId", "title"},
 				Properties: map[string]any{
 					"chapterId": map[string]any{
 						"type":        "string",
@@ -811,7 +816,7 @@ func ChatHandler(c *gin.Context) {
 					},
 					"content": map[string]any{
 						"type":        "string",
-						"description": "The markdown content of the note. Should be well-formatted with proper headings, lists, code blocks, etc.",
+						"description": "Optional: The initial markdown content of the note. Can be left empty and populated later with updateNoteContent.",
 					},
 				},
 			},

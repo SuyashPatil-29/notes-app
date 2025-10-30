@@ -1,5 +1,6 @@
 import { FileText, MessageSquare } from "lucide-react"
 import { toast } from "sonner"
+import { useNavigate } from "react-router-dom"
 import {
     RightSidebar,
     RightSidebarContent as RightSidebarContentWrapper,
@@ -43,7 +44,7 @@ import { getUserNotebooks } from "@/utils/notebook"
 import type { Notebook } from "@/types/backend"
 
 // Helper function to render tool output with nice formatting
-function renderToolOutput(toolName: string, result: any) {
+function renderToolOutput(toolName: string, result: any, onNavigateToNote?: (notebookId: string, chapterId: string, noteId: string) => void) {
     // Handle error case
     if (result.error) {
         return (
@@ -181,17 +182,24 @@ function renderToolOutput(toolName: string, result: any) {
                                     ✓ {result.message}
                                 </p>
                             </div>
-                            <div className="p-3 bg-muted/50 rounded border">
-                                <p className="font-medium text-foreground">{result.noteName}</p>
-                                <p className="text-xs text-muted-foreground mt-1">
-                                    {result.notebookName} → {result.chapterName}
-                                </p>
-                                <p className="text-xs text-muted-foreground mt-1">
-                                    Size: {result.contentSize} characters • Created: {result.createdAt}
-                                </p>
-                                <p className="text-xs text-muted-foreground mt-2">
-                                    Note ID: <code className="px-1 py-0.5 bg-muted rounded text-xs">{result.noteId}</code>
-                                </p>
+                            <div className="p-3 bg-muted/50 rounded border space-y-2">
+                                <div>
+                                    <p className="font-medium text-foreground">{result.noteName}</p>
+                                    <p className="text-xs text-muted-foreground mt-1">
+                                        {result.notebookName} → {result.chapterName}
+                                    </p>
+                                    <p className="text-xs text-muted-foreground mt-1">
+                                        Size: {result.contentSize} characters • Created: {result.createdAt}
+                                    </p>
+                                </div>
+                                {onNavigateToNote && result.notebookId && result.chapterId && result.noteId && (
+                                    <button
+                                        onClick={() => onNavigateToNote(result.notebookId, result.chapterId, result.noteId)}
+                                        className="w-full px-3 py-1.5 text-xs font-medium text-primary bg-primary/10 hover:bg-primary/20 rounded-md transition-colors"
+                                    >
+                                        Open Note →
+                                    </button>
+                                )}
                             </div>
                         </>
                     ) : (
@@ -335,14 +343,24 @@ function renderToolOutput(toolName: string, result: any) {
                                     ✓ {result.message}
                                 </p>
                             </div>
-                            <div className="p-3 bg-muted/50 rounded border">
-                                <p className="font-medium text-foreground">{result.noteName}</p>
-                                <p className="text-xs text-muted-foreground mt-1">
-                                    {result.notebookName} → {result.chapterName}
-                                </p>
-                                <p className="text-xs text-muted-foreground mt-1">
-                                    New size: {result.contentSize} characters • Updated: {result.updatedAt}
-                                </p>
+                            <div className="p-3 bg-muted/50 rounded border space-y-2">
+                                <div>
+                                    <p className="font-medium text-foreground">{result.noteName}</p>
+                                    <p className="text-xs text-muted-foreground mt-1">
+                                        {result.notebookName} → {result.chapterName}
+                                    </p>
+                                    <p className="text-xs text-muted-foreground mt-1">
+                                        New size: {result.contentSize} characters • Updated: {result.updatedAt}
+                                    </p>
+                                </div>
+                                {onNavigateToNote && result.notebookId && result.chapterId && result.noteId && (
+                                    <button
+                                        onClick={() => onNavigateToNote(result.notebookId, result.chapterId, result.noteId)}
+                                        className="w-full px-3 py-1.5 text-xs font-medium text-primary bg-primary/10 hover:bg-primary/20 rounded-md transition-colors"
+                                    >
+                                        Open Note →
+                                    </button>
+                                )}
                             </div>
                         </>
                     ) : (
@@ -405,13 +423,15 @@ interface MentionedNote {
 
 export function RightSidebarContent() {
     const { user } = useUser()
+    const navigate = useNavigate()
     const [model, setModel] = useState<Model>("gpt-5-mini")
     const [files, setFiles] = useState<FileList | null>(null)
     const { open } = useRightSidebar()
     const inputRef = useRef<HTMLTextAreaElement>(null)
     const queryClient = useQueryClient()
     const processedNoteIds = useRef<Set<string>>(new Set())
-    
+    const lastContentUpdateTime = useRef<number>(0)
+
     // Mention notes state
     const [mentionOpen, setMentionOpen] = useState(false)
     const [mentionedNotes, setMentionedNotes] = useState<MentionedNote[]>([])
@@ -485,10 +505,10 @@ export function RightSidebarContent() {
     // Handle @ mention detection
     const handleInputChangeWithMention = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
         handleInputChange(e)
-        
+
         const value = e.target.value
         const cursorPos = e.target.selectionStart
-        
+
         // Check if @ was just typed
         if (value[cursorPos - 1] === '@') {
             setMentionOpen(true)
@@ -516,12 +536,12 @@ export function RightSidebarContent() {
         if (!mentionedNotes.find(n => n.id === note.id)) {
             setMentionedNotes([...mentionedNotes, note])
         }
-        
+
         // Remove the @ symbol from input
         const newInput = input.slice(0, -1) + ' '
         setInput(newInput)
         setMentionOpen(false)
-        
+
         // Refocus textarea with a small delay
         setTimeout(() => {
             inputRef.current?.focus()
@@ -533,22 +553,28 @@ export function RightSidebarContent() {
         setMentionedNotes(mentionedNotes.filter(n => n.id !== noteId))
     }
 
+    // Navigate to a note
+    const handleNavigateToNote = (notebookId: string, chapterId: string, noteId: string) => {
+        navigate(`/${notebookId}/${chapterId}/${noteId}`)
+        toast.success("Navigating to note...", { duration: 2000 })
+    }
+
     const handleSubmitWithFiles = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault()
-        
+
         if (!input.trim() && !files) return
-        
+
         // Build the message content with mentioned notes
         let messageContent = input
-        
+
         if (mentionedNotes.length > 0) {
-            const notesContext = mentionedNotes.map(note => 
+            const notesContext = mentionedNotes.map(note =>
                 `\n\n<<<REFERENCED_NOTE>>>\n**Referenced Note: ${note.name}**\n*Location: ${note.notebookName} → ${note.chapterName}*\n\n${note.content}`
             ).join('\n')
-            
+
             messageContent = `${input}${notesContext}`
         }
-        
+
         if (files) {
             handleSubmit(e, {
                 experimental_attachments: files,
@@ -562,7 +588,7 @@ export function RightSidebarContent() {
             })
             setInput('')
         }
-        
+
         // Clear mentioned notes after sending
         setMentionedNotes([])
     }
@@ -588,6 +614,138 @@ export function RightSidebarContent() {
         }
     }, [status, messages.length])
 
+    // Auto-navigate to notes being created or updated
+    useEffect(() => {
+        // Only process when there are messages
+        if (messages.length === 0) return
+
+        // Get the last assistant message
+        const lastMessage = messages[messages.length - 1]
+        if (lastMessage.role !== "assistant") return
+
+        // Check if this message has tool invocations
+        lastMessage.parts?.forEach((part) => {
+            if (part.type === "tool-invocation") {
+                const toolInvocation = part.toolInvocation as any
+
+                // For createNote: navigate when result is available (note just created)
+                if (
+                    toolInvocation.toolName === "createNote" &&
+                    toolInvocation.result?.success &&
+                    toolInvocation.result?.noteId &&
+                    toolInvocation.result?.notebookId &&
+                    toolInvocation.result?.chapterId
+                ) {
+                    const noteId = toolInvocation.result.noteId
+                    const operationKey = `createNote-${noteId}`
+
+                    if (!processedNoteIds.current.has(operationKey)) {
+                        processedNoteIds.current.add(operationKey)
+                        setTimeout(() => {
+                            handleNavigateToNote(
+                                toolInvocation.result.notebookId,
+                                toolInvocation.result.chapterId,
+                                noteId
+                            )
+                        }, 500)
+                    }
+                }
+
+                // For updateNoteContent: navigate IMMEDIATELY when we see the args (before streaming content)
+                // This happens as soon as the AI decides to update a note
+                if (
+                    toolInvocation.toolName === "updateNoteContent" &&
+                    toolInvocation.args?.noteId
+                ) {
+                    const noteId = toolInvocation.args.noteId
+                    const operationKey = `updateNoteContent-${noteId}-nav`
+
+                    // Navigate as soon as we see the noteId in args
+                    if (!processedNoteIds.current.has(operationKey)) {
+                        processedNoteIds.current.add(operationKey)
+
+                        // Try to get navigation info from cached note data
+                        const noteData = queryClient.getQueryData(['note', noteId]) as any
+
+                        if (noteData?.data) {
+                            // Navigate immediately using cached data
+                            handleNavigateToNote(
+                                noteData.data.chapter.notebook.id,
+                                noteData.data.chapter.id,
+                                noteId
+                            )
+                        } else {
+                            // If note isn't cached, try to find it in notebooks cache
+                            const notebooks = queryClient.getQueryData(['userNotebooks']) as any[]
+                            if (notebooks) {
+                                for (const notebook of notebooks) {
+                                    for (const chapter of notebook.chapters || []) {
+                                        const note = chapter.notes?.find((n: any) => n.id === noteId)
+                                        if (note) {
+                                            handleNavigateToNote(notebook.id, chapter.id, noteId)
+                                            return
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        })
+    }, [messages, handleNavigateToNote, queryClient])
+
+    // Real-time content streaming for updateNoteContent
+    useEffect(() => {
+        if (status !== "streaming" && status !== "submitted") return
+
+        // Find streaming updateNoteContent tool invocations
+        messages.forEach((message) => {
+            if (message.role === "assistant") {
+                message.parts?.forEach((part) => {
+                    if (part.type === "tool-invocation") {
+                        const toolInvocation = part.toolInvocation as any
+
+                        // Check if updateNoteContent is being streamed (has args but no result yet)
+                        if (
+                            toolInvocation.toolName === "updateNoteContent" &&
+                            toolInvocation.args?.noteId &&
+                            toolInvocation.args?.content &&
+                            !toolInvocation.result
+                        ) {
+                            const noteId = toolInvocation.args.noteId
+                            const streamingContent = toolInvocation.args.content
+                            const now = Date.now()
+
+                            // Throttle updates to every 1 second to avoid constant remounting
+                            // This gives a smooth streaming effect without being too jarring
+                            const shouldUpdate = now - lastContentUpdateTime.current > 1000
+
+                            // Update the query cache with streaming content
+                            queryClient.setQueryData(['note', noteId], (oldData: any) => {
+                                if (!oldData) return oldData
+
+                                return {
+                                    ...oldData,
+                                    data: {
+                                        ...oldData.data,
+                                        content: streamingContent,
+                                        // Only update timestamp (which triggers remount) every 1s
+                                        updatedAt: shouldUpdate ? new Date().toISOString() : oldData.data.updatedAt
+                                    }
+                                }
+                            })
+
+                            if (shouldUpdate) {
+                                lastContentUpdateTime.current = now
+                            }
+                        }
+                    }
+                })
+            }
+        })
+    }, [messages, status, queryClient])
+
     // Invalidate cache when notes are modified
     useEffect(() => {
         const lastMessage = messages[messages.length - 1]
@@ -596,14 +754,14 @@ export function RightSidebarContent() {
                 if (part.type === 'tool-invocation') {
                     const toolInvocation = part.toolInvocation as any
                     const toolName = toolInvocation.toolName
-                    
+
                     // List of tools that modify notes/chapters and need cache invalidation
                     const modifyingTools = ['createNote', 'moveNote', 'moveChapter', 'renameNote', 'deleteNote', 'updateNoteContent']
-                    
+
                     if (modifyingTools.includes(toolName) && toolInvocation.result?.success === true) {
                         // Use message ID + part index + tool name for truly unique operation key
                         const operationKey = `${lastMessage.id}-${partIndex}-${toolName}`
-                        
+
                         // Only process if we haven't seen this exact tool invocation before
                         if (!processedNoteIds.current.has(operationKey)) {
                             processedNoteIds.current.add(operationKey)
@@ -719,7 +877,7 @@ export function RightSidebarContent() {
                                 const parts = content.split('\n\n<<<REFERENCED_NOTE>>>\n')
                                 const mainMessage = parts[0]
                                 const referencedNotes = parts.slice(1)
-                                
+
                                 return (
                                     <Message from={role} key={m.id}>
                                         <MessageAvatar role={role} image={user?.imageUrl} />
@@ -730,7 +888,7 @@ export function RightSidebarContent() {
                                                         {referencedNotes.map((noteBlock, idx) => {
                                                             const lines = noteBlock.split('\n')
                                                             const noteName = lines[0]?.replace('**Referenced Note: ', '').replace('**', '') || ''
-                                                            
+
                                                             return (
                                                                 <React.Fragment key={idx}>
                                                                     <div className="inline-flex items-center gap-1.5 px-2 py-1 bg-muted/50 rounded-md border border-border/50 text-xs">
@@ -781,7 +939,7 @@ export function RightSidebarContent() {
                                                                     )}
                                                                     {toolInvocation.result && (
                                                                         <ToolOutput
-                                                                            output={renderToolOutput(toolInvocation.toolName, toolInvocation.result)}
+                                                                            output={renderToolOutput(toolInvocation.toolName, toolInvocation.result, handleNavigateToNote)}
                                                                             errorText={undefined}
                                                                         />
                                                                     )}
