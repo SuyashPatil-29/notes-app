@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/right-sidebar"
 import { useChat } from "@ai-sdk/react"
 import React, { useState, useRef, useEffect } from "react"
-import { useQuery } from "@tanstack/react-query"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import {
     Conversation,
     ConversationContent,
@@ -38,6 +38,328 @@ import { Input } from "@/components/ui/input"
 import { useUser } from "@/hooks/auth"
 import api from "@/utils/api"
 import { SelectGroup, SelectLabel, SelectSeparator } from "@/components/ui/select"
+
+// Helper function to render tool output with nice formatting
+function renderToolOutput(toolName: string, result: any) {
+    // Handle error case
+    if (result.error) {
+        return (
+            <div className="p-3 text-sm text-destructive bg-destructive/10 rounded-md">
+                <p className="font-semibold">Error</p>
+                <p>{result.error}</p>
+            </div>
+        )
+    }
+
+    // Render based on tool name
+    switch (toolName) {
+        case "searchNotes":
+            return (
+                <div className="space-y-2 text-sm">
+                    {result.count > 0 ? (
+                        <>
+                            <p className="font-semibold text-foreground">
+                                Found {result.count} note{result.count !== 1 ? 's' : ''} matching "{result.query}"
+                            </p>
+                            <div className="space-y-2">
+                                {result.results.map((note: any, idx: number) => (
+                                    <div key={idx} className="p-2 bg-muted/50 rounded border">
+                                        <p className="font-medium text-foreground">{note.name}</p>
+                                        <p className="text-xs text-muted-foreground">
+                                            {note.notebookName} → {note.chapterName}
+                                        </p>
+                                        <p className="mt-1 text-xs text-muted-foreground">{note.preview}</p>
+                                        <p className="mt-1 text-xs text-muted-foreground">Updated: {note.updatedAt}</p>
+                                    </div>
+                                ))}
+                            </div>
+                        </>
+                    ) : (
+                        <p className="text-muted-foreground">{result.message}</p>
+                    )}
+                </div>
+            )
+
+        case "listNotebooks":
+            return (
+                <div className="space-y-2 text-sm">
+                    {result.count > 0 ? (
+                        <>
+                            <p className="font-semibold text-foreground">Found {result.count} notebook{result.count !== 1 ? 's' : ''}</p>
+                            <div className="space-y-1">
+                                {result.notebooks.map((notebook: any, idx: number) => (
+                                    <div key={idx} className="p-2 bg-muted/50 rounded border">
+                                        <p className="font-medium text-foreground">{notebook.name}</p>
+                                        <p className="text-xs text-muted-foreground">
+                                            {notebook.chapterCount} chapter{notebook.chapterCount !== 1 ? 's' : ''} •
+                                            Updated: {notebook.updatedAt}
+                                        </p>
+                                    </div>
+                                ))}
+                            </div>
+                        </>
+                    ) : (
+                        <p className="text-muted-foreground">{result.message}</p>
+                    )}
+                </div>
+            )
+
+        case "listChapters":
+            return (
+                <div className="space-y-2 text-sm">
+                    <p className="font-semibold text-foreground">
+                        Chapters in "{result.notebookName}"
+                    </p>
+                    {result.count > 0 ? (
+                        <div className="space-y-1">
+                            {result.chapters.map((chapter: any, idx: number) => (
+                                <div key={idx} className="p-2 bg-muted/50 rounded border">
+                                    <p className="font-medium text-foreground">{chapter.name}</p>
+                                    <p className="text-xs text-muted-foreground">
+                                        {chapter.noteCount} note{chapter.noteCount !== 1 ? 's' : ''} •
+                                        Created: {chapter.createdAt}
+                                    </p>
+                                </div>
+                            ))}
+                        </div>
+                    ) : (
+                        <p className="text-muted-foreground">{result.message}</p>
+                    )}
+                </div>
+            )
+
+        case "getNoteContent":
+            return (
+                <div className="space-y-2 text-sm">
+                    <div>
+                        <p className="font-semibold text-foreground">{result.name}</p>
+                        <p className="text-xs text-muted-foreground">
+                            {result.notebookName} → {result.chapterName}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                            Created: {result.createdAt} • Updated: {result.updatedAt}
+                        </p>
+                    </div>
+                    <div className="p-3 bg-muted/50 rounded border max-h-96 overflow-y-auto">
+                        <pre className="text-xs whitespace-pre-wrap font-mono">{result.content}</pre>
+                    </div>
+                </div>
+            )
+
+        case "listNotesInChapter":
+            return (
+                <div className="space-y-2 text-sm">
+                    <p className="font-semibold text-foreground">
+                        Notes in "{result.chapterName}" ({result.notebookName})
+                    </p>
+                    {result.count > 0 ? (
+                        <div className="space-y-1">
+                            {result.notes.map((note: any, idx: number) => (
+                                <div key={idx} className="p-2 bg-muted/50 rounded border">
+                                    <p className="font-medium text-foreground">{note.name}</p>
+                                    <p className="text-xs text-muted-foreground mt-1">{note.preview}</p>
+                                    <p className="text-xs text-muted-foreground mt-1">Updated: {note.updatedAt}</p>
+                                </div>
+                            ))}
+                        </div>
+                    ) : (
+                        <p className="text-muted-foreground">{result.message}</p>
+                    )}
+                </div>
+            )
+
+        case "createNote":
+            return (
+                <div className="space-y-2 text-sm">
+                    {result.success ? (
+                        <>
+                            <div className="p-3 bg-green-500/10 border border-green-500/20 rounded-md">
+                                <p className="font-semibold text-green-600 dark:text-green-400">
+                                    ✓ {result.message}
+                                </p>
+                            </div>
+                            <div className="p-3 bg-muted/50 rounded border">
+                                <p className="font-medium text-foreground">{result.noteName}</p>
+                                <p className="text-xs text-muted-foreground mt-1">
+                                    {result.notebookName} → {result.chapterName}
+                                </p>
+                                <p className="text-xs text-muted-foreground mt-1">
+                                    Size: {result.contentSize} characters • Created: {result.createdAt}
+                                </p>
+                                <p className="text-xs text-muted-foreground mt-2">
+                                    Note ID: <code className="px-1 py-0.5 bg-muted rounded text-xs">{result.noteId}</code>
+                                </p>
+                            </div>
+                        </>
+                    ) : (
+                        <div className="p-3 text-sm text-destructive bg-destructive/10 rounded-md">
+                            <p className="font-semibold">Failed to create note</p>
+                            <p>{result.error || "Unknown error"}</p>
+                        </div>
+                    )}
+                </div>
+            )
+
+        case "moveNote":
+            return (
+                <div className="space-y-2 text-sm">
+                    {result.success ? (
+                        <>
+                            <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-md">
+                                <p className="font-semibold text-blue-600 dark:text-blue-400">
+                                    ✓ {result.message}
+                                </p>
+                            </div>
+                            <div className="p-3 bg-muted/50 rounded border">
+                                <p className="font-medium text-foreground">{result.noteName}</p>
+                                <div className="mt-2 space-y-1">
+                                    <p className="text-xs text-muted-foreground">
+                                        <span className="font-semibold">From:</span> {result.fromNotebook} → {result.fromChapter}
+                                    </p>
+                                    <p className="text-xs text-muted-foreground">
+                                        <span className="font-semibold">To:</span> {result.toNotebook} → {result.toChapter}
+                                    </p>
+                                </div>
+                            </div>
+                        </>
+                    ) : (
+                        <div className="p-3 text-sm text-destructive bg-destructive/10 rounded-md">
+                            <p className="font-semibold">Failed to move note</p>
+                            <p>{result.error || "Unknown error"}</p>
+                        </div>
+                    )}
+                </div>
+            )
+
+        case "moveChapter":
+            return (
+                <div className="space-y-2 text-sm">
+                    {result.success ? (
+                        <>
+                            <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-md">
+                                <p className="font-semibold text-blue-600 dark:text-blue-400">
+                                    ✓ {result.message}
+                                </p>
+                            </div>
+                            <div className="p-3 bg-muted/50 rounded border">
+                                <p className="font-medium text-foreground">{result.chapterName}</p>
+                                <div className="mt-2 space-y-1">
+                                    <p className="text-xs text-muted-foreground">
+                                        <span className="font-semibold">From:</span> {result.fromNotebook}
+                                    </p>
+                                    <p className="text-xs text-muted-foreground">
+                                        <span className="font-semibold">To:</span> {result.toNotebook}
+                                    </p>
+                                    <p className="text-xs text-primary mt-2">
+                                        📦 Moved with {result.notesCount} note{result.notesCount !== 1 ? 's' : ''}
+                                    </p>
+                                </div>
+                            </div>
+                        </>
+                    ) : (
+                        <div className="p-3 text-sm text-destructive bg-destructive/10 rounded-md">
+                            <p className="font-semibold">Failed to move chapter</p>
+                            <p>{result.error || "Unknown error"}</p>
+                        </div>
+                    )}
+                </div>
+            )
+
+        case "renameNote":
+            return (
+                <div className="space-y-2 text-sm">
+                    {result.success ? (
+                        <>
+                            <div className="p-3 bg-purple-500/10 border border-purple-500/20 rounded-md">
+                                <p className="font-semibold text-purple-600 dark:text-purple-400">
+                                    ✓ {result.message}
+                                </p>
+                            </div>
+                            <div className="p-3 bg-muted/50 rounded border">
+                                <p className="text-xs text-muted-foreground">
+                                    <span className="line-through">{result.oldName}</span> → <span className="font-medium text-foreground">{result.newName}</span>
+                                </p>
+                                <p className="text-xs text-muted-foreground mt-1">
+                                    {result.notebookName} → {result.chapterName}
+                                </p>
+                            </div>
+                        </>
+                    ) : (
+                        <div className="p-3 text-sm text-destructive bg-destructive/10 rounded-md">
+                            <p className="font-semibold">Failed to rename note</p>
+                            <p>{result.error || "Unknown error"}</p>
+                        </div>
+                    )}
+                </div>
+            )
+
+        case "deleteNote":
+            return (
+                <div className="space-y-2 text-sm">
+                    {result.success ? (
+                        <>
+                            <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-md">
+                                <p className="font-semibold text-red-600 dark:text-red-400">
+                                    ✓ {result.message}
+                                </p>
+                            </div>
+                            <div className="p-3 bg-muted/50 rounded border">
+                                <p className="font-medium text-foreground">{result.noteName}</p>
+                                <p className="text-xs text-muted-foreground mt-1">
+                                    {result.notebookName} → {result.chapterName}
+                                </p>
+                                <p className="text-xs text-orange-600 dark:text-orange-400 mt-2">
+                                    This note has been permanently deleted.
+                                </p>
+                            </div>
+                        </>
+                    ) : (
+                        <div className="p-3 text-sm text-destructive bg-destructive/10 rounded-md">
+                            <p className="font-semibold">Failed to delete note</p>
+                            <p>{result.error || "Unknown error"}</p>
+                        </div>
+                    )}
+                </div>
+            )
+
+        case "updateNoteContent":
+            return (
+                <div className="space-y-2 text-sm">
+                    {result.success ? (
+                        <>
+                            <div className="p-3 bg-green-500/10 border border-green-500/20 rounded-md">
+                                <p className="font-semibold text-green-600 dark:text-green-400">
+                                    ✓ {result.message}
+                                </p>
+                            </div>
+                            <div className="p-3 bg-muted/50 rounded border">
+                                <p className="font-medium text-foreground">{result.noteName}</p>
+                                <p className="text-xs text-muted-foreground mt-1">
+                                    {result.notebookName} → {result.chapterName}
+                                </p>
+                                <p className="text-xs text-muted-foreground mt-1">
+                                    New size: {result.contentSize} characters • Updated: {result.updatedAt}
+                                </p>
+                            </div>
+                        </>
+                    ) : (
+                        <div className="p-3 text-sm text-destructive bg-destructive/10 rounded-md">
+                            <p className="font-semibold">Failed to update note</p>
+                            <p>{result.error || "Unknown error"}</p>
+                        </div>
+                    )}
+                </div>
+            )
+
+        default:
+            // Fallback to JSON for unknown tools
+            return (
+                <pre className="p-2 text-xs bg-muted/50 rounded overflow-x-auto">
+                    {JSON.stringify(result, null, 2)}
+                </pre>
+            )
+    }
+}
 
 const modelToProvider = {
     // OpenAI models (cheap to expensive)
@@ -76,6 +398,8 @@ export function RightSidebarContent() {
     const [files, setFiles] = useState<FileList | null>(null)
     const { open } = useRightSidebar()
     const inputRef = useRef<HTMLTextAreaElement>(null)
+    const queryClient = useQueryClient()
+    const processedNoteIds = useRef<Set<string>>(new Set())
     // Use useQuery to manage API key status so it can react to invalidations
     const { data: fetchedApiKeyStatus } = useQuery<ApiKeyStatus>({
         queryKey: ['api-key-status'],
@@ -106,12 +430,13 @@ export function RightSidebarContent() {
             model,
         },
         credentials: "include",
+        maxSteps: 5, // Enable multi-step tool calling
         onError: (error) => {
             console.error("Chat error:", error);
             // Show toast notification for errors
             const errorMessage = error.message || "An error occurred while processing your request";
             toast.error(errorMessage, {
-                description: errorMessage.includes("API key") 
+                description: errorMessage.includes("API key")
                     ? "You can update your API key in Profile settings"
                     : undefined,
                 duration: 5000,
@@ -152,6 +477,83 @@ export function RightSidebarContent() {
         }
     }, [status, messages.length])
 
+    // Invalidate cache when notes are modified
+    useEffect(() => {
+        const lastMessage = messages[messages.length - 1]
+        if (lastMessage?.role === 'assistant' && lastMessage.id) {
+            lastMessage.parts?.forEach((part: any, partIndex: number) => {
+                if (part.type === 'tool-invocation') {
+                    const toolInvocation = part.toolInvocation as any
+                    const toolName = toolInvocation.toolName
+                    
+                    // List of tools that modify notes/chapters and need cache invalidation
+                    const modifyingTools = ['createNote', 'moveNote', 'moveChapter', 'renameNote', 'deleteNote', 'updateNoteContent']
+                    
+                    if (modifyingTools.includes(toolName) && toolInvocation.result?.success === true) {
+                        // Use message ID + part index + tool name for truly unique operation key
+                        const operationKey = `${lastMessage.id}-${partIndex}-${toolName}`
+                        
+                        // Only process if we haven't seen this exact tool invocation before
+                        if (!processedNoteIds.current.has(operationKey)) {
+                            processedNoteIds.current.add(operationKey)
+
+                            // Toast messages for different operations
+                            const toastMessages: Record<string, { loading: string, success: string, error: string }> = {
+                                createNote: {
+                                    loading: 'Creating note...',
+                                    success: 'Note created!',
+                                    error: 'Failed to refresh'
+                                },
+                                moveNote: {
+                                    loading: 'Moving note...',
+                                    success: 'Note moved!',
+                                    error: 'Failed to refresh'
+                                },
+                                moveChapter: {
+                                    loading: 'Moving chapter...',
+                                    success: 'Chapter moved!',
+                                    error: 'Failed to refresh'
+                                },
+                                renameNote: {
+                                    loading: 'Renaming note...',
+                                    success: 'Note renamed!',
+                                    error: 'Failed to refresh'
+                                },
+                                deleteNote: {
+                                    loading: 'Deleting note...',
+                                    success: 'Note deleted!',
+                                    error: 'Failed to refresh'
+                                },
+                                updateNoteContent: {
+                                    loading: 'Updating note...',
+                                    success: 'Note updated!',
+                                    error: 'Failed to refresh'
+                                },
+                            }
+
+                            const messages = toastMessages[toolName] || {
+                                loading: 'Processing...',
+                                success: 'Changes saved!',
+                                error: 'Failed to refresh'
+                            }
+
+                            // Use toast.promise for better UX with loading state
+                            toast.promise(
+                                Promise.all([
+                                    queryClient.refetchQueries({ queryKey: ['userNotebooks'] }),
+                                    queryClient.refetchQueries({ queryKey: ['notes'] }),
+                                    // Also refetch individual note queries to update the note view
+                                    queryClient.refetchQueries({ queryKey: ['note'] })
+                                ]),
+                                messages
+                            )
+                        }
+                    }
+                }
+            })
+        }
+    }, [messages, queryClient])
+
     return (
         <RightSidebar collapsible="offcanvas">
             <RightSidebarHeader className="h-16 border-b">
@@ -182,10 +584,15 @@ export function RightSidebarContent() {
                                     </h3>
                                     <p className="text-sm text-muted-foreground mt-1">
                                         {hasSelectedApiKey
-                                            ? "Ask me anything or try using tools"
+                                            ? "Ask me about your notes, notebooks, or anything else!"
                                             : "Configure your API keys in settings to start chatting"
                                         }
                                     </p>
+                                    {hasSelectedApiKey && (
+                                        <p className="text-xs text-muted-foreground mt-2">
+                                            Try: "What notes do I have?" or "Search for notes about..."
+                                        </p>
+                                    )}
                                 </div>
                             </div>
                         )}
@@ -238,11 +645,7 @@ export function RightSidebarContent() {
                                                                     )}
                                                                     {toolInvocation.result && (
                                                                         <ToolOutput
-                                                                            output={
-                                                                                <pre className="p-2 text-xs">
-                                                                                    {JSON.stringify(toolInvocation.result, null, 2)}
-                                                                                </pre>
-                                                                            }
+                                                                            output={renderToolOutput(toolInvocation.toolName, toolInvocation.result)}
                                                                             errorText={undefined}
                                                                         />
                                                                     )}
@@ -339,10 +742,10 @@ export function RightSidebarContent() {
                                             {Object.entries(modelToProvider)
                                                 .filter(([, provider]) => provider === "google")
                                                 .map(([modelName]) => (
-                                            <PromptInputModelSelectItem key={modelName} value={modelName}>
+                                                    <PromptInputModelSelectItem key={modelName} value={modelName}>
                                                         {modelName} (google)
-                                            </PromptInputModelSelectItem>
-                                        ))}
+                                                    </PromptInputModelSelectItem>
+                                                ))}
                                         </SelectGroup>
                                     </PromptInputModelSelectContent>
                                 </PromptInputModelSelect>

@@ -33,7 +33,7 @@
     "@tanstack/react-query": "^5.90.5",
     "@tanstack/react-query-devtools": "^5.90.2",
     "@vercel/analytics": "^1.5.0",
-    "ai": "^5.0.82",
+    "ai": "^4.0.82",
     "axios": "^1.13.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
@@ -57,7 +57,7 @@
     "tailwind-merge": "^3.3.1",
     "tailwindcss": "^4.1.16",
     "use-stick-to-bottom": "^1.1.1",
-    "zod": "^4.1.12",
+    "zod": "^3.1.12",
     "zustand": "^5.0.8"
   },
   "devDependencies": {

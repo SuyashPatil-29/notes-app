@@ -5,6 +5,14 @@ import { getUserNotebooks } from '@/utils/notebook'
 import { Header } from '@/components/Header'
 import type { AuthenticatedUser } from '@/types/backend'
 import { Loader2 } from 'lucide-react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
+import remarkMath from 'remark-math'
+import rehypeKatex from 'rehype-katex'
+import 'katex/dist/katex.min.css'
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
+import { oneDark, oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism'
+import { useTheme } from 'next-themes'
 
 interface NoteEditorProps {
   user: AuthenticatedUser | null
@@ -17,6 +25,7 @@ export function NoteEditor({ user }: NoteEditorProps) {
     noteId: string
   }>()
   const navigate = useNavigate()
+  const { theme } = useTheme()
 
   const { data: noteResponse, isLoading, error } = useQuery({
     queryKey: ['note', noteId],
@@ -76,11 +85,16 @@ export function NoteEditor({ user }: NoteEditorProps) {
     )
   }
 
+  // Truncate note name if too long
+  const truncateNoteName = (name: string, maxLength: number = 10) => {
+    return name.length > maxLength ? name.substring(0, maxLength) + '...' : name
+  }
+
   const breadcrumbs = [
     { label: 'Dashboard', href: '/' },
     ...(notebook ? [{ label: notebook.name, href: `/${notebookId}` }] : []),
     ...(chapter ? [{ label: chapter.name, href: `/${notebookId}/${chapterId}` }] : []),
-    { label: note.name },
+    { label: truncateNoteName(note.name) },
   ]
 
   return (
@@ -105,9 +119,71 @@ export function NoteEditor({ user }: NoteEditorProps) {
           <div className="bg-card border border-border rounded-lg p-6">
             <div className="prose prose-neutral dark:prose-invert max-w-none">
               {note.content ? (
-                <pre className="whitespace-pre-wrap font-sans">
+                <ReactMarkdown
+                  remarkPlugins={[remarkGfm, remarkMath]}
+                  rehypePlugins={[rehypeKatex]}
+                  components={{
+                    code({ node, inline, className, children, ...props }: any) {
+                      const match = /language-(\w+)/.exec(className || '')
+                      const language = match ? match[1] : 'text'
+                      
+                      return !inline && match ? (
+                        <SyntaxHighlighter
+                          style={theme === 'dark' ? oneDark : oneLight}
+                          language={language}
+                          PreTag="div"
+                          customStyle={{
+                            margin: '1rem 0',
+                            borderRadius: '0.5rem',
+                          }}
+                        >
+                          {String(children).replace(/\n$/, '')}
+                        </SyntaxHighlighter>
+                      ) : (
+                        <code className="px-1.5 py-0.5 bg-muted rounded text-sm font-mono" {...props}>
+                          {children}
+                        </code>
+                      )
+                    },
+                    // Style links
+                    a({ children, href, ...props }: any) {
+                      return (
+                        <a 
+                          href={href} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="text-primary hover:underline"
+                          {...props}
+                        >
+                          {children}
+                        </a>
+                      )
+                    },
+                    // Style tables
+                    table({ children, ...props }: any) {
+                      return (
+                        <div className="overflow-x-auto my-4">
+                          <table className="min-w-full divide-y divide-border" {...props}>
+                            {children}
+                          </table>
+                        </div>
+                      )
+                    },
+                    // Style blockquotes
+                    blockquote({ children, ...props }: any) {
+                      return (
+                        <blockquote 
+                          className="border-l-4 border-primary/50 pl-4 italic my-4 text-muted-foreground"
+                          {...props}
+                        >
+                          {children}
+                        </blockquote>
+                      )
+                    },
+                  }}
+                >
                   {note.content}
-                </pre>
+                </ReactMarkdown>
               ) : (
                 <p className="text-muted-foreground italic">
                   This note is empty. Start writing to add content.
