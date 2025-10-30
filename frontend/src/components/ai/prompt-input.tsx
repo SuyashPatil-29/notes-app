@@ -10,7 +10,6 @@ import {
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
-import type { ChatStatus } from 'ai';
 import { Loader2Icon, SendIcon, SquareIcon, XIcon } from 'lucide-react';
 import type {
   ComponentProps,
@@ -24,7 +23,7 @@ export type PromptInputProps = HTMLAttributes<HTMLFormElement>;
 export const PromptInput = ({ className, ...props }: PromptInputProps) => (
   <form
     className={cn(
-      'w-full divide-y overflow-hidden rounded-xl border bg-background shadow-sm',
+      'w-full divide-y rounded-xl border bg-background shadow-sm',
       className
     )}
     {...props}
@@ -38,6 +37,7 @@ export type PromptInputTextareaProps = ComponentProps<typeof Textarea> & {
 
 export const PromptInputTextarea = forwardRef<HTMLTextAreaElement, PromptInputTextareaProps>(({
   onChange,
+  onKeyDown: customOnKeyDown,
   className,
   placeholder = 'What would you like to know?',
   minHeight = 48,
@@ -45,6 +45,12 @@ export const PromptInputTextarea = forwardRef<HTMLTextAreaElement, PromptInputTe
   ...props
 }, ref) => {
   const handleKeyDown: KeyboardEventHandler<HTMLTextAreaElement> = (e) => {
+    // Call custom handler first if provided
+    customOnKeyDown?.(e);
+    
+    // Skip if custom handler prevented default
+    if (e.defaultPrevented) return;
+    
     if (e.key === 'Enter') {
       if (e.shiftKey) {
         // Allow newline
@@ -138,7 +144,7 @@ export const PromptInputButton = ({
 };
 
 export type PromptInputSubmitProps = ComponentProps<typeof Button> & {
-  status?: ChatStatus;
+  status?: 'awaiting_message' | 'streaming' | 'submitted' | 'error' | 'ready';
 };
 
 export const PromptInputSubmit = ({
@@ -189,7 +195,7 @@ export const PromptInputModelSelectTrigger = ({
   <SelectTrigger
     className={cn(
       'border-none bg-transparent font-medium text-muted-foreground shadow-none transition-colors',
-      'hover:bg-accent hover:text-foreground [&[aria-expanded="true"]]:bg-accent [&[aria-expanded="true"]]:text-foreground',
+      'hover:bg-accent hover:text-foreground aria-expanded:bg-accent aria-expanded:text-foreground',
       className
     )}
     {...props}

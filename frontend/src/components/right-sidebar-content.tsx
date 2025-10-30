@@ -1,4 +1,4 @@
-import { MessageSquare } from "lucide-react"
+import { FileText, MessageSquare } from "lucide-react"
 import { toast } from "sonner"
 import {
     RightSidebar,
@@ -11,7 +11,7 @@ import {
     useRightSidebar,
 } from "@/components/ui/right-sidebar"
 import { useChat } from "@ai-sdk/react"
-import React, { useState, useRef, useEffect } from "react"
+import React, { useState, useRef, useEffect, useMemo } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import {
     Conversation,
@@ -38,6 +38,9 @@ import { Input } from "@/components/ui/input"
 import { useUser } from "@/hooks/auth"
 import api from "@/utils/api"
 import { SelectGroup, SelectLabel, SelectSeparator } from "@/components/ui/select"
+import { MentionNotesPopover, MentionedNotesBadges } from "@/components/ai/mention-notes"
+import { getUserNotebooks } from "@/utils/notebook"
+import type { Notebook } from "@/types/backend"
 
 // Helper function to render tool output with nice formatting
 function renderToolOutput(toolName: string, result: any) {
@@ -392,6 +395,14 @@ interface ApiKeyStatus {
     google: boolean;
 }
 
+interface MentionedNote {
+    id: string
+    name: string
+    content: string
+    chapterName: string
+    notebookName: string
+}
+
 export function RightSidebarContent() {
     const { user } = useUser()
     const [model, setModel] = useState<Model>("gpt-5-mini")
@@ -400,6 +411,33 @@ export function RightSidebarContent() {
     const inputRef = useRef<HTMLTextAreaElement>(null)
     const queryClient = useQueryClient()
     const processedNoteIds = useRef<Set<string>>(new Set())
+    
+    // Mention notes state
+    const [mentionOpen, setMentionOpen] = useState(false)
+    const [mentionedNotes, setMentionedNotes] = useState<MentionedNote[]>([])
+    // Fetch notebooks to get all notes for mentions
+    const { data: notebooks, isLoading: notebooksLoading } = useQuery<Notebook[]>({
+        queryKey: ['userNotebooks'],
+        queryFn: getUserNotebooks,
+        enabled: open && !!user,
+    })
+
+    // Flatten all notes for mention selector
+    const allNotes = useMemo(() => {
+        if (!notebooks) return []
+        return notebooks.flatMap(notebook =>
+            notebook.chapters?.flatMap(chapter =>
+                chapter.notes?.map(note => ({
+                    id: note.id,
+                    name: note.name,
+                    content: note.content,
+                    chapterName: chapter.name,
+                    notebookName: notebook.name,
+                })) || []
+            ) || []
+        )
+    }, [notebooks])
+
     // Use useQuery to manage API key status so it can react to invalidations
     const { data: fetchedApiKeyStatus } = useQuery<ApiKeyStatus>({
         queryKey: ['api-key-status'],
@@ -423,7 +461,7 @@ export function RightSidebarContent() {
     const selectedProvider = modelToProvider[model];
     const hasSelectedApiKey = apiKeyStatus[selectedProvider as keyof ApiKeyStatus] || false;
 
-    const { messages, input, handleInputChange, handleSubmit, status } = useChat({
+    const { messages, input, handleInputChange, handleSubmit, status, setInput, append } = useChat({
         api: "http://localhost:8080/api/chat",
         body: {
             provider: modelToProvider[model],
@@ -444,16 +482,89 @@ export function RightSidebarContent() {
         },
     })
 
-    const handleSubmitWithFiles = (e: React.FormEvent<HTMLFormElement>) => {
+    // Handle @ mention detection
+    const handleInputChangeWithMention = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+        handleInputChange(e)
+        
+        const value = e.target.value
+        const cursorPos = e.target.selectionStart
+        
+        // Check if @ was just typed
+        if (value[cursorPos - 1] === '@') {
+            setMentionOpen(true)
+        } else if (mentionOpen && (value[cursorPos - 1] === ' ' || !value.includes('@'))) {
+            // Close on space or if @ is removed
+            setMentionOpen(false)
+        }
+    }
+
+    // Handle keyboard events for mention popover
+    const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+        if (e.key === 'Escape' && mentionOpen) {
+            e.preventDefault()
+            setMentionOpen(false)
+            // Refocus textarea after closing
+            setTimeout(() => {
+                inputRef.current?.focus()
+            }, 50)
+        }
+    }
+
+    // Handle note selection from mention
+    const handleSelectNote = (note: MentionedNote) => {
+        // Add to mentioned notes if not already added
+        if (!mentionedNotes.find(n => n.id === note.id)) {
+            setMentionedNotes([...mentionedNotes, note])
+        }
+        
+        // Remove the @ symbol from input
+        const newInput = input.slice(0, -1) + ' '
+        setInput(newInput)
+        setMentionOpen(false)
+        
+        // Refocus textarea with a small delay
+        setTimeout(() => {
+            inputRef.current?.focus()
+        }, 100)
+    }
+
+    // Remove mentioned note
+    const handleRemoveMentionedNote = (noteId: string) => {
+        setMentionedNotes(mentionedNotes.filter(n => n.id !== noteId))
+    }
+
+    const handleSubmitWithFiles = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault()
+        
+        if (!input.trim() && !files) return
+        
+        // Build the message content with mentioned notes
+        let messageContent = input
+        
+        if (mentionedNotes.length > 0) {
+            const notesContext = mentionedNotes.map(note => 
+                `\n\n<<<REFERENCED_NOTE>>>\n**Referenced Note: ${note.name}**\n*Location: ${note.notebookName} → ${note.chapterName}*\n\n${note.content}`
+            ).join('\n')
+            
+            messageContent = `${input}${notesContext}`
+        }
+        
         if (files) {
             handleSubmit(e, {
                 experimental_attachments: files,
             })
             setFiles(null)
         } else {
-            handleSubmit(e)
+            // Use append to send the enriched message
+            await append({
+                role: 'user',
+                content: messageContent,
+            })
+            setInput('')
         }
+        
+        // Clear mentioned notes after sending
+        setMentionedNotes([])
     }
 
     // Focus input when sidebar opens
@@ -603,11 +714,36 @@ export function RightSidebarContent() {
                             if (role === "data") return null
 
                             if (role === "user") {
+                                // Parse content to separate message from referenced notes
+                                const content = m.content || ''
+                                const parts = content.split('\n\n<<<REFERENCED_NOTE>>>\n')
+                                const mainMessage = parts[0]
+                                const referencedNotes = parts.slice(1)
+                                
                                 return (
                                     <Message from={role} key={m.id}>
                                         <MessageAvatar role={role} image={user?.imageUrl} />
                                         <MessageContent>
-                                            <Response>{m.content}</Response>
+                                            <div className="space-y-2">
+                                                {referencedNotes.length > 0 && (
+                                                    <div className="flex flex-wrap items-center gap-1.5">
+                                                        {referencedNotes.map((noteBlock, idx) => {
+                                                            const lines = noteBlock.split('\n')
+                                                            const noteName = lines[0]?.replace('**Referenced Note: ', '').replace('**', '') || ''
+                                                            
+                                                            return (
+                                                                <React.Fragment key={idx}>
+                                                                    <div className="inline-flex items-center gap-1.5 px-2 py-1 bg-muted/50 rounded-md border border-border/50 text-xs">
+                                                                        <FileText className="h-3 w-3 text-muted-foreground shrink-0" />
+                                                                        <span className="font-medium text-foreground">{noteName}</span>
+                                                                    </div>
+                                                                </React.Fragment>
+                                                            )
+                                                        })}
+                                                    </div>
+                                                )}
+                                                <Response>{mainMessage}</Response>
+                                            </div>
                                         </MessageContent>
                                     </Message>
                                 )
@@ -701,13 +837,26 @@ export function RightSidebarContent() {
 
                 <div className="p-6 pt-4 border-t bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/60">
                     <PromptInput onSubmit={handleSubmitWithFiles} className="shadow-lg">
-                        <PromptInputTextarea
-                            ref={inputRef}
-                            value={input}
-                            placeholder={hasSelectedApiKey ? "Ask me anything..." : "Set up API keys in settings to start chatting..."}
-                            onChange={handleInputChange}
-                            disabled={status === "streaming" || !hasSelectedApiKey}
+                        <MentionedNotesBadges
+                            notes={mentionedNotes}
+                            onRemove={handleRemoveMentionedNote}
                         />
+                        <div className="relative overflow-visible">
+                            <MentionNotesPopover
+                                open={mentionOpen}
+                                notes={allNotes}
+                                onSelectNote={handleSelectNote}
+                                isLoading={notebooksLoading}
+                            />
+                            <PromptInputTextarea
+                                ref={inputRef}
+                                value={input}
+                                placeholder={hasSelectedApiKey ? "Ask me anything... (Type @ to mention notes)" : "Set up API keys in settings to start chatting..."}
+                                onChange={handleInputChangeWithMention}
+                                onKeyDown={handleKeyDown}
+                                disabled={status === "streaming" || !hasSelectedApiKey}
+                            />
+                        </div>
                         <PromptInputToolbar>
                             <PromptInputTools>
                                 <PromptInputModelSelect value={model} onValueChange={(value) => setModel(value as Model)}>
