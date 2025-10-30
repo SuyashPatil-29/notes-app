@@ -1,8 +1,9 @@
 import { useState, useEffect } from "react"
 import { useNavigate, useLocation } from "react-router-dom"
-import { ChevronRight, Book, BookOpen, FileText, Plus, Pencil, Trash2, Loader, Eye } from "lucide-react"
+import { ChevronRight, Book, BookOpen, FileText, Plus, Pencil, Trash2, Loader, Eye, Globe } from "lucide-react"
 import { moveChapter } from "@/utils/chapter"
 import { moveNote } from "@/utils/notes"
+import { isNotebookPublished } from "@/utils/publish"
 import { toast } from "sonner"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import type { Notebook } from "@/types/backend"
@@ -471,8 +472,11 @@ export function LeftSidebarContent({
                                 <CollapsibleTrigger asChild>
                                   <LeftSidebarMenuButton tooltip={notebook.name}>
                                     <Book />
-                                    <span>{notebook.name}</span>
-                                    <ChevronRight className="ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
+                                    <span className="flex-1">{notebook.name}</span>
+                                    {isNotebookPublished(notebook) && (
+                                      <Globe className="h-3 w-3 text-primary dark:text-primary mr-1" />
+                                    )}
+                                    <ChevronRight className="transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
                                   </LeftSidebarMenuButton>
                                 </CollapsibleTrigger>
                               </ContextMenuTrigger>
@@ -517,16 +521,26 @@ export function LeftSidebarContent({
                                   isOver={overId === `chapter:${chapter.id}`}
                                 >
                                   <DraggableChapter id={chapter.id}>
-                                    <ContextMenu>
-                                      <ContextMenuTrigger asChild>
-                                        <CollapsibleTrigger asChild>
-                                          <LeftSidebarMenuSubButton>
-                                            <BookOpen />
-                                            <span>{chapter.name}</span>
-                                            <ChevronRight className="ml-auto transition-transform duration-200 group-data-[state=open]/chapter-collapsible:rotate-90" />
-                                          </LeftSidebarMenuSubButton>
-                                        </CollapsibleTrigger>
-                                      </ContextMenuTrigger>
+                                    <TooltipProvider delayDuration={300}>
+                                      <Tooltip>
+                                        <ContextMenu>
+                                          <ContextMenuTrigger asChild>
+                                            <TooltipTrigger asChild>
+                                              <CollapsibleTrigger asChild>
+                                                <LeftSidebarMenuSubButton>
+                                                  <BookOpen />
+                                                  <span className="flex-1 truncate">{chapter.name}</span>
+                                                  {chapter.isPublic && (
+                                                    <Globe className="h-3 w-3 text-primary! dark:text-primary! mr-1 shrink-0" />
+                                                  )}
+                                                  <ChevronRight className="ml-auto shrink-0 transition-transform duration-200 group-data-[state=open]/chapter-collapsible:rotate-90" />
+                                                </LeftSidebarMenuSubButton>
+                                              </CollapsibleTrigger>
+                                            </TooltipTrigger>
+                                          </ContextMenuTrigger>
+                                          <TooltipContent side="right" className="max-w-xs">
+                                            <p>{chapter.name}</p>
+                                          </TooltipContent>
                                       <ContextMenuContent>
                                         <ContextMenuItem onClick={() => navigate(`/${notebook.id}/${chapter.id}`)}>
                                           <Eye className="mr-2 h-4 w-4" />
@@ -550,7 +564,9 @@ export function LeftSidebarContent({
                                           Delete
                                         </ContextMenuItem>
                                       </ContextMenuContent>
-                                    </ContextMenu>
+                                        </ContextMenu>
+                                      </Tooltip>
+                                    </TooltipProvider>
                                   </DraggableChapter>
                                 </DroppableChapter>
                                 <CollapsibleContent>
@@ -572,10 +588,13 @@ export function LeftSidebarContent({
                                                       >
                                                         <button
                                                           onClick={() => navigate(`/${notebook.id}/${chapter.id}/${note.id}`)}
-                                                          className="w-full min-w-0"
+                                                          className="w-full min-w-0 flex items-center gap-2"
                                                         >
                                                           <FileText className="shrink-0" />
-                                                          <span className="truncate block">{note.name}</span>
+                                                          <span className="truncate block flex-1 text-left">{note.name}</span>
+                                                          {note.isPublic && (
+                                                            <Globe className="h-3 w-3 text-primary! dark:text-primary! mr-1 shrink-0" />
+                                                          )}
                                                         </button>
                                                       </LeftSidebarMenuSubButton>
                                                     </TooltipTrigger>

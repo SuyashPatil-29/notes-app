@@ -13,6 +13,7 @@ type Chapter struct {
 	NotebookID string    `json:"notebookId" gorm:"type:varchar(255);index"`
 	Notebook   Notebook  `json:"notebook" gorm:"foreignKey:NotebookID"`
 	Files      []Notes   `json:"notes" gorm:"foreignKey:ChapterID"`
+	IsPublic   bool      `json:"isPublic" gorm:"default:false"`
 	CreatedAt  time.Time `json:"createdAt"`
 	UpdatedAt  time.Time `json:"updatedAt"`
 }

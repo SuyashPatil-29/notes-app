@@ -3,7 +3,10 @@ import { useQuery } from '@tanstack/react-query'
 import { getUserNotebooks } from '@/utils/notebook'
 import { Header } from '@/components/Header'
 import { Button } from '@/components/ui/button'
-import { BookOpen, Plus } from 'lucide-react'
+import { PublishNotebookDialog } from '@/components/SidebarDialogs/PublishNotebookDialog'
+import { BookOpen, Plus, Globe, Lock } from 'lucide-react'
+import { useState } from 'react'
+import { isNotebookPublished, getPublishedNoteCount } from '@/utils/publish'
 import type { AuthenticatedUser } from '@/types/backend'
 
 interface NotebookViewProps {
@@ -14,6 +17,7 @@ interface NotebookViewProps {
 export function NotebookView({ user, onCreateChapter }: NotebookViewProps) {
   const { notebookId } = useParams<{ notebookId: string }>()
   const navigate = useNavigate()
+  const [publishDialogOpen, setPublishDialogOpen] = useState(false)
 
   const { data: notebooks } = useQuery({
     queryKey: ['userNotebooks'],
@@ -43,9 +47,31 @@ export function NotebookView({ user, onCreateChapter }: NotebookViewProps) {
     { label: notebook.name }
   ]
 
+  const isPublished = isNotebookPublished(notebook)
+  const publishedNoteCount = getPublishedNoteCount(notebook)
+
+  const headerActions = (
+    <Button
+      variant={isPublished ? "default" : "outline"}
+      onClick={() => setPublishDialogOpen(true)}
+    >
+      {isPublished ? (
+        <>
+          <Globe className="mr-2 h-4 w-4" />
+          Published ({publishedNoteCount})
+        </>
+      ) : (
+        <>
+          <Lock className="mr-2 h-4 w-4" />
+          Publish
+        </>
+      )}
+    </Button>
+  )
+
   return (
     <div className="flex flex-col h-screen">
-      <Header user={user} breadcrumbs={breadcrumbs} />
+      <Header user={user} breadcrumbs={breadcrumbs} actions={headerActions} />
       
       <main className="flex-1 overflow-auto">
         <div className="max-w-6xl mx-auto px-6 py-12 space-y-8">
@@ -102,6 +128,12 @@ export function NotebookView({ user, onCreateChapter }: NotebookViewProps) {
           )}
         </div>
       </main>
+
+      <PublishNotebookDialog
+        open={publishDialogOpen}
+        onOpenChange={setPublishDialogOpen}
+        notebookId={notebookId ?? ""}
+      />
     </div>
   )
 }

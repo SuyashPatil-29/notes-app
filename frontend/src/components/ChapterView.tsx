@@ -5,6 +5,7 @@ import { Header } from '@/components/Header'
 import { Button } from '@/components/ui/button'
 import { FileText, Plus } from 'lucide-react'
 import type { AuthenticatedUser } from '@/types/backend'
+import { getPreviewText } from '@/utils/markdown'
 
 interface ChapterViewProps {
   user: AuthenticatedUser | null
@@ -72,16 +73,18 @@ export function ChapterView({ user, onCreateNote }: ChapterViewProps) {
                 <button
                   key={note.id}
                   onClick={() => navigate(`/${notebookId}/${chapterId}/${note.id}`)}
-                  className="bg-card border border-border rounded-lg p-6 space-y-3 hover:border-primary/50 transition-colors text-left"
+                  className="bg-card border border-border rounded-lg p-6 hover:border-primary/50 transition-colors text-left h-40 flex flex-col justify-between"
                 >
-                  <div className="flex items-start justify-between">
-                    <FileText className="h-8 w-8 text-primary" />
-                  </div>
-                  <div className="space-y-1">
-                    <h3 className="text-lg font-semibold text-card-foreground">{note.name}</h3>
-                    <p className="text-sm text-muted-foreground line-clamp-2">
-                      {note.content ? note.content.substring(0, 100) + (note.content.length > 100 ? '...' : '') : 'Empty note'}
-                    </p>
+                  <div className="space-y-2">
+                    <div className="flex items-start justify-between">
+                      <FileText className="h-8 w-8 text-primary" />
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-semibold text-card-foreground line-clamp-1">{note.name}</h3>
+                      <p className="text-sm text-muted-foreground line-clamp-2 mt-1">
+                        {getPreviewText(note.content, 100)}
+                      </p>
+                    </div>
                   </div>
                   <div className="text-xs text-muted-foreground">
                     Updated {new Date(note.updatedAt).toLocaleDateString()}

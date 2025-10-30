@@ -13,6 +13,7 @@ export type Notebook = {
   name: string;
   userId: number;
   chapters: Chapter[];
+  isPublic: boolean;
   createdAt: string;
   updatedAt: string;
 };
@@ -23,6 +24,7 @@ export type Chapter = {
   notebookId: string;
   notebook: Notebook;
   notes: Notes[];
+  isPublic: boolean;
   createdAt: string;
   updatedAt: string;
 };
@@ -33,6 +35,7 @@ export type Notes = {
   content: string;
   chapterId: string;
   chapter: Chapter;
+  isPublic: boolean;
   createdAt: string;
   updatedAt: string;
 };
@@ -40,4 +43,9 @@ export type Notes = {
 export type AuthenticatedUser = Pick<User, 'id' | 'name' | 'email' | 'imageUrl'> & {
   onboardingCompleted: boolean;
   hasApiKey: boolean;
+};
+
+export type PublishSettings = {
+  notebookId: string;
+  selectedNoteIds: string[];
 };

@@ -13,6 +13,7 @@ type Notes struct {
 	Content   string    `json:"content" gorm:"type:text"`
 	ChapterID string    `json:"chapterId" gorm:"type:varchar(255);index"`
 	Chapter   Chapter   `json:"chapter" gorm:"foreignKey:ChapterID"`
+	IsPublic  bool      `json:"isPublic" gorm:"default:false"`
 	CreatedAt time.Time `json:"createdAt"`
 	UpdatedAt time.Time `json:"updatedAt"`
 }

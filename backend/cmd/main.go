@@ -34,6 +34,12 @@ func main() {
 		// OAuth routes - public for authentication flow
 		public.GET("/auth/:provider", auth.BeginAuth)
 		public.GET("/auth/:provider/callback", auth.AuthCallback)
+
+		// Public content routes
+		public.GET("/public/:notebookId", controllers.GetPublicNotebook)
+		public.GET("/public/:notebookId/:chapterId", controllers.GetPublicChapter)
+		public.GET("/public/:notebookId/:chapterId/:noteId", controllers.GetPublicNote)
+		public.GET("/public/user/:email", controllers.GetPublicUserProfile)
 	}
 
 	// Protected routes (authentication required)
@@ -80,6 +86,12 @@ func main() {
 		protected.PUT("/note/:id", controllers.UpdateNote)
 		protected.PATCH("/note/:id/move", controllers.MoveNote)
 		protected.DELETE("/note/:id", controllers.DeleteNote)
+
+		// Publishing routes
+		protected.POST("/notebook/:id/publish", controllers.PublishNotebook)
+		protected.PUT("/notebook/:id/published-notes", controllers.UpdatePublishedNotes)
+		protected.POST("/notebook/:id/unpublish", controllers.UnpublishNotebook)
+		protected.PATCH("/note/:id/publish", controllers.PublishNote)
 	}
 
 	r.Run(":8080")

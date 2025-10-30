@@ -36,9 +36,10 @@ interface HeaderProps {
   user: AuthenticatedUser | null
   breadcrumbs?: HeaderBreadcrumbItem[]
   onOnboardingReset?: () => void
+  actions?: React.ReactNode
 }
 
-export function Header({ user, breadcrumbs = [{ label: 'Dashboard' }], onOnboardingReset }: HeaderProps) {
+export function Header({ user, breadcrumbs = [{ label: 'Dashboard' }], onOnboardingReset, actions }: HeaderProps) {
   const handleResetOnboarding = async () => {
     if (!confirm("Reset onboarding? This will require you to complete onboarding again.")) {
       return;
@@ -95,8 +96,18 @@ export function Header({ user, breadcrumbs = [{ label: 'Dashboard' }], onOnboard
           </BreadcrumbList>
         </Breadcrumb>
 
+        {/* Custom Actions */}
+        {actions && (
+          <>
+            <div className="ml-auto flex items-center gap-2">
+              {actions}
+            </div>
+            <Separator orientation="vertical" className="h-4" />
+          </>
+        )}
+
         {/* Right Side Actions */}
-        <div className="ml-auto flex items-center gap-2">
+        <div className={`${!actions ? 'ml-auto' : ''} flex items-center gap-2`}>
           <ModeToggle />
           <ThemeSelector />
           <RightSidebarTrigger />

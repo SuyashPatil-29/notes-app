@@ -16,6 +16,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { getPreviewText } from '@/utils/markdown'
 
 interface DashboardProps {
   user: AuthenticatedUser | null
@@ -110,6 +111,7 @@ export function Dashboard({ user }: DashboardProps) {
         id,
         name: newNoteName.trim(),
         content: '',
+        isPublic: false,
         chapterId: selectedChapterId,
         chapter: {} as any,
         createdAt: new Date().toISOString(),
@@ -134,6 +136,7 @@ export function Dashboard({ user }: DashboardProps) {
         name: newNotebookName.trim(),
         userId: user.id,
         chapters: [],
+        isPublic: false,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       })
@@ -154,6 +157,7 @@ export function Dashboard({ user }: DashboardProps) {
       await createChapterApi({
         id,
         name: newChapterName.trim(),
+        isPublic: false,
         notebookId: selectedNotebookIdForChapter,
         notebook: {} as any,
         notes: [],
@@ -346,20 +350,22 @@ export function Dashboard({ user }: DashboardProps) {
                           <button
                             key={note.id}
                             onClick={() => navigate(`/${note.notebookId}/${note.chapterId}/${note.id}`)}
-                            className="bg-card border border-border rounded-lg p-6 space-y-3 hover:border-primary/50 transition-colors text-left"
+                            className="bg-card border border-border rounded-lg p-6 hover:border-primary/50 transition-colors text-left h-40 flex flex-col justify-between"
                           >
-                            <div className="flex items-start justify-between">
-                              <FileText className="h-8 w-8 text-primary" />
+                            <div className="space-y-2">
+                              <div className="flex items-start justify-between">
+                                <FileText className="h-8 w-8 text-primary" />
+                              </div>
+                              <div>
+                                <h3 className="text-lg font-semibold text-card-foreground line-clamp-1">{note.name}</h3>
+                                <p className="text-sm text-muted-foreground line-clamp-2 mt-1">
+                                  {getPreviewText(note.content, 100)}
+                                </p>
+                              </div>
                             </div>
-                            <div className="space-y-1">
-                              <h3 className="text-lg font-semibold text-card-foreground">{note.name}</h3>
-                              <p className="text-sm text-muted-foreground line-clamp-2">
-                                {note.content ? note.content.substring(0, 100) + (note.content.length > 100 ? '...' : '') : 'Empty note'}
-                              </p>
-                              <p className="text-xs text-muted-foreground pt-1">
-                                {note.chapterName} • {note.notebookName}
-                              </p>
-                            </div>
+                            <p className="text-xs text-muted-foreground">
+                              {note.chapterName} • {note.notebookName}
+                            </p>
                           </button>
                         ))}
                       </div>

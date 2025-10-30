@@ -16,6 +16,10 @@ import { CreateChapterDialog } from '@/components/SidebarDialogs/CreateChapterDi
 import { CreateNoteDialog } from '@/components/SidebarDialogs/CreateNoteDialog'
 import { RenameDialog } from '@/components/SidebarDialogs/RenameDialog'
 import { DeleteConfirmDialog } from '@/components/SidebarDialogs/DeleteConfirmDialog'
+import { PublicNotebookView } from '@/components/public/PublicNotebookView'
+import { PublicChapterView } from '@/components/public/PublicChapterView'
+import { PublicNoteView } from '@/components/public/PublicNoteView'
+import { PublicUserProfile } from '@/components/public/PublicUserProfile'
 import { LeftSidebarProvider, LeftSidebarInset } from '@/components/ui/left-sidebar'
 import { RightSidebarProvider, RightSidebarInset } from '@/components/ui/right-sidebar'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -130,6 +134,7 @@ function App() {
     try {
       const newNotebook: Notebook = {
         id: createId(),
+        isPublic: false,
         name: notebookName,
         userId: user.id,
         chapters: [],
@@ -168,6 +173,7 @@ function App() {
       const newChapter: Chapter = {
         id: createId(),
         name: chapterName,
+        isPublic: false,
         notebookId: createChapterDialog.notebookId,
         notebook: {} as any, // Will be populated by backend
         notes: [],
@@ -216,6 +222,7 @@ function App() {
       const newNote: Notes = {
         id: createId(),
         name: noteName,
+        isPublic: false,
         content: "",
         chapterId: createNoteDialog.chapterId,
         chapter: {} as any,
@@ -490,6 +497,10 @@ function App() {
               <Routes>
                 <Route path="/" element={<Dashboard user={user} />} />
                 <Route path="/profile" element={<Profile />} />
+                <Route path="/public/:notebookId" element={<PublicNotebookView />} />
+                <Route path="/public/:notebookId/:chapterId" element={<PublicChapterView />} />
+                <Route path="/public/:notebookId/:chapterId/:noteId" element={<PublicNoteView />} />
+                <Route path="/public/user/:email" element={<PublicUserProfile />} />
                 <Route path="/:notebookId" element={<NotebookView user={user} onCreateChapter={handleCreateChapter} />} />
                 <Route path="/:notebookId/:chapterId" element={<ChapterView user={user} onCreateNote={handleCreateNote} />} />
                 <Route path="/:notebookId/:chapterId/:noteId" element={<NoteEditor user={user} />} />

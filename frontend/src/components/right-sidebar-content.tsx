@@ -178,7 +178,7 @@ function renderToolOutput(toolName: string, result: any, onNavigateToNote?: (not
                     {result.success ? (
                         <>
                             <div className="p-3 bg-green-500/10 border border-green-500/20 rounded-md">
-                                <p className="font-semibold text-green-600 dark:text-green-400">
+                                <p className="font-semibold text-primary dark:text-primary">
                                     ✓ {result.message}
                                 </p>
                             </div>
@@ -339,7 +339,7 @@ function renderToolOutput(toolName: string, result: any, onNavigateToNote?: (not
                     {result.success ? (
                         <>
                             <div className="p-3 bg-green-500/10 border border-green-500/20 rounded-md">
-                                <p className="font-semibold text-green-600 dark:text-green-400">
+                                <p className="font-semibold text-primary dark:text-primary">
                                     ✓ {result.message}
                                 </p>
                             </div>
