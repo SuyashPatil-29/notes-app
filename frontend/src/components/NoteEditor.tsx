@@ -5,14 +5,39 @@ import { getUserNotebooks } from '@/utils/notebook'
 import { Header } from '@/components/Header'
 import type { AuthenticatedUser } from '@/types/backend'
 import { Loader2 } from 'lucide-react'
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
-import remarkMath from 'remark-math'
-import rehypeKatex from 'rehype-katex'
 import 'katex/dist/katex.min.css'
-import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
-import { oneDark, oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism'
-import { useTheme } from 'next-themes'
+import '@/prosemirror.css'
+
+import {
+  EditorCommand,
+  EditorCommandEmpty,
+  EditorCommandItem,
+  EditorCommandList,
+  EditorContent,
+  type EditorInstance,
+  EditorRoot,
+} from "novel";
+import {
+  handleCommandNavigation,
+  ImageResizer
+} from "novel/extensions";
+import { useState } from "react";
+import { useDebouncedCallback } from "use-debounce";
+import { defaultExtensions } from "@/lib/extensions";
+import { ColorSelector } from "./selectors/color-selector";
+import { LinkSelector } from "./selectors/link-selector";
+import { MathSelector } from "./selectors/math-selector";
+import { NodeSelector } from "./selectors/node-selector";
+import { Separator } from "./ui/separator";
+
+import GenerativeMenuSwitch from "./generative/generative-menu-switch";
+// import { uploadFn } from "./image-upload";
+import { TextButtons } from "./selectors/text-buttons";
+import { slashCommand, suggestionItems } from "./slash-command";
+
+import hljs from "highlight.js";
+
+const extensions = [...defaultExtensions, slashCommand];
 
 interface NoteEditorProps {
   user: AuthenticatedUser | null
@@ -25,7 +50,13 @@ export function NoteEditor({ user }: NoteEditorProps) {
     noteId: string
   }>()
   const navigate = useNavigate()
-  const { theme } = useTheme()
+  const [charsCount, setCharsCount] = useState();
+  const [saveStatus, setSaveStatus] = useState("Saved");
+
+  const [openAI, setOpenAI] = useState(false);
+  const [openNode, setOpenNode] = useState(false);
+  const [openColor, setOpenColor] = useState(false);
+  const [openLink, setOpenLink] = useState(false);
 
   const { data: noteResponse, isLoading, error } = useQuery({
     queryKey: ['note', noteId],
@@ -42,6 +73,27 @@ export function NoteEditor({ user }: NoteEditorProps) {
   const note = noteResponse?.data
   const notebook = notebooks?.find((n) => n.id === notebookId)
   const chapter = notebook?.chapters?.find((c) => c.id === chapterId)
+
+  //Apply Codeblock Highlighting on the HTML from editor.getHTML()
+  const highlightCodeblocks = (content: string) => {
+    const doc = new DOMParser().parseFromString(content, "text/html");
+    doc.querySelectorAll("pre code").forEach((el) => {
+      // @ts-ignore
+      // https://highlightjs.readthedocs.io/en/latest/api.html?highlight=highlightElement#highlightelement
+      hljs.highlightElement(el);
+    });
+    return new XMLSerializer().serializeToString(doc);
+  };
+
+  const debouncedUpdates = useDebouncedCallback(async (editor: EditorInstance) => {
+    const json = editor.getJSON();
+    setCharsCount(editor.storage.characterCount.words());
+    window.localStorage.setItem("html-content", highlightCodeblocks(editor.getHTML()));
+    window.localStorage.setItem("novel-content", JSON.stringify(json));
+    window.localStorage.setItem("markdown", editor.storage.markdown.getMarkdown());
+    setSaveStatus("Saved");
+  }, 500);
+
 
   if (isLoading) {
     return (
@@ -104,97 +156,81 @@ export function NoteEditor({ user }: NoteEditorProps) {
         breadcrumbs={breadcrumbs}
       />
       <div className="flex-1 overflow-auto">
-        <div className="max-w-4xl mx-auto px-6 py-8 space-y-6">
-          <div className="space-y-2">
-            <h1 className="text-4xl font-bold text-foreground">{note.name}</h1>
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <span>Notebook ID: {notebookId}</span>
-              <span>•</span>
-              <span>Chapter ID: {chapterId}</span>
-              <span>•</span>
-              <span>Note ID: {noteId}</span>
-            </div>
-          </div>
+        <div className="max-w-4xl mx-auto px-6 py-8">
+          <div>
+            {note.content ? (
+              <div className="relative w-full max-w-5xl">
+                <div className="flex absolute right-5 top-5 z-10 mb-5 gap-2">
+                  <div className="rounded-lg bg-accent px-2 py-1 text-sm text-muted-foreground">{saveStatus}</div>
+                  <div className={charsCount ? "rounded-lg bg-accent px-2 py-1 text-sm text-muted-foreground" : "hidden"}>
+                    {charsCount} Words
+                  </div>
+                </div>
+                <EditorRoot>
+                  <EditorContent
+                    initialContent={note.content}
+                    extensions={extensions}
+                    className="relative min-h-[500px] w-full max-w-5xl border border-border/40 rounded-lg transition-colors hover:border-border/60 focus-within:border-border"
+                      editorProps={{
+                        handleDOMEvents: {
+                          keydown: (_view, event) => handleCommandNavigation(event),
+                        },
+                        // handlePaste: (view, event) => handleImagePaste(view, event, uploadFn),
+                        // handleDrop: (view, event, _slice, moved) => handleImageDrop(view, event, moved, uploadFn),
+                        attributes: {
+                          class:
+                            "prose prose-lg dark:prose-invert prose-headings:font-title font-default focus:outline-none max-w-full",
+                        },
+                      }}
+                      onUpdate={({ editor }) => {
+                        debouncedUpdates(editor);
+                        setSaveStatus("Unsaved");
+                      }}
+                      slotAfter={<ImageResizer />}
+                    >
+                      <EditorCommand className="z-50 h-auto max-h-[330px] overflow-y-auto rounded-md border border-muted bg-background px-1 py-2 shadow-md transition-all">
+                        <EditorCommandEmpty className="px-2 text-muted-foreground">No results</EditorCommandEmpty>
+                        <EditorCommandList>
+                          {suggestionItems.map((item) => (
+                            <EditorCommandItem
+                              value={item.title}
+                              onCommand={(val) => item.command?.(val)}
+                              className="flex w-full items-center space-x-2 rounded-md px-2 py-1 text-left text-sm hover:bg-accent aria-selected:bg-accent"
+                              key={item.title}
+                            >
+                              <div className="flex h-10 w-10 items-center justify-center rounded-md border border-muted bg-background">
+                                {item.icon}
+                              </div>
+                              <div>
+                                <p className="font-medium">{item.title}</p>
+                                <p className="text-xs text-muted-foreground">{item.description}</p>
+                              </div>
+                            </EditorCommandItem>
+                          ))}
+                        </EditorCommandList>
+                      </EditorCommand>
 
-          <div className="bg-card border border-border rounded-lg p-6">
-            <div className="prose prose-neutral dark:prose-invert max-w-none">
-              {note.content ? (
-                <ReactMarkdown
-                  remarkPlugins={[remarkGfm, remarkMath]}
-                  rehypePlugins={[rehypeKatex]}
-                  components={{
-                    code({ node, inline, className, children, ...props }: any) {
-                      const match = /language-(\w+)/.exec(className || '')
-                      const language = match ? match[1] : 'text'
-                      
-                      return !inline && match ? (
-                        <SyntaxHighlighter
-                          style={theme === 'dark' ? oneDark : oneLight}
-                          language={language}
-                          PreTag="div"
-                          customStyle={{
-                            margin: '1rem 0',
-                            borderRadius: '0.5rem',
-                          }}
-                        >
-                          {String(children).replace(/\n$/, '')}
-                        </SyntaxHighlighter>
-                      ) : (
-                        <code className="px-1.5 py-0.5 bg-muted rounded text-sm font-mono" {...props}>
-                          {children}
-                        </code>
-                      )
-                    },
-                    // Style links
-                    a({ children, href, ...props }: any) {
-                      return (
-                        <a 
-                          href={href} 
-                          target="_blank" 
-                          rel="noopener noreferrer"
-                          className="text-primary hover:underline"
-                          {...props}
-                        >
-                          {children}
-                        </a>
-                      )
-                    },
-                    // Style tables
-                    table({ children, ...props }: any) {
-                      return (
-                        <div className="overflow-x-auto my-4">
-                          <table className="min-w-full divide-y divide-border" {...props}>
-                            {children}
-                          </table>
-                        </div>
-                      )
-                    },
-                    // Style blockquotes
-                    blockquote({ children, ...props }: any) {
-                      return (
-                        <blockquote 
-                          className="border-l-4 border-primary/50 pl-4 italic my-4 text-muted-foreground"
-                          {...props}
-                        >
-                          {children}
-                        </blockquote>
-                      )
-                    },
-                  }}
-                >
-                  {note.content}
-                </ReactMarkdown>
-              ) : (
-                <p className="text-muted-foreground italic">
-                  This note is empty. Start writing to add content.
-                </p>
-              )}
-            </div>
-          </div>
+                      <GenerativeMenuSwitch open={openAI} onOpenChange={setOpenAI}>
+                        <Separator orientation="vertical" />
+                        <NodeSelector open={openNode} onOpenChange={setOpenNode} />
+                        <Separator orientation="vertical" />
 
-          <div className="text-xs text-muted-foreground space-y-1">
-            <p>Created: {new Date(note.createdAt).toLocaleString()}</p>
-            <p>Updated: {new Date(note.updatedAt).toLocaleString()}</p>
+                        <LinkSelector open={openLink} onOpenChange={setOpenLink} />
+                        <Separator orientation="vertical" />
+                        <MathSelector />
+                        <Separator orientation="vertical" />
+                        <TextButtons />
+                        <Separator orientation="vertical" />
+                        <ColorSelector open={openColor} onOpenChange={setOpenColor} />
+                      </GenerativeMenuSwitch>
+                    </EditorContent>
+                </EditorRoot>
+              </div>
+            ) : (
+              <p className="text-muted-foreground italic">
+                This note is empty. Start writing to add content.
+              </p>
+            )}
           </div>
         </div>
       </div>
