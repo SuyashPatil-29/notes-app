@@ -5,12 +5,23 @@ import { Loader2 } from 'lucide-react';
 import { useTheme } from './theme-provider';
 import { getThemeColors } from '@/utils/themeColors';
 
-interface VideoData {
+interface VideoSlide {
+  type: string;
   title: string;
   content: string;
+  items?: string[];
+  duration: number;
+}
+
+interface VideoData {
+  title: string;
+  content?: string; // Legacy format
+  slides?: VideoSlide[]; // AI-generated format
   durationInFrames: number;
   fps: number;
   theme: 'light' | 'dark';
+  backgroundStyle?: string;
+  transitionStyle?: string;
 }
 
 interface NoteVideoPlayerProps {

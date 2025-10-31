@@ -62,6 +62,7 @@ func main() {
 
 		// Chat/AI routes
 		protected.POST("/api/chat", controllers.ChatHandler)
+		protected.POST("/api/generate", controllers.GenerateHandler)
 		protected.GET("/api/dump", controllers.DumpHandler)
 
 		// Notebook routes

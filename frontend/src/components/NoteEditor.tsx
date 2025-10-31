@@ -405,21 +405,6 @@ export function NoteEditor({ user }: NoteEditorProps) {
                 Path: {note.chapter.notebook.name} / {note.chapter.name} / {note.name}
               </span>
               <div className='flex items-center gap-2'>
-                <Button
-                  variant="ghost"
-                  className="ml-2"
-                  onClick={() => handleSave(false)}
-                  disabled={isSaving}
-                >
-                  {isSaving ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Saving...
-                    </>
-                  ) : (
-                    "Save"
-                  )}
-                </Button>
                 {!note.hasVideo && (
                   <Button
                     variant="outline"
@@ -441,6 +426,21 @@ export function NoteEditor({ user }: NoteEditorProps) {
                     )}
                   </Button>
                 )}
+                <Button
+                  variant="ghost"
+                  className="ml-2"
+                  onClick={() => handleSave(false)}
+                  disabled={isSaving}
+                >
+                  {isSaving ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    "Save"
+                  )}
+                </Button>
               </div>
             </div>
           </div>
@@ -506,6 +506,11 @@ export function NoteEditor({ user }: NoteEditorProps) {
                     class:
                       "prose prose-lg dark:prose-invert prose-headings:font-title font-default focus:outline-none max-w-full",
                   },
+                }}
+                onCreate={({ editor }) => {
+                  // Set editor instance when editor is first created
+                  setEditorInstance(editor);
+                  debouncedUpdates(editor);
                 }}
                 onUpdate={({ editor }) => {
                   setEditorInstance(editor);

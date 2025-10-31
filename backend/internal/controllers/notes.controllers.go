@@ -4,12 +4,20 @@ import (
 	"backend/db"
 	"backend/internal/middleware"
 	"backend/internal/models"
+	"backend/pkg/utils"
+	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 
+	"github.com/anthropics/anthropic-sdk-go"
+	anthropicoption "github.com/anthropics/anthropic-sdk-go/option"
 	"github.com/gin-gonic/gin"
+	"github.com/openai/openai-go"
+	openaioption "github.com/openai/openai-go/option"
 	"github.com/rs/zerolog/log"
+	"google.golang.org/genai"
 )
 
 func GetNoteById(c *gin.Context) {
@@ -286,8 +294,15 @@ func GenerateNoteVideo(c *gin.Context) {
 		return
 	}
 
-	// Generate video data based on note content
-	videoData := generateVideoData(note.Name, note.Content)
+	// Generate video data with AI based on note content
+	log.Info().Str("note_id", id).Msg("Generating AI-powered video for note")
+	videoData, err := GenerateVideoDataWithAI(note.Chapter.Notebook.UserID, note.Name, note.Content)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to generate AI video, using fallback")
+		// Fallback to simple generation
+		extractedContent := ExtractTextFromJSON(note.Content)
+		videoData = generateVideoData(note.Name, extractedContent)
+	}
 
 	// Convert video data to JSON string
 	videoDataJSON, err := json.Marshal(videoData)
@@ -360,8 +375,275 @@ func DeleteNoteVideo(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Video removed successfully", "note": note})
 }
 
-// Helper function to extract text from ProseMirror JSON content
-func extractTextFromJSON(content string) string {
+// VideoSlide represents a single slide/scene in the video
+type VideoSlide struct {
+	Type     string   `json:"type"`     // "title", "content", "list", "quote"
+	Title    string   `json:"title"`    // Main heading
+	Content  string   `json:"content"`  // Main text content
+	Items    []string `json:"items"`    // For list type
+	Duration int      `json:"duration"` // Duration in frames
+}
+
+// VideoStructure represents the complete AI-generated video structure
+type VideoStructure struct {
+	Title           string       `json:"title"`
+	Slides          []VideoSlide `json:"slides"`
+	TotalDuration   int          `json:"durationInFrames"`
+	FPS             int          `json:"fps"`
+	Theme           string       `json:"theme"`
+	BackgroundStyle string       `json:"backgroundStyle"` // "gradient", "solid", "animated"
+	TransitionStyle string       `json:"transitionStyle"` // "fade", "slide", "zoom"
+}
+
+// getUserAPIKeyForVideo retrieves the user's API key for video generation
+func getUserAPIKeyForVideo(userID uint, provider string) (string, error) {
+	var credential models.AICredential
+	if err := db.DB.Where("user_id = ? AND provider = ?", userID, provider).First(&credential).Error; err != nil {
+		return "", err
+	}
+
+	// Decrypt the API key
+	apiKey, err := utils.Decrypt(credential.KeyCipher)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to decrypt API key")
+		return "", err
+	}
+
+	// Trim whitespace
+	apiKey = strings.TrimSpace(apiKey)
+	if apiKey == "" {
+		return "", fmt.Errorf("decrypted API key is empty")
+	}
+
+	return apiKey, nil
+}
+
+// GenerateVideoDataWithAI uses AI to create a structured video from note content
+func GenerateVideoDataWithAI(userID uint, title, content string) (map[string]interface{}, error) {
+	// Extract text from JSON content if needed
+	extractedContent := ExtractTextFromJSON(content)
+
+	// Try to get API keys in order of preference: OpenAI, Anthropic, Google
+	providers := []string{"openai", "anthropic", "google"}
+	var apiKey string
+	var provider string
+
+	for _, p := range providers {
+		key, err := getUserAPIKeyForVideo(userID, p)
+		if err == nil && key != "" {
+			apiKey = key
+			provider = p
+			break
+		}
+	}
+
+	if apiKey == "" {
+		// Fallback to simple generation if no AI provider available
+		log.Warn().Msg("No AI provider configured, using simple video generation")
+		return generateVideoData(title, extractedContent), nil
+	}
+
+	log.Info().Str("provider", provider).Msg("Generating video with AI provider")
+
+	// Create prompt for AI to generate video structure
+	prompt := fmt.Sprintf(`You are a video content creator. Analyze the following note content and create an engaging video structure.
+
+Note Title: %s
+Note Content: %s
+
+Create a video structure with multiple slides. Each slide should be concise and visually appealing.
+Follow these guidelines:
+1. Create 3-6 slides depending on content length
+2. First slide should be a title slide
+3. Break down complex content into digestible chunks
+4. Use different slide types: "title", "content", "list", "quote"
+5. Each slide should have 60-120 frames (2-4 seconds at 30fps)
+6. Extract key points, quotes, or lists from the content
+
+Respond with a JSON object in this exact format (no markdown, just raw JSON):
+{
+  "title": "Main video title",
+  "slides": [
+    {
+      "type": "title",
+      "title": "Introduction title",
+      "content": "Brief subtitle or description",
+      "items": [],
+      "duration": 90
+    },
+    {
+      "type": "content",
+      "title": "Section heading",
+      "content": "Main content text (2-3 sentences max)",
+      "items": [],
+      "duration": 120
+    },
+    {
+      "type": "list",
+      "title": "Key Points",
+      "content": "",
+      "items": ["Point 1", "Point 2", "Point 3"],
+      "duration": 150
+    }
+  ],
+  "backgroundStyle": "gradient",
+  "transitionStyle": "slide"
+}`, title, extractedContent[:min(len(extractedContent), 2000)])
+
+	var responseText string
+	var err error
+
+	switch provider {
+	case "openai":
+		responseText, err = generateWithOpenAI(apiKey, prompt)
+	case "anthropic":
+		responseText, err = generateWithAnthropic(apiKey, prompt)
+	case "google":
+		responseText, err = generateWithGoogle(apiKey, prompt)
+	default:
+		return generateVideoData(title, extractedContent), nil
+	}
+
+	if err != nil {
+		log.Error().Err(err).Msg("AI generation failed, falling back to simple generation")
+		return generateVideoData(title, extractedContent), nil
+	}
+
+	// Parse AI response
+	var videoStructure VideoStructure
+
+	// Clean up response - remove markdown code blocks if present
+	responseText = strings.TrimSpace(responseText)
+	responseText = strings.TrimPrefix(responseText, "```json")
+	responseText = strings.TrimPrefix(responseText, "```")
+	responseText = strings.TrimSuffix(responseText, "```")
+	responseText = strings.TrimSpace(responseText)
+
+	if err := json.Unmarshal([]byte(responseText), &videoStructure); err != nil {
+		log.Error().Err(err).Str("response", responseText).Msg("Failed to parse AI response, using fallback")
+		return generateVideoData(title, extractedContent), nil
+	}
+
+	// Calculate total duration
+	totalDuration := 0
+	for _, slide := range videoStructure.Slides {
+		totalDuration += slide.Duration
+	}
+	videoStructure.TotalDuration = totalDuration
+	videoStructure.FPS = 30
+	videoStructure.Theme = "light"
+
+	// Convert to map for compatibility
+	result, err := json.Marshal(videoStructure)
+	if err != nil {
+		return generateVideoData(title, extractedContent), nil
+	}
+
+	var resultMap map[string]interface{}
+	json.Unmarshal(result, &resultMap)
+
+	// Add durationInFrames for backward compatibility
+	resultMap["durationInFrames"] = totalDuration
+	resultMap["fps"] = 30
+
+	return resultMap, nil
+}
+
+func generateWithOpenAI(apiKey, prompt string) (string, error) {
+	client := openai.NewClient(openaioption.WithAPIKey(apiKey))
+
+	ctx := context.Background()
+	completion, err := client.Chat.Completions.New(ctx, openai.ChatCompletionNewParams{
+		Messages: []openai.ChatCompletionMessageParamUnion{
+			openai.UserMessage(prompt),
+		},
+		Model: openai.ChatModelGPT4o,
+	})
+
+	if err != nil {
+		return "", err
+	}
+
+	if len(completion.Choices) == 0 {
+		return "", fmt.Errorf("no response from OpenAI")
+	}
+
+	return completion.Choices[0].Message.Content, nil
+}
+
+func generateWithAnthropic(apiKey, prompt string) (string, error) {
+	client := anthropic.NewClient(anthropicoption.WithAPIKey(apiKey))
+
+	ctx := context.Background()
+	message, err := client.Messages.New(ctx, anthropic.MessageNewParams{
+		Model:     anthropic.Model("claude-3-5-sonnet-20241022"),
+		MaxTokens: 2000,
+		Messages: []anthropic.MessageParam{
+			anthropic.NewUserMessage(anthropic.NewTextBlock(prompt)),
+		},
+	})
+
+	if err != nil {
+		return "", err
+	}
+
+	if len(message.Content) == 0 {
+		return "", fmt.Errorf("no response from Anthropic")
+	}
+
+	return message.Content[0].Text, nil
+}
+
+func generateWithGoogle(apiKey, prompt string) (string, error) {
+	ctx := context.Background()
+	client, err := genai.NewClient(ctx, &genai.ClientConfig{
+		APIKey:  apiKey,
+		Backend: genai.BackendGeminiAPI,
+	})
+	if err != nil {
+		return "", err
+	}
+
+	// Collect streamed response
+	stream := client.Models.GenerateContentStream(ctx, "gemini-1.5-flash",
+		[]*genai.Content{{
+			Role: "user",
+			Parts: []*genai.Part{{
+				Text: prompt,
+			}},
+		}},
+		nil)
+
+	var fullResponse strings.Builder
+	for chunk := range stream {
+		for _, candidate := range chunk.Candidates {
+			if candidate.Content != nil {
+				for _, part := range candidate.Content.Parts {
+					if part.Text != "" {
+						fullResponse.WriteString(part.Text)
+					}
+				}
+			}
+		}
+	}
+
+	result := fullResponse.String()
+	if result == "" {
+		return "", fmt.Errorf("no response from Google")
+	}
+
+	return result, nil
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+// ExtractTextFromJSON extracts text from ProseMirror JSON content
+func ExtractTextFromJSON(content string) string {
 	// Try to parse as JSON
 	var jsonContent map[string]interface{}
 	if err := json.Unmarshal([]byte(content), &jsonContent); err != nil {
@@ -407,7 +689,7 @@ func extractTextFromJSON(content string) string {
 // Helper function to generate video composition data from note content
 func generateVideoData(title, content string) map[string]interface{} {
 	// Extract text from JSON content if needed
-	extractedContent := extractTextFromJSON(content)
+	extractedContent := ExtractTextFromJSON(content)
 
 	// Truncate content if too long for video
 	truncatedContent := extractedContent

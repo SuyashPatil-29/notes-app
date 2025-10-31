@@ -714,7 +714,7 @@ func updateNoteContent(userID uint, noteID string, content string) any {
 	}
 }
 
-// generateNoteVideo creates video data for a note
+// generateNoteVideo creates video data for a note using AI
 func generateNoteVideo(userID uint, noteID string) any {
 	// Verify note belongs to user
 	var note models.Notes
@@ -729,26 +729,31 @@ func generateNoteVideo(userID uint, noteID string) any {
 		return map[string]string{"error": "Note not found or access denied"}
 	}
 
-	// Extract text from JSON content if needed
-	extractedContent := extractTextFromJSONContent(note.Content)
+	// Generate video data with AI based on note content
+	log.Info().Str("noteID", noteID).Msg("Generating AI-powered video for note via chat tool")
+	videoData, err := GenerateVideoDataWithAI(userID, note.Name, note.Content)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to generate AI video, using fallback")
+		// Fallback to simple generation
+		extractedContent := ExtractTextFromJSON(note.Content)
 
-	// Truncate content if too long
-	truncatedContent := extractedContent
-	if len(extractedContent) > 500 {
-		if lastSpace := strings.LastIndex(extractedContent[:500], " "); lastSpace > 0 {
-			truncatedContent = extractedContent[:lastSpace] + "..."
-		} else {
-			truncatedContent = extractedContent[:500] + "..."
+		// Truncate content if too long
+		truncatedContent := extractedContent
+		if len(extractedContent) > 500 {
+			if lastSpace := strings.LastIndex(extractedContent[:500], " "); lastSpace > 0 {
+				truncatedContent = extractedContent[:lastSpace] + "..."
+			} else {
+				truncatedContent = extractedContent[:500] + "..."
+			}
 		}
-	}
 
-	// Generate video data from note content
-	videoData := map[string]interface{}{
-		"title":            note.Name,
-		"content":          truncatedContent,
-		"durationInFrames": 180, // 6 seconds at 30fps
-		"fps":              30,
-		"theme":            "light",
+		videoData = map[string]interface{}{
+			"title":            note.Name,
+			"content":          truncatedContent,
+			"durationInFrames": 180,
+			"fps":              30,
+			"theme":            "light",
+		}
 	}
 
 	// Convert video data to JSON string
@@ -769,11 +774,11 @@ func generateNoteVideo(userID uint, noteID string) any {
 		return map[string]string{"error": "Failed to save video data"}
 	}
 
-	log.Info().Str("noteID", noteID).Str("noteName", note.Name).Msg("Video generated successfully via AI tool")
+	log.Info().Str("noteID", noteID).Str("noteName", note.Name).Msg("AI-powered video generated successfully via chat tool")
 
 	return map[string]any{
 		"success":      true,
-		"message":      "Video generated successfully! Refresh the note to see it.",
+		"message":      "AI-powered video generated successfully! Refresh the note to see it.",
 		"noteId":       note.ID,
 		"noteName":     note.Name,
 		"chapterId":    note.Chapter.ID,
@@ -825,48 +830,172 @@ func deleteNoteVideo(userID uint, noteID string) any {
 	}
 }
 
-// extractTextFromJSONContent extracts text from ProseMirror JSON content
-func extractTextFromJSONContent(content string) string {
-	// Try to parse as JSON
-	var jsonContent map[string]interface{}
-	if err := json.Unmarshal([]byte(content), &jsonContent); err != nil {
-		// If not JSON, return as is
-		return content
+// GenerateRequest represents the request body for the generate endpoint
+type GenerateRequest struct {
+	Prompt  string `json:"prompt"`
+	Option  string `json:"option"`
+	Command string `json:"command"`
+}
+
+// GenerateHandler handles AI text generation requests (improve, fix, continue, etc.)
+func GenerateHandler(c *gin.Context) {
+	ctx := c.Request.Context()
+
+	var req GenerateRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		log.Error().Err(err).Msg("Failed to parse generate request")
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+		return
 	}
 
-	// Extract text from ProseMirror JSON structure
-	var extractText func(node interface{}) string
-	extractText = func(node interface{}) string {
-		nodeMap, ok := node.(map[string]interface{})
-		if !ok {
-			return ""
-		}
+	// Debug logging
+	log.Info().
+		Str("prompt", req.Prompt).
+		Str("option", req.Option).
+		Str("command", req.Command).
+		Int("promptLen", len(req.Prompt)).
+		Msg("Generate request received")
 
-		var text strings.Builder
-
-		// If node has text, add it
-		if textVal, ok := nodeMap["text"].(string); ok {
-			text.WriteString(textVal)
-			text.WriteString(" ")
-		}
-
-		// If node has content array, recursively extract text
-		if contentArr, ok := nodeMap["content"].([]interface{}); ok {
-			for _, child := range contentArr {
-				text.WriteString(extractText(child))
-			}
-		}
-
-		return text.String()
+	// Validate prompt
+	if strings.TrimSpace(req.Prompt) == "" && req.Option != "continue" {
+		log.Warn().Str("option", req.Option).Msg("Empty prompt received")
+		c.JSON(http.StatusBadRequest, gin.H{"error": "No text selected. Please select some text to edit."})
+		return
 	}
 
-	extractedText := extractText(jsonContent)
-	if extractedText == "" {
-		// Fallback to raw content if extraction fails
-		return content
+	// Get user ID from session
+	userID, exists := middleware.GetUserID(c)
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+		return
 	}
 
-	return strings.TrimSpace(extractedText)
+	// Get user's OpenAI API key (defaulting to OpenAI for text generation)
+	apiKey, err := getUserAPIKey(userID, "openai")
+	if err != nil {
+		log.Error().Err(err).Uint("userID", userID).Msg("Failed to get user API key")
+		c.JSON(http.StatusBadRequest, gin.H{"error": "OpenAI API key not configured. Please set up your API key in settings."})
+		return
+	}
+
+	// Construct system and user messages based on option
+	var systemMessage, userMessage string
+
+	switch req.Option {
+	case "continue":
+		systemMessage = "You are an AI writing assistant that continues existing text based on context from prior text. " +
+			"Give more weight/priority to the later characters than the beginning ones. " +
+			"Limit your response to no more than 200 characters, but make sure to construct complete sentences. " +
+			"Use Markdown formatting when appropriate. " +
+			"Return ONLY the continuation text without any preamble, explanation, or closing remarks."
+		userMessage = req.Prompt
+
+	case "improve":
+		systemMessage = "You are an AI writing assistant that improves existing text. " +
+			"Limit your response to no more than 200 characters, but make sure to construct complete sentences. " +
+			"Use Markdown formatting when appropriate. " +
+			"Return ONLY the improved text without any preamble like 'Here is...' or closing remarks. " +
+			"Do not add any conversational filler - just return the enhanced version of the text directly."
+		userMessage = req.Prompt
+
+	case "shorter":
+		systemMessage = "You are an AI writing assistant that shortens existing text. " +
+			"Use Markdown formatting when appropriate. " +
+			"Return ONLY the shortened text without any preamble like 'Here is...' or closing remarks. " +
+			"Do not add any conversational filler - just return the condensed version directly."
+		userMessage = req.Prompt
+
+	case "longer":
+		systemMessage = "You are an AI writing assistant that lengthens existing text. " +
+			"Use Markdown formatting when appropriate. " +
+			"Return ONLY the expanded text without any preamble like 'Certainly!' or 'Here is...' or closing remarks like 'This elaboration...'. " +
+			"Do not add any conversational filler or meta-commentary - just return the lengthened version of the text directly."
+		userMessage = req.Prompt
+
+	case "fix":
+		systemMessage = "You are an AI writing assistant that fixes grammar and spelling errors in existing text. " +
+			"Limit your response to no more than 200 characters, but make sure to construct complete sentences. " +
+			"Use Markdown formatting when appropriate. " +
+			"Return ONLY the corrected text without any preamble like 'Here is...' or closing remarks. " +
+			"Do not add any conversational filler - just return the fixed version directly."
+		userMessage = req.Prompt
+
+	case "zap":
+		systemMessage = "You are an AI writing assistant that generates text based on a prompt. " +
+			"You take an input from the user and a command for manipulating the text. " +
+			"Use Markdown formatting when appropriate. " +
+			"Return ONLY the generated/edited text without any preamble or explanation. " +
+			"Do not add any conversational filler - just return the result directly."
+		userMessage = fmt.Sprintf("For this text: %s. You have to respect the command: %s", req.Prompt, req.Command)
+
+	default:
+		log.Error().Str("option", req.Option).Msg("Invalid option")
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid option"})
+		return
+	}
+
+	log.Info().
+		Str("systemMessage", systemMessage).
+		Str("userMessage", userMessage).
+		Msg("Messages prepared for OpenAI")
+
+	// Set data stream headers
+	aisdk.WriteDataStreamHeaders(c.Writer)
+
+	// Create OpenAI messages directly using the SDK
+	client := getOpenAIClient(apiKey)
+
+	// Build messages in OpenAI format directly
+	openaiMessages := []openai.ChatCompletionMessageParamUnion{
+		openai.SystemMessage(systemMessage),
+		openai.UserMessage(userMessage),
+	}
+
+	log.Info().
+		Int("messageCount", len(openaiMessages)).
+		Msg("OpenAI messages prepared")
+
+	stream := aisdk.OpenAIToDataStream(client.Chat.Completions.NewStreaming(ctx, openai.ChatCompletionNewParams{
+		Model:               openai.ChatModelGPT4oMini,
+		Messages:            openaiMessages,
+		MaxCompletionTokens: openai.Int(4096),
+		Temperature:         openai.Float(0.7),
+		TopP:                openai.Float(1),
+		FrequencyPenalty:    openai.Float(0),
+		PresencePenalty:     openai.Float(0),
+	}))
+
+	if stream == nil {
+		log.Error().Msg("Failed to create stream")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create stream"})
+		return
+	}
+
+	// Pipe the stream to the response writer
+	err = stream.Pipe(c.Writer)
+	if err != nil {
+		log.Error().Err(err).Msg("Error piping AI response stream")
+
+		// Try to extract error message
+		errorMsg := err.Error()
+		userFriendlyMsg := errorMsg
+
+		// Check if it's an API key error
+		if strings.Contains(errorMsg, "401") || strings.Contains(errorMsg, "Unauthorized") || strings.Contains(errorMsg, "invalid_api_key") || strings.Contains(errorMsg, "Incorrect API key") {
+			userFriendlyMsg = "Invalid API key. Please check your API key in Profile settings and ensure it's correct."
+		} else if strings.Contains(errorMsg, "insufficient_quota") {
+			userFriendlyMsg = "API quota exceeded. Please check your API usage limits."
+		} else if strings.Contains(errorMsg, "rate_limit") {
+			userFriendlyMsg = "Rate limit exceeded. Please try again in a moment."
+		} else {
+			userFriendlyMsg = "An error occurred while processing your request. Please try again."
+		}
+
+		c.JSON(http.StatusInternalServerError, gin.H{"error": userFriendlyMsg})
+		return
+	}
+
+	log.Info().Str("option", req.Option).Msg("Generate request completed successfully")
 }
 
 // DumpHandler dumps the last messages to a JSON file

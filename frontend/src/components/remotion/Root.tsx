@@ -27,6 +27,13 @@ export const RemotionRoot: React.FC = () => {
           durationInFrames: 180,
           fps: 30,
           theme: "light" as const,
+          themeColors: {
+            primary: '#3b82f6',
+            secondary: '#8b5cf6',
+          },
+          isDark: false,
+          backgroundStyle: 'gradient',
+          transitionStyle: 'slide',
         }}
       />
     </>

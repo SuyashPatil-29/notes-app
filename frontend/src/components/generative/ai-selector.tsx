@@ -2,7 +2,6 @@
 
 import { Command, CommandInput } from "@/components/ui/command";
 
-import { useCompletion } from "ai/react";
 import { ArrowUp } from "lucide-react";
 import { useEditor } from "novel";
 import { addAIHighlight } from "novel/extensions";
@@ -25,20 +24,79 @@ interface AISelectorProps {
 export function AISelector({ onOpenChange }: AISelectorProps) {
   const { editor } = useEditor();
   const [inputValue, setInputValue] = useState("");
+  const [completion, setCompletion] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
 
-  const { completion, complete, isLoading } = useCompletion({
-    // id: "novel",
-    api: "/api/generate",
-    onResponse: (response) => {
-      if (response.status === 429) {
-        toast.error("You have reached your request limit for the day.");
+  const complete = async (prompt: string, options?: { body?: { option?: string; command?: string } }) => {
+    setIsLoading(true);
+    setCompletion("");
+
+    const requestBody = {
+      prompt: prompt,
+      option: options?.body?.option || "",
+      command: options?.body?.command || "",
+    };
+
+    console.log("Sending generate request:", requestBody);
+
+    try {
+      const response = await fetch("http://localhost:8080/api/generate", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+        body: JSON.stringify(requestBody),
+      });
+
+      if (!response.ok) {
+        if (response.status === 429) {
+          toast.error("You have reached your request limit for the day.");
+        } else {
+          const errorData = await response.json().catch(() => ({}));
+          toast.error(errorData.error || "An error occurred");
+        }
+        setIsLoading(false);
         return;
       }
-    },
-    onError: (e) => {
-      toast.error(e.message);
-    },
-  });
+
+      // Read the streaming response
+      if (response.body) {
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let accumulatedText = "";
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          const chunk = decoder.decode(value, { stream: true });
+          
+          // Parse data stream format
+          const lines = chunk.split("\n");
+          for (const line of lines) {
+            if (line.startsWith("0:")) {
+              // Text chunk
+              try {
+                const data = JSON.parse(line.slice(2));
+                if (typeof data === "string") {
+                  accumulatedText += data;
+                  setCompletion(accumulatedText);
+                }
+              } catch (e) {
+                // Skip invalid JSON
+              }
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error("Error in complete:", error);
+      toast.error("Failed to generate completion");
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const hasCompletion = completion.length > 0;
 
