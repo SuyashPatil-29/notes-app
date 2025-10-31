@@ -120,6 +120,12 @@ import {
     // configure lowlight: common /  all / use highlightJS in case there is a need to specify certain language grammars only
     // common: covers 37 language grammars which should be good enough in most cases
     lowlight: createLowlight(common),
+    defaultLanguage: 'plaintext',
+    HTMLAttributes: {
+      class: cx(
+        "rounded-md bg-muted text-muted-foreground border p-5 font-mono font-medium relative",
+      ),
+    },
   });
   
   const youtube = Youtube.configure({

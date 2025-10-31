@@ -117,6 +117,7 @@
     background-color: hsl(var(--muted));
     border-radius: 0.5rem;
     overflow-x: auto;
+    position: relative;
   }
 
   .ProseMirror pre code {
@@ -124,6 +125,141 @@
     background-color: transparent;
     font-size: 0.875rem;
     line-height: 1.7;
+    display: block;
+  }
+
+  /* Language label for code blocks */
+  .ProseMirror pre[data-language]::before {
+    content: attr(data-language);
+    position: absolute;
+    top: 0.5rem;
+    right: 0.75rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: hsl(var(--muted-foreground));
+    opacity: 0.6;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-family: system-ui, -apple-system, sans-serif;
+  }
+
+  /* Syntax Highlighting for Code Blocks */
+  .ProseMirror .hljs-comment,
+  .ProseMirror .hljs-quote {
+    color: #6a737d;
+    font-style: italic;
+  }
+
+  .ProseMirror .hljs-keyword,
+  .ProseMirror .hljs-selector-tag,
+  .ProseMirror .hljs-addition {
+    color: #d73a49;
+  }
+
+  .ProseMirror .hljs-number,
+  .ProseMirror .hljs-string,
+  .ProseMirror .hljs-meta .hljs-string,
+  .ProseMirror .hljs-literal,
+  .ProseMirror .hljs-doctag,
+  .ProseMirror .hljs-regexp {
+    color: #032f62;
+  }
+
+  .ProseMirror .hljs-title,
+  .ProseMirror .hljs-section,
+  .ProseMirror .hljs-name,
+  .ProseMirror .hljs-selector-id,
+  .ProseMirror .hljs-selector-class {
+    color: #6f42c1;
+  }
+
+  .ProseMirror .hljs-attribute,
+  .ProseMirror .hljs-attr,
+  .ProseMirror .hljs-variable,
+  .ProseMirror .hljs-template-variable,
+  .ProseMirror .hljs-class .hljs-title,
+  .ProseMirror .hljs-type {
+    color: #e36209;
+  }
+
+  .ProseMirror .hljs-symbol,
+  .ProseMirror .hljs-bullet,
+  .ProseMirror .hljs-subst,
+  .ProseMirror .hljs-meta,
+  .ProseMirror .hljs-link {
+    color: #005cc5;
+  }
+
+  .ProseMirror .hljs-built_in,
+  .ProseMirror .hljs-deletion {
+    color: #22863a;
+  }
+
+  .ProseMirror .hljs-formula {
+    background-color: #eee;
+  }
+
+  .ProseMirror .hljs-emphasis {
+    font-style: italic;
+  }
+
+  .ProseMirror .hljs-strong {
+    font-weight: 700;
+  }
+
+  /* Dark mode syntax highlighting */
+  .dark .ProseMirror .hljs-comment,
+  .dark .ProseMirror .hljs-quote {
+    color: #8b949e;
+  }
+
+  .dark .ProseMirror .hljs-keyword,
+  .dark .ProseMirror .hljs-selector-tag,
+  .dark .ProseMirror .hljs-addition {
+    color: #ff7b72;
+  }
+
+  .dark .ProseMirror .hljs-number,
+  .dark .ProseMirror .hljs-string,
+  .dark .ProseMirror .hljs-meta .hljs-string,
+  .dark .ProseMirror .hljs-literal,
+  .dark .ProseMirror .hljs-doctag,
+  .dark .ProseMirror .hljs-regexp {
+    color: #a5d6ff;
+  }
+
+  .dark .ProseMirror .hljs-title,
+  .dark .ProseMirror .hljs-section,
+  .dark .ProseMirror .hljs-name,
+  .dark .ProseMirror .hljs-selector-id,
+  .dark .ProseMirror .hljs-selector-class {
+    color: #d2a8ff;
+  }
+
+  .dark .ProseMirror .hljs-attribute,
+  .dark .ProseMirror .hljs-attr,
+  .dark .ProseMirror .hljs-variable,
+  .dark .ProseMirror .hljs-template-variable,
+  .dark .ProseMirror .hljs-class .hljs-title,
+  .dark .ProseMirror .hljs-type {
+    color: #ffa657;
+  }
+
+  .dark .ProseMirror .hljs-symbol,
+  .dark .ProseMirror .hljs-bullet,
+  .dark .ProseMirror .hljs-subst,
+  .dark .ProseMirror .hljs-meta,
+  .dark .ProseMirror .hljs-link {
+    color: #79c0ff;
+  }
+
+  .dark .ProseMirror .hljs-built_in,
+  .dark .ProseMirror .hljs-deletion {
+    color: #7ee787;
+  }
+
+  .dark .ProseMirror .hljs-formula {
+    background-color: #2d333b;
   }
 
   .ProseMirror hr {
