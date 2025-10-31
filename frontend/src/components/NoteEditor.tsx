@@ -1,10 +1,11 @@
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { getNote, updateNote } from '@/utils/notes'
+import { getNote, updateNote, generateNoteVideo, deleteNoteVideo } from '@/utils/notes'
 import { getUserNotebooks } from '@/utils/notebook'
 import { Header } from '@/components/Header'
+import { NoteVideoPlayer } from '@/components/NoteVideoPlayer'
 import type { AuthenticatedUser } from '@/types/backend'
-import { Loader2, Calendar, Clock } from 'lucide-react'
+import { Loader2, Calendar, Clock, Video, VideoOff } from 'lucide-react'
 import { toast } from 'sonner'
 import 'katex/dist/katex.min.css'
 import '@/prosemirror.css'
@@ -58,6 +59,8 @@ export function NoteEditor({ user }: NoteEditorProps) {
   const [editorInstance, setEditorInstance] = useState<EditorInstance | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [isAutoSaving, setIsAutoSaving] = useState(false);
+  const [isGeneratingVideo, setIsGeneratingVideo] = useState(false);
+  const [isDeletingVideo, setIsDeletingVideo] = useState(false);
   const autoSaveTimerRef = useRef<number | null>(null);
   const hasUnsavedChanges = useRef(false);
 
@@ -70,6 +73,8 @@ export function NoteEditor({ user }: NoteEditorProps) {
     queryKey: ['note', noteId],
     queryFn: () => getNote(noteId!),
     enabled: !!noteId,
+    refetchInterval: 5000, // Refetch every 5 seconds to catch AI-generated videos
+    refetchOnWindowFocus: true,
   })
 
   const { data: notebooks } = useQuery({
@@ -304,6 +309,48 @@ export function NoteEditor({ user }: NoteEditorProps) {
     }
   }
 
+  const handleGenerateVideo = async () => {
+    if (!noteId) {
+      toast.error("Note not available")
+      return
+    }
+
+    setIsGeneratingVideo(true)
+    try {
+      await generateNoteVideo(noteId)
+      // Invalidate queries to refetch the updated note with video data
+      queryClient.invalidateQueries({ queryKey: ['note', noteId] })
+      queryClient.invalidateQueries({ queryKey: ['userNotebooks'] })
+      toast.success("Video generated successfully!")
+    } catch (error) {
+      console.error("Failed to generate video:", error)
+      toast.error("Failed to generate video")
+    } finally {
+      setIsGeneratingVideo(false)
+    }
+  }
+
+  const handleDeleteVideo = async () => {
+    if (!noteId) {
+      toast.error("Note not available")
+      return
+    }
+
+    setIsDeletingVideo(true)
+    try {
+      await deleteNoteVideo(noteId)
+      // Invalidate queries to refetch the updated note without video data
+      queryClient.invalidateQueries({ queryKey: ['note', noteId] })
+      queryClient.invalidateQueries({ queryKey: ['userNotebooks'] })
+      toast.success("Video removed successfully!")
+    } catch (error) {
+      console.error("Failed to delete video:", error)
+      toast.error("Failed to remove video")
+    } finally {
+      setIsDeletingVideo(false)
+    }
+  }
+
   // Format date for display
   const formatDate = (dateString: string) => {
     const date = new Date(dateString)
@@ -357,23 +404,80 @@ export function NoteEditor({ user }: NoteEditorProps) {
               <span className="text-xs font-mono bg-accent px-3 py-1.5 rounded">
                 Path: {note.chapter.notebook.name} / {note.chapter.name} / {note.name}
               </span>
-              <Button
-                variant="ghost"
-                className="ml-2"
-                onClick={() => handleSave(false)}
-                disabled={isSaving}
-              >
-                {isSaving ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Saving...
-                  </>
-                ) : (
-                  "Save"
+              <div className='flex items-center gap-2'>
+                <Button
+                  variant="ghost"
+                  className="ml-2"
+                  onClick={() => handleSave(false)}
+                  disabled={isSaving}
+                >
+                  {isSaving ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    "Save"
+                  )}
+                </Button>
+                {!note.hasVideo && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="ml-2"
+                    onClick={handleGenerateVideo}
+                    disabled={isGeneratingVideo}
+                  >
+                    {isGeneratingVideo ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Generating...
+                      </>
+                    ) : (
+                      <>
+                        <Video className="mr-2 h-4 w-4" />
+                        Generate Video
+                      </>
+                    )}
+                  </Button>
                 )}
-              </Button>
+              </div>
             </div>
           </div>
+
+          {/* Video Player - conditionally rendered */}
+          {note.hasVideo && note.videoData && (
+            <div className="mb-6">
+              <div className="border rounded-lg p-4 bg-muted/30">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-lg font-semibold flex items-center gap-2">
+                    <Video className="h-5 w-5" />
+                    Note Video
+                  </h2>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleDeleteVideo}
+                    disabled={isDeletingVideo}
+                    className="text-destructive hover:text-destructive"
+                  >
+                    {isDeletingVideo ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Removing...
+                      </>
+                    ) : (
+                      <>
+                        <VideoOff className="mr-2 h-4 w-4" />
+                        Remove Video
+                      </>
+                    )}
+                  </Button>
+                </div>
+                <NoteVideoPlayer videoData={note.videoData} />
+              </div>
+            </div>
+          )}
 
           <div className="relative w-full max-w-5xl">
             <div className="flex absolute right-5 top-5 z-10 mb-5 gap-2">

@@ -150,6 +150,20 @@ func handleNotesToolCall(toolCall aisdk.ToolCall, userID uint) any {
 		}
 		return moveChapter(userID, chapterID, targetNotebookID)
 
+	case "generateNoteVideo":
+		noteID, ok := toolCall.Args["noteId"].(string)
+		if !ok {
+			return map[string]string{"error": "Invalid noteId parameter"}
+		}
+		return generateNoteVideo(userID, noteID)
+
+	case "deleteNoteVideo":
+		noteID, ok := toolCall.Args["noteId"].(string)
+		if !ok {
+			return map[string]string{"error": "Invalid noteId parameter"}
+		}
+		return deleteNoteVideo(userID, noteID)
+
 	case "renameNote":
 		noteID, ok := toolCall.Args["noteId"].(string)
 		if !ok {
@@ -700,6 +714,161 @@ func updateNoteContent(userID uint, noteID string, content string) any {
 	}
 }
 
+// generateNoteVideo creates video data for a note
+func generateNoteVideo(userID uint, noteID string) any {
+	// Verify note belongs to user
+	var note models.Notes
+	err := db.DB.Preload("Chapter.Notebook").
+		Joins("JOIN chapters ON notes.chapter_id = chapters.id").
+		Joins("JOIN notebooks ON chapters.notebook_id = notebooks.id").
+		Where("notes.id = ? AND notebooks.user_id = ?", noteID, userID).
+		First(&note).Error
+
+	if err != nil {
+		log.Error().Err(err).Str("noteID", noteID).Msg("Note not found")
+		return map[string]string{"error": "Note not found or access denied"}
+	}
+
+	// Extract text from JSON content if needed
+	extractedContent := extractTextFromJSONContent(note.Content)
+
+	// Truncate content if too long
+	truncatedContent := extractedContent
+	if len(extractedContent) > 500 {
+		if lastSpace := strings.LastIndex(extractedContent[:500], " "); lastSpace > 0 {
+			truncatedContent = extractedContent[:lastSpace] + "..."
+		} else {
+			truncatedContent = extractedContent[:500] + "..."
+		}
+	}
+
+	// Generate video data from note content
+	videoData := map[string]interface{}{
+		"title":            note.Name,
+		"content":          truncatedContent,
+		"durationInFrames": 180, // 6 seconds at 30fps
+		"fps":              30,
+		"theme":            "light",
+	}
+
+	// Convert video data to JSON string
+	videoDataJSON, err := json.Marshal(videoData)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to marshal video data")
+		return map[string]string{"error": "Failed to generate video data"}
+	}
+
+	// Update note with video data
+	result := db.DB.Model(&note).Select("VideoData", "HasVideo").Updates(models.Notes{
+		VideoData: string(videoDataJSON),
+		HasVideo:  true,
+	})
+
+	if result.Error != nil {
+		log.Error().Err(result.Error).Str("noteID", noteID).Msg("Failed to update note with video data")
+		return map[string]string{"error": "Failed to save video data"}
+	}
+
+	log.Info().Str("noteID", noteID).Str("noteName", note.Name).Msg("Video generated successfully via AI tool")
+
+	return map[string]any{
+		"success":      true,
+		"message":      "Video generated successfully! Refresh the note to see it.",
+		"noteId":       note.ID,
+		"noteName":     note.Name,
+		"chapterId":    note.Chapter.ID,
+		"chapterName":  note.Chapter.Name,
+		"notebookId":   note.Chapter.Notebook.ID,
+		"notebookName": note.Chapter.Notebook.Name,
+		"hasVideo":     true,
+	}
+}
+
+// deleteNoteVideo removes video data from a note
+func deleteNoteVideo(userID uint, noteID string) any {
+	// Verify note belongs to user
+	var note models.Notes
+	err := db.DB.Preload("Chapter.Notebook").
+		Joins("JOIN chapters ON notes.chapter_id = chapters.id").
+		Joins("JOIN notebooks ON chapters.notebook_id = notebooks.id").
+		Where("notes.id = ? AND notebooks.user_id = ?", noteID, userID).
+		First(&note).Error
+
+	if err != nil {
+		log.Error().Err(err).Str("noteID", noteID).Msg("Note not found")
+		return map[string]string{"error": "Note not found or access denied"}
+	}
+
+	// Remove video data - use map to force update empty strings
+	result := db.DB.Model(&note).Select("VideoData", "HasVideo").Updates(map[string]interface{}{
+		"video_data": "",
+		"has_video":  false,
+	})
+
+	if result.Error != nil {
+		log.Error().Err(result.Error).Str("noteID", noteID).Msg("Failed to remove video data")
+		return map[string]string{"error": "Failed to remove video data"}
+	}
+
+	log.Info().Str("noteID", noteID).Str("noteName", note.Name).Msg("Video removed successfully via AI tool")
+
+	return map[string]any{
+		"success":      true,
+		"message":      "Video removed successfully! Refresh the note to see the changes.",
+		"noteId":       note.ID,
+		"noteName":     note.Name,
+		"chapterId":    note.Chapter.ID,
+		"chapterName":  note.Chapter.Name,
+		"notebookId":   note.Chapter.Notebook.ID,
+		"notebookName": note.Chapter.Notebook.Name,
+		"hasVideo":     false,
+	}
+}
+
+// extractTextFromJSONContent extracts text from ProseMirror JSON content
+func extractTextFromJSONContent(content string) string {
+	// Try to parse as JSON
+	var jsonContent map[string]interface{}
+	if err := json.Unmarshal([]byte(content), &jsonContent); err != nil {
+		// If not JSON, return as is
+		return content
+	}
+
+	// Extract text from ProseMirror JSON structure
+	var extractText func(node interface{}) string
+	extractText = func(node interface{}) string {
+		nodeMap, ok := node.(map[string]interface{})
+		if !ok {
+			return ""
+		}
+
+		var text strings.Builder
+
+		// If node has text, add it
+		if textVal, ok := nodeMap["text"].(string); ok {
+			text.WriteString(textVal)
+			text.WriteString(" ")
+		}
+
+		// If node has content array, recursively extract text
+		if contentArr, ok := nodeMap["content"].([]interface{}); ok {
+			for _, child := range contentArr {
+				text.WriteString(extractText(child))
+			}
+		}
+
+		return text.String()
+	}
+
+	extractedText := extractText(jsonContent)
+	if extractedText == "" {
+		// Fallback to raw content if extraction fails
+		return content
+	}
+
+	return strings.TrimSpace(extractedText)
+}
+
 // DumpHandler dumps the last messages to a JSON file
 func DumpHandler(c *gin.Context) {
 	data, _ := json.MarshalIndent(lastMessages, "", "  ")
@@ -902,6 +1071,32 @@ func ChatHandler(c *gin.Context) {
 				},
 			},
 		},
+		{
+			Name:        "generateNoteVideo",
+			Description: "Generate a short explanatory video for an existing note based on its title and content. The video will be created automatically and can be viewed in the note editor. Use this when the user wants to create a video explanation for their note content.",
+			Schema: aisdk.Schema{
+				Required: []string{"noteId"},
+				Properties: map[string]any{
+					"noteId": map[string]any{
+						"type":        "string",
+						"description": "The ID of the note to generate a video for",
+					},
+				},
+			},
+		},
+		{
+			Name:        "deleteNoteVideo",
+			Description: "Remove the video from a note. Use this when the user wants to delete an existing video from their note.",
+			Schema: aisdk.Schema{
+				Required: []string{"noteId"},
+				Properties: map[string]any{
+					"noteId": map[string]any{
+						"type":        "string",
+						"description": "The ID of the note to remove the video from",
+					},
+				},
+			},
+		},
 	}
 
 	// Tool handler
@@ -919,7 +1114,7 @@ func ChatHandler(c *gin.Context) {
 	if len(req.Messages) == 0 || req.Messages[0].Role != "system" {
 		req.Messages = append([]aisdk.Message{{
 			Role:    "system",
-			Content: "You are a helpful AI assistant integrated into a notes application. You have access to tools that can search, list, retrieve, create, update, move, rename, and delete notes and chapters.\n\nAvailable tools:\n- searchNotes: Search through all notes by content or title\n- listNotebooks: List all notebooks\n- listChapters: List chapters in a notebook\n- listNotesInChapter: List notes in a chapter\n- getNoteContent: Get the full content of a specific note\n- createNote: Create a new note with markdown content in a chapter\n- moveNote: Move a note to a different chapter\n- moveChapter: Move an entire chapter (with all its notes) to a different notebook\n- renameNote: Rename a note\n- updateNoteContent: Update the content of an existing note\n- deleteNote: Delete a note permanently\n\nWhen managing notes and chapters:\n1. For create/move operations: If the user doesn't specify which chapter/notebook, list available options first\n2. For moving chapters: Use moveChapter to move entire chapters between notebooks in one operation\n3. For delete operations: Confirm the user really wants to delete before executing\n4. For rename operations: Keep the name concise and descriptive\n5. When creating/updating content: Generate high-quality markdown with proper formatting, then IMMEDIATELY call the appropriate tool (createNote or updateNoteContent) to save it\n6. IMPORTANT: If user asks to update/modify/edit note content, you MUST call getNoteContent first to read current content, then call updateNoteContent with the new content to save it. Never just describe what to write - always actually save it using the tool.\n\nAlways provide a clear, helpful text response after using tools. Be conversational and helpful.",
+			Content: "You are a helpful AI assistant integrated into a notes application. You have access to tools that can search, list, retrieve, create, update, move, rename, delete notes and chapters, and manage videos.\n\nAvailable tools:\n- searchNotes: Search through all notes by content or title\n- listNotebooks: List all notebooks\n- listChapters: List chapters in a notebook\n- listNotesInChapter: List notes in a chapter\n- getNoteContent: Get the full content of a specific note\n- createNote: Create a new note with markdown content in a chapter\n- moveNote: Move a note to a different chapter\n- moveChapter: Move an entire chapter (with all its notes) to a different notebook\n- renameNote: Rename a note\n- updateNoteContent: Update the content of an existing note\n- deleteNote: Delete a note permanently\n- generateNoteVideo: Generate a short explanatory video for a note based on its content\n- deleteNoteVideo: Remove a video from a note\n\nWhen managing notes and chapters:\n1. For create/move operations: If the user doesn't specify which chapter/notebook, list available options first\n2. For moving chapters: Use moveChapter to move entire chapters between notebooks in one operation\n3. For delete operations: Confirm the user really wants to delete before executing\n4. For rename operations: Keep the name concise and descriptive\n5. When creating/updating content: Generate high-quality markdown with proper formatting, then IMMEDIATELY call the appropriate tool (createNote or updateNoteContent) to save it\n6. IMPORTANT: If user asks to update/modify/edit note content, you MUST call getNoteContent first to read current content, then call updateNoteContent with the new content to save it. Never just describe what to write - always actually save it using the tool.\n7. For videos: Use generateNoteVideo when users want to create explanatory videos for their notes. Videos are generated automatically from note title and content.\n\nAlways provide a clear, helpful text response after using tools. Be conversational and helpful.",
 		}}, req.Messages...)
 	}
 

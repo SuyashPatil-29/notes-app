@@ -86,6 +86,8 @@ func main() {
 		protected.PUT("/note/:id", controllers.UpdateNote)
 		protected.PATCH("/note/:id/move", controllers.MoveNote)
 		protected.DELETE("/note/:id", controllers.DeleteNote)
+		protected.POST("/note/:id/generate-video", controllers.GenerateNoteVideo)
+		protected.DELETE("/note/:id/video", controllers.DeleteNoteVideo)
 
 		// Publishing routes
 		protected.POST("/notebook/:id/publish", controllers.PublishNotebook)

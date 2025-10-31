@@ -36,6 +36,8 @@ export type Notes = {
   chapterId: string;
   chapter: Chapter;
   isPublic: boolean;
+  videoData?: string;
+  hasVideo?: boolean;
   createdAt: string;
   updatedAt: string;
 };

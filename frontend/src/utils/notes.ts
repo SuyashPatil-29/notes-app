@@ -22,6 +22,14 @@ export const deleteNote = async (id: string) => {
 };
 
 export const moveNote = async (id: string, chapterId: string) => {
-    return await api.patch(`/note/${id}/move`, { chapter_id: chapterId });
+  return await api.patch(`/note/${id}/move`, { chapter_id: chapterId });
+};
+
+export const generateNoteVideo = async (noteId: string) => {
+  return await api.post(`/note/${noteId}/generate-video`);
+};
+
+export const deleteNoteVideo = async (noteId: string) => {
+  return await api.delete(`/note/${noteId}/video`);
 };
 
