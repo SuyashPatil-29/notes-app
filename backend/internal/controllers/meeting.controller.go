@@ -189,8 +189,21 @@ func GetMeetingTranscript(ctx *gin.Context) {
 		return
 	}
 
-	// Check if transcript URL exists
-	if recording.TranscriptDownloadURL == "" {
+	// Fetch fresh download URL from Recall.ai (pre-signed URLs expire)
+	recallClient := recallai.NewClient()
+	botDetails, err := recallClient.GetBot(recording.BotID)
+	if err != nil {
+		log.Error().
+			Err(err).
+			Str("meeting_id", meetingID).
+			Str("bot_id", recording.BotID).
+			Msg("Failed to fetch bot details from Recall.ai")
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch meeting details"})
+		return
+	}
+
+	// Check if recordings exist and get fresh transcript URL
+	if len(botDetails.Recordings) == 0 {
 		ctx.JSON(http.StatusOK, gin.H{
 			"transcript": nil,
 			"status":     recording.Status,
@@ -199,9 +212,18 @@ func GetMeetingTranscript(ctx *gin.Context) {
 		return
 	}
 
-	// Download and parse transcript
-	recallClient := recallai.NewClient()
-	transcript, err := recallClient.DownloadTranscript(recording.TranscriptDownloadURL)
+	transcriptURL := botDetails.Recordings[0].MediaShortcuts.Transcript.Data.DownloadURL
+	if transcriptURL == "" {
+		ctx.JSON(http.StatusOK, gin.H{
+			"transcript": nil,
+			"status":     recording.Status,
+			"message":    "Transcript not yet available",
+		})
+		return
+	}
+
+	// Download and parse transcript using fresh URL
+	transcript, err := recallClient.DownloadTranscript(transcriptURL)
 	if err != nil {
 		log.Error().
 			Err(err).
@@ -489,6 +511,43 @@ func HandleRecallWebhook(ctx *gin.Context) {
 		}
 	}
 
+	// Handle calendar events
+	if eventType == "calendar.update" || eventType == "calendar.sync_events" {
+		log.Info().
+			Str("event_type", eventType).
+			Msg("Detected calendar event, processing inline")
+
+		// Process calendar webhook inline (body already consumed)
+		if data, ok := payload["data"].(map[string]interface{}); ok {
+			calendarID, _ := data["calendar_id"].(string)
+			lastUpdatedTS, _ := data["last_updated_ts"].(string)
+
+			log.Info().
+				Str("calendar_id", calendarID).
+				Str("last_updated_ts", lastUpdatedTS).
+				Msg("Processing calendar sync event")
+
+			// Find calendar in database
+			var calendar models.Calendar
+			if err := db.DB.Where("recall_calendar_id = ?", calendarID).First(&calendar).Error; err != nil {
+				log.Error().
+					Err(err).
+					Str("recall_calendar_id", calendarID).
+					Msg("Calendar not found for webhook")
+				ctx.JSON(http.StatusOK, gin.H{"status": "calendar_not_found", "message": "Calendar not in database yet"})
+				return
+			}
+
+			// Trigger sync in background
+			go syncCalendarInBackground(calendar)
+
+			ctx.JSON(http.StatusOK, gin.H{"status": "received", "message": "Calendar sync triggered"})
+		} else {
+			ctx.JSON(http.StatusBadRequest, gin.H{"error": "Invalid calendar webhook data"})
+		}
+		return
+	}
+
 	// Handle other event types (for future expansion)
 	log.Info().
 		Str("event_type", eventType).
@@ -530,7 +589,7 @@ func BackfillVideoURLs(ctx *gin.Context) {
 			Uint("user_id", userID).
 			Msg("No meetings found needing video URL backfill")
 		ctx.JSON(http.StatusOK, gin.H{
-			"message":       "No meetings need video URL updates",
+			"message":        "No meetings need video URL updates",
 			"meetings_count": 0,
 			"updated_count":  0,
 		})

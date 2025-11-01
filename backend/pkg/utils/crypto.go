@@ -4,6 +4,7 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
@@ -84,6 +85,24 @@ func Decrypt(ciphertext []byte) (string, error) {
 	}
 
 	return string(plaintext), nil
+}
+
+// EncryptString encrypts a string and returns a base64-encoded string
+func EncryptString(plaintext string) (string, error) {
+	ciphertext, err := Encrypt(plaintext)
+	if err != nil {
+		return "", err
+	}
+	return base64.StdEncoding.EncodeToString(ciphertext), nil
+}
+
+// DecryptString decrypts a base64-encoded string
+func DecryptString(encodedCiphertext string) (string, error) {
+	ciphertext, err := base64.StdEncoding.DecodeString(encodedCiphertext)
+	if err != nil {
+		return "", err
+	}
+	return Decrypt(ciphertext)
 }
 
 // MaskAPIKey returns a masked version of the API key for display

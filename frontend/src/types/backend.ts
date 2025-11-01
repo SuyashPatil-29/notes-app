@@ -83,3 +83,51 @@ export type StartMeetingRecordingResponse = {
 export type GetMeetingsResponse = {
   data: MeetingRecording[];
 };
+
+// Calendar Integration Types
+export type Calendar = {
+  id: string;
+  userId: number;
+  recallCalendarId: string;
+  platform: 'google_calendar' | 'microsoft_outlook';
+  platformEmail: string;
+  status: 'active' | 'inactive' | 'error';
+  lastSyncedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type CalendarEvent = {
+  id: string;
+  calendarId: string;
+  recallEventId: string;
+  meetingPlatform: string;
+  meetingUrl: string;
+  title: string;
+  startTime: string;
+  endTime: string;
+  botScheduled: boolean;
+  botId?: string;
+  isDeleted: boolean;
+  meetingRecordingId?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type GetCalendarsResponse = {
+  calendars: Calendar[];
+};
+
+export type GetCalendarEventsResponse = {
+  events: CalendarEvent[];
+};
+
+export type InitiateCalendarAuthResponse = {
+  authUrl: string;
+};
+
+export type SyncCalendarResponse = {
+  message: string;
+  syncedCount: number;
+  lastSyncedAt: string;
+};

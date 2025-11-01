@@ -4,6 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import api from "@/utils/api";
+import { initiateCalendarAuth } from "@/utils/calendar";
 
 interface OnboardingWizardProps {
   onComplete: () => void;
@@ -17,11 +18,12 @@ const onboardingOptions = [
 ];
 
 export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
-  const [step, setStep] = useState<1 | 2>(1);
+  const [step, setStep] = useState<1 | 2 | 3>(1);
   const [selectedType, setSelectedType] = useState<string>("");
   const [openAIKey, setOpenAIKey] = useState<string>("");
   const [anthropicKey, setAnthropicKey] = useState<string>("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isConnectingCalendar, setIsConnectingCalendar] = useState<string | null>(null);
 
   const completeOnboarding = async (skipApiKeys: boolean = false) => {
     if (!selectedType) {
@@ -94,11 +96,31 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
       toast.error("Please select an onboarding type");
       return;
     }
-    setStep(2);
+    if (step === 1) {
+      setStep(2);
+    } else if (step === 2) {
+      setStep(3);
+    }
   };
 
   const handleBack = () => {
-    setStep(1);
+    if (step === 2) {
+      setStep(1);
+    } else if (step === 3) {
+      setStep(2);
+    }
+  };
+
+  const handleConnectCalendar = async (provider: 'google' | 'microsoft') => {
+    setIsConnectingCalendar(provider);
+    try {
+      await initiateCalendarAuth(provider);
+      // User will be redirected to OAuth flow
+    } catch (error: any) {
+      console.error("Failed to initiate calendar auth:", error);
+      toast.error("Failed to connect calendar");
+      setIsConnectingCalendar(null);
+    }
   };
 
   const handleSkipApiKeys = () => {
@@ -123,6 +145,14 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
               step >= 2 ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
             }`}>
               2
+            </div>
+            <div className={`w-12 h-0.5 ${
+              step >= 3 ? "bg-primary" : "bg-muted"
+            }`} />
+            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
+              step >= 3 ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
+            }`}>
+              3
             </div>
           </div>
         </div>
@@ -227,13 +257,91 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
               </div>
 
               <div className="space-y-2">
+                <Button
+                  onClick={handleContinue}
+                  disabled={isSubmitting}
+                  className="w-full"
+                >
+                  Continue
+                </Button>
+                <Button
+                  onClick={handleBack}
+                  disabled={isSubmitting}
+                  variant="outline"
+                  className="w-full"
+                >
+                  Back
+                </Button>
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* Step 3: Calendar Integration */}
+        {step === 3 && (
+          <>
+            <div className="text-center mb-6">
+              <h1 className="text-2xl font-semibold mb-2">Connect Your Calendar</h1>
+              <p className="text-muted-foreground">
+                Optionally connect your calendar to automatically record and transcribe meetings. You can skip this and set it up later.
+              </p>
+            </div>
+            <div className="space-y-6">
+              <div className="space-y-4">
+                <Button
+                  onClick={() => handleConnectCalendar('google')}
+                  disabled={isConnectingCalendar === 'google'}
+                  variant="outline"
+                  className="w-full h-auto py-4"
+                >
+                  {isConnectingCalendar === 'google' ? (
+                    <div className="flex items-center gap-2">
+                      <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                      <span>Connecting...</span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-3">
+                      <span className="text-2xl">📅</span>
+                      <div className="text-left">
+                        <div className="font-medium">Connect Google Calendar</div>
+                        <div className="text-xs text-muted-foreground">
+                          Auto-record Google Meet, Zoom, Teams meetings
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </Button>
+
+                <div className="relative">
+                  <Button
+                    disabled={true}
+                    variant="outline"
+                    className="w-full h-auto py-4 opacity-60 cursor-not-allowed"
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="text-2xl">📆</span>
+                      <div className="text-left">
+                        <div className="font-medium">Connect Microsoft Outlook</div>
+                        <div className="text-xs text-muted-foreground">
+                          Auto-record Teams, Zoom, Google Meet meetings
+                        </div>
+                      </div>
+                    </div>
+                  </Button>
+                  <span className="absolute top-3 right-3 text-xs bg-muted px-2 py-1 rounded">
+                    Coming Soon
+                  </span>
+                </div>
+              </div>
+
+              <div className="space-y-2">
                 {(openAIKey.trim() || anthropicKey.trim()) ? (
                   <Button
                     onClick={handleSubmit}
                     disabled={isSubmitting}
                     className="w-full"
                   >
-                    {isSubmitting ? "Setting up..." : "Complete Setup"}
+                    {isSubmitting ? "Setting up..." : "Skip for now →"}
                   </Button>
                 ) : (
                   <Button
@@ -241,12 +349,13 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
                     disabled={isSubmitting}
                     className="w-full"
                   >
-                    {isSubmitting ? "Setting up..." : "Skip API Keys"}
+                    {isSubmitting ? "Setting up..." : "Skip for now →"}
                   </Button>
                 )}
                 <Button
                   onClick={handleBack}
                   disabled={isSubmitting}
+                  variant="ghost"
                   className="w-full"
                 >
                   Back

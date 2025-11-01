@@ -10,6 +10,8 @@ import { Key, Trash2, User, Mail, Save } from "lucide-react";
 import { toast } from "sonner";
 import api from "@/utils/api";
 import { useQueryClient } from "@tanstack/react-query";
+import { CalendarSettings } from "@/components/CalendarSettings";
+import { CalendarEventsList } from "@/components/CalendarEventsList";
 
 interface ApiKeyStatus {
   openai: boolean;
@@ -30,6 +32,7 @@ export function Profile() {
     anthropic: false,
     google: false,
   });
+  const [calendarSyncTrigger, setCalendarSyncTrigger] = useState(0);
 
   // Fetch API key status on mount
   useEffect(() => {
@@ -130,6 +133,29 @@ export function Profile() {
     await refetchUser();
     window.location.reload();
   };
+
+  // Check for calendar OAuth callback
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    
+    if (params.get('calendar_success')) {
+      const provider = params.get('calendar_success');
+      toast.success(`${provider === 'google' ? 'Google' : 'Microsoft'} calendar connected successfully! Syncing events...`);
+      // Clear the query params
+      window.history.replaceState({}, '', window.location.pathname);
+      
+      // Reload page after a short delay to show synced events
+      setTimeout(() => {
+        window.location.reload();
+      }, 3000);
+    }
+    
+    if (params.get('calendar_error')) {
+      toast.error('Failed to connect calendar. Please try again.');
+      // Clear the query params
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, []);
 
   if (!user) {
     return (
@@ -381,6 +407,12 @@ export function Profile() {
               </div>
             </div>
           </div>
+
+          {/* Calendar Integration Section */}
+          <CalendarSettings onSyncComplete={() => setCalendarSyncTrigger(prev => prev + 1)} />
+
+          {/* Upcoming Meetings Section */}
+          <CalendarEventsList key={calendarSyncTrigger} />
         </div>
       </main>
     </div>

@@ -17,6 +17,9 @@ func main() {
 	// Initialize authentication
 	auth.InitAuth()
 
+	// Initialize calendar OAuth
+	auth.InitCalendarOAuth()
+
 	r := gin.Default()
 
 	// CORS configuration
@@ -34,6 +37,10 @@ func main() {
 		// OAuth routes - public for authentication flow
 		public.GET("/auth/:provider", auth.BeginAuth)
 		public.GET("/auth/:provider/callback", auth.AuthCallback)
+
+		// Calendar OAuth callback routes - public for OAuth flow
+		public.GET("/api/calendar/google/callback", auth.GoogleCalendarCallback)
+		public.GET("/api/calendar/microsoft/callback", auth.MicrosoftCalendarCallback)
 
 		// Public content routes
 		public.GET("/public/:notebookId", controllers.GetPublicNotebook)
@@ -101,12 +108,23 @@ func main() {
 		protected.GET("/meetings", controllers.GetUserMeetings)
 		protected.GET("/meeting/:id/transcript", controllers.GetMeetingTranscript)
 		protected.POST("/meetings/backfill-videos", controllers.BackfillVideoURLs)
+
+		// Calendar routes
+		protected.POST("/api/calendar-auth/:provider", auth.BeginCalendarOAuth) // Initiate OAuth flow
+		protected.GET("/api/calendars", controllers.GetUserCalendars)
+		protected.POST("/api/calendars/sync-missing", controllers.SyncMissingCalendars)
+		protected.DELETE("/api/calendars/:id", controllers.DisconnectCalendar)
+		protected.GET("/api/calendars/:id/events", controllers.GetCalendarEvents)
+		protected.POST("/api/calendars/:id/sync", controllers.SyncCalendarEvents)
+		protected.POST("/api/calendar-events/:eventId/schedule-bot", controllers.ScheduleBotForEvent)
+		protected.DELETE("/api/calendar-events/:eventId/cancel-bot", controllers.CancelBotForEvent)
 	}
 
 	// Webhook routes (no authentication required for external services)
 	webhook := r.Group("/webhooks")
 	{
 		webhook.POST("/recall", controllers.HandleRecallWebhook)
+		webhook.POST("/calendar/sync", controllers.HandleCalendarWebhook)
 	}
 
 	r.Run(":8080")
