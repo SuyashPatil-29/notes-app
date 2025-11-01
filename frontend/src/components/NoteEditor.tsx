@@ -415,7 +415,7 @@ export function NoteEditor({ user, userLoading = false }: NoteEditorProps) {
 
             {/* AI Summary for Meeting Notes */}
             {note.aiSummary && (
-              <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+              <div className="bg-linear-to-r from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
                 <h3 className="text-sm font-semibold text-blue-900 dark:text-blue-100 mb-2 flex items-center gap-2">
                   <Video className="h-4 w-4" />
                   Meeting Summary
