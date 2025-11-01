@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { Button } from '@/components/ui/button'
-import { Book, BookOpen, FileText } from 'lucide-react'
+import { Book, BookOpen, FileText, Video } from 'lucide-react'
 import { Header } from '@/components/Header'
 import { handleGoogleLogin } from '@/utils/auth'
 import { useNavigate } from 'react-router-dom'
@@ -17,6 +17,8 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { getPreviewText } from '@/utils/markdown'
+import { MeetingRecorder } from '@/components/MeetingRecorder'
+import { MeetingsList } from '@/components/MeetingsList'
 
 interface DashboardProps {
   user: AuthenticatedUser | null
@@ -24,7 +26,7 @@ interface DashboardProps {
 
 export function Dashboard({ user }: DashboardProps) {
   const navigate = useNavigate()
-  const [activeTab, setActiveTab] = useState<'notebooks' | 'chapters' | 'notes'>('notebooks')
+  const [activeTab, setActiveTab] = useState<'notebooks' | 'chapters' | 'notes' | 'meetings'>('notebooks')
   const queryClient = useQueryClient()
 
   // Create Note modal state
@@ -235,6 +237,20 @@ export function Dashboard({ user }: DashboardProps) {
                   <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-t-lg" />
                 )}
               </button>
+              <button
+                onClick={() => setActiveTab('meetings')}
+                className={`flex items-center gap-2 px-4 py-3 font-medium transition-colors relative ${
+                  activeTab === 'meetings'
+                    ? 'text-primary'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                <Video className="h-4 w-4" />
+                Meetings
+                {activeTab === 'meetings' && (
+                  <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-t-lg" />
+                )}
+              </button>
             </div>
 
             {/* Content Area */}
@@ -379,6 +395,13 @@ export function Dashboard({ user }: DashboardProps) {
                       </div>
                     )}
                   </>
+                )}
+
+                {/* Meetings Tab */}
+                {activeTab === 'meetings' && (
+                  <div>
+                    <MeetingsList />
+                  </div>
                 )}
               </>
             )}

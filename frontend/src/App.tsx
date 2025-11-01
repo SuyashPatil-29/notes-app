@@ -20,6 +20,7 @@ import { PublicNotebookView } from '@/components/public/PublicNotebookView'
 import { PublicChapterView } from '@/components/public/PublicChapterView'
 import { PublicNoteView } from '@/components/public/PublicNoteView'
 import { PublicUserProfile } from '@/components/public/PublicUserProfile'
+import { MeetingDetail } from '@/components/MeetingDetail'
 import { LeftSidebarProvider, LeftSidebarInset } from '@/components/ui/left-sidebar'
 import { RightSidebarProvider, RightSidebarInset } from '@/components/ui/right-sidebar'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -497,6 +498,7 @@ function App() {
               <Routes>
                 <Route path="/" element={<Dashboard user={user} />} />
                 <Route path="/profile" element={<Profile />} />
+                <Route path="/meetings/:meetingId" element={<MeetingDetail />} />
                 <Route path="/public/:notebookId" element={<PublicNotebookView />} />
                 <Route path="/public/:notebookId/:chapterId" element={<PublicChapterView />} />
                 <Route path="/public/:notebookId/:chapterId/:noteId" element={<PublicNoteView />} />

@@ -38,6 +38,9 @@ export type Notes = {
   isPublic: boolean;
   videoData?: string;
   hasVideo?: boolean;
+  meetingRecordingId?: string;
+  aiSummary?: string;
+  transcriptRaw?: string;
   createdAt: string;
   updatedAt: string;
 };
@@ -50,4 +53,32 @@ export type AuthenticatedUser = Pick<User, 'id' | 'name' | 'email' | 'imageUrl'>
 export type PublishSettings = {
   notebookId: string;
   selectedNoteIds: string[];
+};
+
+export type MeetingRecording = {
+  id: string;
+  userId: number;
+  botId: string;
+  meetingUrl: string;
+  status: 'pending' | 'recording' | 'processing' | 'completed' | 'failed';
+  recallRecordingId?: string;
+  transcriptDownloadUrl?: string;
+  generatedNoteId?: string;
+  generatedNote?: Notes;
+  createdAt: string;
+  updatedAt: string;
+  completedAt?: string;
+};
+
+export type StartMeetingRecordingRequest = {
+  meeting_url: string;
+};
+
+export type StartMeetingRecordingResponse = {
+  data: MeetingRecording;
+  message: string;
+};
+
+export type GetMeetingsResponse = {
+  data: MeetingRecording[];
 };

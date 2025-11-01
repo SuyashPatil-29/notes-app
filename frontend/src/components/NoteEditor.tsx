@@ -393,9 +393,28 @@ export function NoteEditor({ user }: NoteEditorProps) {
                 <Clock className="h-4 w-4" />
                 <span>Updated: {formatDate(note.updatedAt)}</span>
               </div>
+              {note.meetingRecordingId && (
+                <div className="flex items-center gap-2 px-2 py-1 bg-blue-100 dark:bg-blue-900/30 rounded-md">
+                  <Video className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                  <span className="text-blue-800 dark:text-blue-200 font-medium">Generated from Meeting</span>
+                </div>
+              )}
             </div>
 
             <Separator />
+
+            {/* AI Summary for Meeting Notes */}
+            {note.aiSummary && (
+              <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+                <h3 className="text-sm font-semibold text-blue-900 dark:text-blue-100 mb-2 flex items-center gap-2">
+                  <Video className="h-4 w-4" />
+                  Meeting Summary
+                </h3>
+                <p className="text-sm text-blue-800 dark:text-blue-200 leading-relaxed">
+                  {note.aiSummary}
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Path and Save - Sticky */}

@@ -372,6 +372,114 @@ function renderToolOutput(toolName: string, result: any, onNavigateToNote?: (not
                 </div>
             )
 
+        case "createNotebook":
+            return (
+                <div className="space-y-2 text-sm">
+                    {result.success ? (
+                        <>
+                            <div className="p-3 bg-green-500/10 border border-green-500/20 rounded-md">
+                                <p className="font-semibold text-primary dark:text-primary">
+                                    ✓ {result.message}
+                                </p>
+                            </div>
+                            <div className="p-3 bg-muted/50 rounded border">
+                                <p className="font-medium text-foreground">📚 {result.name}</p>
+                                <p className="text-xs text-muted-foreground mt-1">
+                                    Created: {result.createdAt}
+                                </p>
+                            </div>
+                        </>
+                    ) : (
+                        <div className="p-3 text-sm text-destructive bg-destructive/10 rounded-md">
+                            <p className="font-semibold">Failed to create notebook</p>
+                            <p>{result.error || "Unknown error"}</p>
+                        </div>
+                    )}
+                </div>
+            )
+
+        case "createChapter":
+            return (
+                <div className="space-y-2 text-sm">
+                    {result.success ? (
+                        <>
+                            <div className="p-3 bg-green-500/10 border border-green-500/20 rounded-md">
+                                <p className="font-semibold text-primary dark:text-primary">
+                                    ✓ {result.message}
+                                </p>
+                            </div>
+                            <div className="p-3 bg-muted/50 rounded border">
+                                <p className="font-medium text-foreground">📖 {result.chapterName}</p>
+                                <p className="text-xs text-muted-foreground mt-1">
+                                    in {result.notebookName}
+                                </p>
+                                <p className="text-xs text-muted-foreground mt-1">
+                                    Created: {result.createdAt}
+                                </p>
+                            </div>
+                        </>
+                    ) : (
+                        <div className="p-3 text-sm text-destructive bg-destructive/10 rounded-md">
+                            <p className="font-semibold">Failed to create chapter</p>
+                            <p>{result.error || "Unknown error"}</p>
+                        </div>
+                    )}
+                </div>
+            )
+
+        case "renameNotebook":
+            return (
+                <div className="space-y-2 text-sm">
+                    {result.success ? (
+                        <>
+                            <div className="p-3 bg-purple-500/10 border border-purple-500/20 rounded-md">
+                                <p className="font-semibold text-purple-600 dark:text-purple-400">
+                                    ✓ {result.message}
+                                </p>
+                            </div>
+                            <div className="p-3 bg-muted/50 rounded border">
+                                <p className="text-xs text-muted-foreground">
+                                    <span className="line-through">{result.oldName}</span> → <span className="font-medium text-foreground">📚 {result.newName}</span>
+                                </p>
+                            </div>
+                        </>
+                    ) : (
+                        <div className="p-3 text-sm text-destructive bg-destructive/10 rounded-md">
+                            <p className="font-semibold">Failed to rename notebook</p>
+                            <p>{result.error || "Unknown error"}</p>
+                        </div>
+                    )}
+                </div>
+            )
+
+        case "renameChapter":
+            return (
+                <div className="space-y-2 text-sm">
+                    {result.success ? (
+                        <>
+                            <div className="p-3 bg-purple-500/10 border border-purple-500/20 rounded-md">
+                                <p className="font-semibold text-purple-600 dark:text-purple-400">
+                                    ✓ {result.message}
+                                </p>
+                            </div>
+                            <div className="p-3 bg-muted/50 rounded border">
+                                <p className="text-xs text-muted-foreground">
+                                    <span className="line-through">{result.oldName}</span> → <span className="font-medium text-foreground">📖 {result.newName}</span>
+                                </p>
+                                <p className="text-xs text-muted-foreground mt-1">
+                                    in {result.notebookName}
+                                </p>
+                            </div>
+                        </>
+                    ) : (
+                        <div className="p-3 text-sm text-destructive bg-destructive/10 rounded-md">
+                            <p className="font-semibold">Failed to rename chapter</p>
+                            <p>{result.error || "Unknown error"}</p>
+                        </div>
+                    )}
+                </div>
+            )
+
         default:
             // Fallback to JSON for unknown tools
             return (
@@ -755,8 +863,8 @@ export function RightSidebarContent() {
                     const toolInvocation = part.toolInvocation as any
                     const toolName = toolInvocation.toolName
 
-                    // List of tools that modify notes/chapters and need cache invalidation
-                    const modifyingTools = ['createNote', 'moveNote', 'moveChapter', 'renameNote', 'deleteNote', 'updateNoteContent']
+                    // List of tools that modify notes/chapters/notebooks and need cache invalidation
+                    const modifyingTools = ['createNote', 'moveNote', 'moveChapter', 'renameNote', 'deleteNote', 'updateNoteContent', 'createNotebook', 'createChapter', 'renameNotebook', 'renameChapter']
 
                     if (modifyingTools.includes(toolName) && toolInvocation.result?.success === true) {
                         // Use message ID + part index + tool name for truly unique operation key
@@ -796,6 +904,26 @@ export function RightSidebarContent() {
                                 updateNoteContent: {
                                     loading: 'Updating note...',
                                     success: 'Note updated!',
+                                    error: 'Failed to refresh'
+                                },
+                                createNotebook: {
+                                    loading: 'Creating notebook...',
+                                    success: 'Notebook created!',
+                                    error: 'Failed to refresh'
+                                },
+                                createChapter: {
+                                    loading: 'Creating chapter...',
+                                    success: 'Chapter created!',
+                                    error: 'Failed to refresh'
+                                },
+                                renameNotebook: {
+                                    loading: 'Renaming notebook...',
+                                    success: 'Notebook renamed!',
+                                    error: 'Failed to refresh'
+                                },
+                                renameChapter: {
+                                    loading: 'Renaming chapter...',
+                                    success: 'Chapter renamed!',
                                     error: 'Failed to refresh'
                                 },
                             }
@@ -858,9 +986,10 @@ export function RightSidebarContent() {
                                         }
                                     </p>
                                     {hasSelectedApiKey && (
-                                        <p className="text-xs text-muted-foreground mt-2">
-                                            Try: "What notes do I have?" or "Search for notes about..."
-                                        </p>
+                                        <div className="text-xs text-muted-foreground mt-2 space-y-1">
+                                            <p>Try: "What notes do I have?" or "Search for notes about..."</p>
+                                            <p className="text-primary/70">💡 I can also reorganize your entire note structure!</p>
+                                        </div>
                                     )}
                                 </div>
                             </div>

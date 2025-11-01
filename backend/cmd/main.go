@@ -95,6 +95,17 @@ func main() {
 		protected.PUT("/notebook/:id/published-notes", controllers.UpdatePublishedNotes)
 		protected.POST("/notebook/:id/unpublish", controllers.UnpublishNotebook)
 		protected.PATCH("/note/:id/publish", controllers.PublishNote)
+
+		// Meeting routes
+		protected.POST("/meeting/start", controllers.StartMeetingRecording)
+		protected.GET("/meetings", controllers.GetUserMeetings)
+		protected.GET("/meeting/:id/transcript", controllers.GetMeetingTranscript)
+	}
+
+	// Webhook routes (no authentication required for external services)
+	webhook := r.Group("/webhooks")
+	{
+		webhook.POST("/recall", controllers.HandleRecallWebhook)
 	}
 
 	r.Run(":8080")

@@ -112,6 +112,46 @@ func handleNotesToolCall(toolCall aisdk.ToolCall, userID uint) any {
 		}
 		return listNotesInChapter(userID, chapterID)
 
+	case "createNotebook":
+		name, ok := toolCall.Args["name"].(string)
+		if !ok {
+			return map[string]string{"error": "Invalid name parameter"}
+		}
+		return createNotebook(userID, name)
+
+	case "createChapter":
+		notebookID, ok := toolCall.Args["notebookId"].(string)
+		if !ok {
+			return map[string]string{"error": "Invalid notebookId parameter"}
+		}
+		name, ok := toolCall.Args["name"].(string)
+		if !ok {
+			return map[string]string{"error": "Invalid name parameter"}
+		}
+		return createChapter(userID, notebookID, name)
+
+	case "renameNotebook":
+		notebookID, ok := toolCall.Args["notebookId"].(string)
+		if !ok {
+			return map[string]string{"error": "Invalid notebookId parameter"}
+		}
+		newName, ok := toolCall.Args["newName"].(string)
+		if !ok {
+			return map[string]string{"error": "Invalid newName parameter"}
+		}
+		return renameNotebook(userID, notebookID, newName)
+
+	case "renameChapter":
+		chapterID, ok := toolCall.Args["chapterId"].(string)
+		if !ok {
+			return map[string]string{"error": "Invalid chapterId parameter"}
+		}
+		newName, ok := toolCall.Args["newName"].(string)
+		if !ok {
+			return map[string]string{"error": "Invalid newName parameter"}
+		}
+		return renameChapter(userID, chapterID, newName)
+
 	case "createNote":
 		chapterID, ok := toolCall.Args["chapterId"].(string)
 		if !ok {
@@ -830,6 +870,131 @@ func deleteNoteVideo(userID uint, noteID string) any {
 	}
 }
 
+// createNotebook creates a new notebook
+func createNotebook(userID uint, name string) any {
+	// Create the notebook
+	notebook := models.Notebook{
+		Name:   name,
+		UserID: userID,
+	}
+
+	err := db.DB.Create(&notebook).Error
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to create notebook")
+		return map[string]string{"error": "Failed to create notebook"}
+	}
+
+	log.Info().Str("notebookId", notebook.ID).Str("name", name).Msg("Notebook created successfully via AI tool")
+
+	return map[string]any{
+		"success":    true,
+		"message":    "Notebook created successfully!",
+		"notebookId": notebook.ID,
+		"name":       notebook.Name,
+		"createdAt":  notebook.CreatedAt.Format("2006-01-02 15:04:05"),
+	}
+}
+
+// createChapter creates a new chapter in a notebook
+func createChapter(userID uint, notebookID string, name string) any {
+	// Verify notebook belongs to user
+	var notebook models.Notebook
+	err := db.DB.Where("id = ? AND user_id = ?", notebookID, userID).First(&notebook).Error
+	if err != nil {
+		log.Error().Err(err).Msg("Notebook not found")
+		return map[string]string{"error": "Notebook not found or access denied"}
+	}
+
+	// Create the chapter
+	chapter := models.Chapter{
+		Name:       name,
+		NotebookID: notebookID,
+	}
+
+	err = db.DB.Create(&chapter).Error
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to create chapter")
+		return map[string]string{"error": "Failed to create chapter"}
+	}
+
+	log.Info().Str("chapterId", chapter.ID).Str("name", name).Str("notebookId", notebookID).Msg("Chapter created successfully via AI tool")
+
+	return map[string]any{
+		"success":      true,
+		"message":      "Chapter created successfully!",
+		"chapterId":    chapter.ID,
+		"chapterName":  chapter.Name,
+		"notebookId":   notebook.ID,
+		"notebookName": notebook.Name,
+		"createdAt":    chapter.CreatedAt.Format("2006-01-02 15:04:05"),
+	}
+}
+
+// renameNotebook renames a notebook
+func renameNotebook(userID uint, notebookID string, newName string) any {
+	// Verify notebook belongs to user
+	var notebook models.Notebook
+	err := db.DB.Where("id = ? AND user_id = ?", notebookID, userID).First(&notebook).Error
+	if err != nil {
+		log.Error().Err(err).Msg("Notebook not found")
+		return map[string]string{"error": "Notebook not found or access denied"}
+	}
+
+	oldName := notebook.Name
+
+	// Update notebook's name using Select to force update
+	result := db.DB.Model(&notebook).Select("Name").Updates(models.Notebook{Name: newName})
+	if result.Error != nil {
+		log.Error().Err(result.Error).Msg("Failed to rename notebook")
+		return map[string]string{"error": "Failed to rename notebook"}
+	}
+
+	log.Info().Str("notebookId", notebook.ID).Str("oldName", oldName).Str("newName", newName).Msg("Notebook renamed successfully via AI tool")
+
+	return map[string]any{
+		"success":    true,
+		"message":    "Notebook renamed successfully!",
+		"notebookId": notebook.ID,
+		"oldName":    oldName,
+		"newName":    newName,
+	}
+}
+
+// renameChapter renames a chapter
+func renameChapter(userID uint, chapterID string, newName string) any {
+	// Verify chapter belongs to user's notebook
+	var chapter models.Chapter
+	err := db.DB.Preload("Notebook").
+		Joins("JOIN notebooks ON chapters.notebook_id = notebooks.id").
+		Where("chapters.id = ? AND notebooks.user_id = ?", chapterID, userID).
+		First(&chapter).Error
+
+	if err != nil {
+		log.Error().Err(err).Msg("Chapter not found")
+		return map[string]string{"error": "Chapter not found or access denied"}
+	}
+
+	oldName := chapter.Name
+
+	// Update chapter's name using Select to force update
+	result := db.DB.Model(&chapter).Select("Name").Updates(models.Chapter{Name: newName})
+	if result.Error != nil {
+		log.Error().Err(result.Error).Msg("Failed to rename chapter")
+		return map[string]string{"error": "Failed to rename chapter"}
+	}
+
+	log.Info().Str("chapterId", chapter.ID).Str("oldName", oldName).Str("newName", newName).Msg("Chapter renamed successfully via AI tool")
+
+	return map[string]any{
+		"success":      true,
+		"message":      "Chapter renamed successfully!",
+		"chapterId":    chapter.ID,
+		"oldName":      oldName,
+		"newName":      newName,
+		"notebookName": chapter.Notebook.Name,
+	}
+}
+
 // GenerateRequest represents the request body for the generate endpoint
 type GenerateRequest struct {
 	Prompt  string `json:"prompt"`
@@ -1073,6 +1238,70 @@ func ChatHandler(c *gin.Context) {
 			},
 		},
 		{
+			Name:        "createNotebook",
+			Description: "Create a new notebook for organizing notes. Use this when reorganizing the structure or when the user needs a new category.",
+			Schema: aisdk.Schema{
+				Required: []string{"name"},
+				Properties: map[string]any{
+					"name": map[string]any{
+						"type":        "string",
+						"description": "The name of the new notebook",
+					},
+				},
+			},
+		},
+		{
+			Name:        "createChapter",
+			Description: "Create a new chapter in a notebook. Use this when reorganizing content or when a new sub-category is needed.",
+			Schema: aisdk.Schema{
+				Required: []string{"notebookId", "name"},
+				Properties: map[string]any{
+					"notebookId": map[string]any{
+						"type":        "string",
+						"description": "The ID of the notebook to create the chapter in",
+					},
+					"name": map[string]any{
+						"type":        "string",
+						"description": "The name of the new chapter",
+					},
+				},
+			},
+		},
+		{
+			Name:        "renameNotebook",
+			Description: "Rename an existing notebook. Use this when reorganizing or improving the organizational structure.",
+			Schema: aisdk.Schema{
+				Required: []string{"notebookId", "newName"},
+				Properties: map[string]any{
+					"notebookId": map[string]any{
+						"type":        "string",
+						"description": "The ID of the notebook to rename",
+					},
+					"newName": map[string]any{
+						"type":        "string",
+						"description": "The new name for the notebook",
+					},
+				},
+			},
+		},
+		{
+			Name:        "renameChapter",
+			Description: "Rename an existing chapter. Use this when reorganizing or improving the organizational structure.",
+			Schema: aisdk.Schema{
+				Required: []string{"chapterId", "newName"},
+				Properties: map[string]any{
+					"chapterId": map[string]any{
+						"type":        "string",
+						"description": "The ID of the chapter to rename",
+					},
+					"newName": map[string]any{
+						"type":        "string",
+						"description": "The new name for the chapter",
+					},
+				},
+			},
+		},
+		{
 			Name:        "getNoteContent",
 			Description: "Get the full content of a specific note by its ID. Returns the note's title, content, and metadata.",
 			Schema: aisdk.Schema{
@@ -1243,7 +1472,7 @@ func ChatHandler(c *gin.Context) {
 	if len(req.Messages) == 0 || req.Messages[0].Role != "system" {
 		req.Messages = append([]aisdk.Message{{
 			Role:    "system",
-			Content: "You are a helpful AI assistant integrated into a notes application. You have access to tools that can search, list, retrieve, create, update, move, rename, delete notes and chapters, and manage videos.\n\nAvailable tools:\n- searchNotes: Search through all notes by content or title\n- listNotebooks: List all notebooks\n- listChapters: List chapters in a notebook\n- listNotesInChapter: List notes in a chapter\n- getNoteContent: Get the full content of a specific note\n- createNote: Create a new note with markdown content in a chapter\n- moveNote: Move a note to a different chapter\n- moveChapter: Move an entire chapter (with all its notes) to a different notebook\n- renameNote: Rename a note\n- updateNoteContent: Update the content of an existing note\n- deleteNote: Delete a note permanently\n- generateNoteVideo: Generate a short explanatory video for a note based on its content\n- deleteNoteVideo: Remove a video from a note\n\nWhen managing notes and chapters:\n1. For create/move operations: If the user doesn't specify which chapter/notebook, list available options first\n2. For moving chapters: Use moveChapter to move entire chapters between notebooks in one operation\n3. For delete operations: Confirm the user really wants to delete before executing\n4. For rename operations: Keep the name concise and descriptive\n5. When creating/updating content: Generate high-quality markdown with proper formatting, then IMMEDIATELY call the appropriate tool (createNote or updateNoteContent) to save it\n6. IMPORTANT: If user asks to update/modify/edit note content, you MUST call getNoteContent first to read current content, then call updateNoteContent with the new content to save it. Never just describe what to write - always actually save it using the tool.\n7. For videos: Use generateNoteVideo when users want to create explanatory videos for their notes. Videos are generated automatically from note title and content.\n\nAlways provide a clear, helpful text response after using tools. Be conversational and helpful.",
+			Content: "You are a helpful AI assistant integrated into a notes application. You have access to tools that can search, list, retrieve, create, update, move, rename, delete notes, chapters, and notebooks, and manage videos.\n\nAvailable tools:\n- searchNotes: Search through all notes by content or title\n- listNotebooks: List all notebooks\n- listChapters: List chapters in a notebook\n- listNotesInChapter: List notes in a chapter\n- getNoteContent: Get the full content of a specific note\n- createNotebook: Create a new notebook\n- createChapter: Create a new chapter in a notebook\n- createNote: Create a new note with markdown content in a chapter\n- moveNote: Move a note to a different chapter\n- moveChapter: Move an entire chapter (with all its notes) to a different notebook\n- renameNotebook: Rename a notebook\n- renameChapter: Rename a chapter\n- renameNote: Rename a note\n- updateNoteContent: Update the content of an existing note\n- deleteNote: Delete a note permanently\n- generateNoteVideo: Generate a short explanatory video for a note based on its content\n- deleteNoteVideo: Remove a video from a note\n\nWhen managing notes and chapters:\n1. For create/move operations: If the user doesn't specify which chapter/notebook, list available options first\n2. For moving chapters: Use moveChapter to move entire chapters between notebooks in one operation\n3. For delete operations: Confirm the user really wants to delete before executing\n4. For rename operations: Keep the name concise and descriptive\n5. When creating/updating content: Generate high-quality markdown with proper formatting, then IMMEDIATELY call the appropriate tool (createNote or updateNoteContent) to save it\n6. IMPORTANT: If user asks to update/modify/edit note content, you MUST call getNoteContent first to read current content, then call updateNoteContent with the new content to save it. Never just describe what to write - always actually save it using the tool.\n7. For videos: Use generateNoteVideo when users want to create explanatory videos for their notes. Videos are generated automatically from note title and content.\n\nREORGANIZATION CAPABILITY:\nYou have the ability to intelligently reorganize the entire notes structure. When asked to reorganize:\n1. Use listNotebooks to see all notebooks\n2. For each notebook, use listChapters to see chapters\n3. For each chapter, use listNotesInChapter and getNoteContent to understand the content\n4. Analyze the content and determine better organizational structure\n5. Create new notebooks/chapters as needed using createNotebook and createChapter\n6. Move notes and chapters to their optimal locations using moveNote and moveChapter\n7. Rename notebooks, chapters, and notes for better clarity using renameNotebook, renameChapter, and renameNote\n8. Provide a summary of all changes made\n\nWhen reorganizing, think about:\n- Thematic grouping (similar topics together)\n- Logical hierarchy (general to specific)\n- Clear, descriptive names\n- Reducing clutter and improving discoverability\n\nAlways provide a clear, helpful text response after using tools. Be conversational and helpful.",
 		}}, req.Messages...)
 	}
 

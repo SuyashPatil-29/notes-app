@@ -53,8 +53,20 @@ A full-stack notes application with hierarchical organization (Users → Noteboo
 - **Loading States** - Clear indicators during data operations
 - **Keyboard Navigation** - Support for keyboard-first workflows
 
+### 🤖 AI-Powered Features
+- **Intelligent Reorganization** - AI analyzes and reorganizes your entire note structure
+- **AI Chat Sidebar** - Interactive AI assistant for note management
+- **Multi-Provider Support** - Works with OpenAI, Anthropic (Claude), and Google (Gemini)
+- **Tool Calling** - AI can create, move, rename, and organize notebooks, chapters, and notes
+- **Content Analysis** - AI understands note content to suggest optimal organization
+- **Smart Naming** - Automatically generates clear, descriptive names
+- **Meeting Transcription** - AI-powered meeting recording and transcription
+- **Note Summarization** - Generate summaries and key points from meeting notes
+- **Video Generation** - Create explanatory videos from note content
+
 ### 🗂️ Organization Tools
 - **Nested Structure** - Unlimited notebooks, chapters, and notes
+- **AI-Assisted Organization** - Let AI reorganize your notes intelligently
 - **Bulk Operations** - Efficient management of multiple items
 - **Smart Defaults** - Auto-expand active branches in navigation
 - **Visual Hierarchy** - Icons and indentation for clear structure
@@ -195,6 +207,7 @@ notes-app/
 - **Node.js** 18 or higher
 - **PostgreSQL** 14 or higher
 - **Google OAuth Credentials** ([Get them here](https://console.cloud.google.com/))
+- **AI API Key** (Optional, for AI features) - Get from [OpenAI](https://platform.openai.com/), [Anthropic](https://console.anthropic.com/), or [Google AI](https://ai.google.dev/)
 
 ### Backend Setup
 
@@ -252,6 +265,22 @@ notes-app/
    ```
 
    Frontend will start on `http://localhost:5173`
+
+### AI Features Setup (Optional)
+
+To enable AI-powered features like intelligent reorganization:
+
+1. **Login** to the app with Google OAuth
+2. **Go to Profile** → Click your avatar in the top-right
+3. **Navigate to Settings** → AI Credentials
+4. **Add your API key** for one or more providers:
+   - OpenAI (for GPT models)
+   - Anthropic (for Claude models)
+   - Google (for Gemini models)
+5. **Open AI Chat** → Click the chat icon in the right sidebar
+6. **Try reorganization** → Ask: "Please reorganize my notes"
+
+**Note:** API keys are encrypted and stored securely in the database.
 
 ## 🔌 API Endpoints
 
@@ -427,6 +456,32 @@ This project is licensed under the MIT License.
 - `Ctrl/Cmd + Shift + Z` - Redo
 
 ## 🎯 Key Features Explained
+
+### AI-Powered Reorganization 🤖
+**The standout feature that makes this notes app unique!**
+
+- **Intelligent Analysis** - AI reads all your notes and understands their content
+- **Automatic Organization** - Creates optimal notebook/chapter structure
+- **Smart Naming** - Suggests clear, descriptive names for better discoverability
+- **Content-Based Grouping** - Groups notes by topic, project, or theme
+- **One Command** - Just ask: "Please reorganize my notes"
+
+**Example prompts:**
+```
+"Reorganize my notes by topic"
+"Create separate notebooks for work and personal"
+"Organize my meeting notes by project"
+"Clean up my messy structure"
+```
+
+**What the AI can do:**
+- Create new notebooks and chapters
+- Move notes and chapters to better locations
+- Rename items for clarity
+- Analyze content to determine themes
+- Provide a summary of all changes
+
+See [AI Reorganization Documentation](./docs/AI_REORGANIZATION_FEATURE.md) for detailed guide.
 
 ### Drag & Drop
 - **Chapters** - Drag chapters between notebooks to reorganize
