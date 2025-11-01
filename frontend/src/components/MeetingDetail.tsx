@@ -213,6 +213,32 @@ export function MeetingDetail() {
             </div>
           )}
 
+        {/* Video Recording Section */}
+        {meeting.status === "completed" && meeting.videoDownloadUrl && (
+          <div className="mb-8 border rounded-lg overflow-hidden bg-card">
+            <div className="p-4 border-b bg-muted/50">
+              <h2 className="text-xl font-semibold flex items-center gap-2">
+                <Video className="w-5 h-5" />
+                Meeting Recording
+              </h2>
+            </div>
+            <div className="p-4">
+              <video
+                controls
+                className="w-full rounded-lg bg-black"
+                style={{ maxHeight: "600px" }}
+                preload="metadata"
+              >
+                <source src={meeting.videoDownloadUrl} type="video/mp4" />
+                Your browser does not support the video player.
+              </video>
+              <p className="text-sm text-muted-foreground mt-3 text-center">
+                Full meeting recording • {getMeetingPlatform(meeting.meetingUrl)}
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* Transcript Section */}
         {meeting.status === "completed" && (
           <MeetingTranscript meetingId={meeting.id} />

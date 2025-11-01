@@ -47,7 +47,9 @@ type CreateBotRequest struct {
 
 // RecordingConfig defines the recording configuration for the bot
 type RecordingConfig struct {
-	Transcript TranscriptConfig `json:"transcript"`
+	Transcript        TranscriptConfig `json:"transcript"`
+	VideoMixedLayout  string           `json:"video_mixed_layout,omitempty"`  // e.g., "gallery_view_v2"
+	VideoSeparateMP4  *struct{}        `json:"video_separate_mp4,omitempty"` // Empty object to enable
 }
 
 // TranscriptConfig defines the transcript provider configuration
@@ -87,6 +89,7 @@ type Recording struct {
 // MediaShortcuts contains shortcuts to media files
 type MediaShortcuts struct {
 	Transcript TranscriptShortcut `json:"transcript"`
+	VideoMixed VideoMixedShortcut `json:"video_mixed"`
 }
 
 // TranscriptShortcut contains transcript-specific shortcuts
@@ -97,6 +100,17 @@ type TranscriptShortcut struct {
 
 // TranscriptData contains the actual transcript data and download URL
 type TranscriptData struct {
+	DownloadURL string `json:"download_url"`
+}
+
+// VideoMixedShortcut contains video recording shortcuts
+type VideoMixedShortcut struct {
+	ID   string        `json:"id"`
+	Data VideoData     `json:"data"`
+}
+
+// VideoData contains the actual video data and download URL
+type VideoData struct {
 	DownloadURL string `json:"download_url"`
 }
 
@@ -193,6 +207,8 @@ func (c *Client) CreateBot(meetingURL string) (*CreateBotResponse, error) {
 					},
 				},
 			},
+			VideoMixedLayout: "gallery_view_v2", // Enable video recording with gallery view
+			VideoSeparateMP4: &struct{}{},       // Enable separate MP4 streams
 		},
 	}
 

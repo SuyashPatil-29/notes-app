@@ -100,6 +100,7 @@ func main() {
 		protected.POST("/meeting/start", controllers.StartMeetingRecording)
 		protected.GET("/meetings", controllers.GetUserMeetings)
 		protected.GET("/meeting/:id/transcript", controllers.GetMeetingTranscript)
+		protected.POST("/meetings/backfill-videos", controllers.BackfillVideoURLs)
 	}
 
 	// Webhook routes (no authentication required for external services)

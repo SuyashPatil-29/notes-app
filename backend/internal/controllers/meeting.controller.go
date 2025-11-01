@@ -496,3 +496,137 @@ func HandleRecallWebhook(ctx *gin.Context) {
 
 	ctx.JSON(http.StatusOK, gin.H{"status": "received", "message": "Event acknowledged"})
 }
+
+// BackfillVideoURLs fetches and updates video URLs for existing meetings that have recording IDs
+func BackfillVideoURLs(ctx *gin.Context) {
+	// Get authenticated user ID
+	userID, exists := middleware.GetUserID(ctx)
+	if !exists {
+		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+		return
+	}
+
+	log.Info().
+		Uint("user_id", userID).
+		Msg("Starting video URL backfill for user meetings")
+
+	// Find all completed meetings for this user that have recall_recording_id but missing video_download_url
+	var meetings []models.MeetingRecording
+	err := db.DB.Where("user_id = ? AND status = ? AND recall_recording_id != ? AND (video_download_url IS NULL OR video_download_url = ?)",
+		userID, "completed", "", "").
+		Find(&meetings).Error
+
+	if err != nil {
+		log.Error().
+			Err(err).
+			Uint("user_id", userID).
+			Msg("Failed to retrieve meetings for backfill")
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve meetings"})
+		return
+	}
+
+	if len(meetings) == 0 {
+		log.Info().
+			Uint("user_id", userID).
+			Msg("No meetings found needing video URL backfill")
+		ctx.JSON(http.StatusOK, gin.H{
+			"message":       "No meetings need video URL updates",
+			"meetings_count": 0,
+			"updated_count":  0,
+		})
+		return
+	}
+
+	log.Info().
+		Uint("user_id", userID).
+		Int("meetings_count", len(meetings)).
+		Msg("Found meetings needing video URL backfill")
+
+	// Initialize Recall.ai client
+	recallClient := recallai.NewClient()
+	updatedCount := 0
+	failedCount := 0
+	errors := []string{}
+
+	// Process each meeting
+	for _, meeting := range meetings {
+		log.Debug().
+			Str("meeting_id", meeting.ID).
+			Str("bot_id", meeting.BotID).
+			Msg("Fetching video URL for meeting")
+
+		// Get bot details from Recall.ai
+		botDetails, err := recallClient.GetBot(meeting.BotID)
+		if err != nil {
+			log.Error().
+				Err(err).
+				Str("meeting_id", meeting.ID).
+				Str("bot_id", meeting.BotID).
+				Msg("Failed to get bot details from Recall.ai")
+			failedCount++
+			errors = append(errors, "Meeting "+meeting.ID+": "+err.Error())
+			continue
+		}
+
+		// Check if recordings exist
+		if len(botDetails.Recordings) == 0 {
+			log.Warn().
+				Str("meeting_id", meeting.ID).
+				Str("bot_id", meeting.BotID).
+				Msg("No recordings found for bot")
+			failedCount++
+			errors = append(errors, "Meeting "+meeting.ID+": No recordings found")
+			continue
+		}
+
+		// Extract video URL
+		videoURL := botDetails.Recordings[0].MediaShortcuts.VideoMixed.Data.DownloadURL
+		if videoURL == "" {
+			log.Warn().
+				Str("meeting_id", meeting.ID).
+				Str("bot_id", meeting.BotID).
+				Msg("Video URL not available for this recording")
+			failedCount++
+			errors = append(errors, "Meeting "+meeting.ID+": Video URL not available")
+			continue
+		}
+
+		// Update the meeting record
+		meeting.VideoDownloadURL = videoURL
+		if err := db.DB.Save(&meeting).Error; err != nil {
+			log.Error().
+				Err(err).
+				Str("meeting_id", meeting.ID).
+				Msg("Failed to update meeting with video URL")
+			failedCount++
+			errors = append(errors, "Meeting "+meeting.ID+": Failed to save")
+			continue
+		}
+
+		updatedCount++
+		log.Info().
+			Str("meeting_id", meeting.ID).
+			Bool("has_video", videoURL != "").
+			Msg("Successfully updated meeting with video URL")
+	}
+
+	log.Info().
+		Uint("user_id", userID).
+		Int("total_meetings", len(meetings)).
+		Int("updated_count", updatedCount).
+		Int("failed_count", failedCount).
+		Msg("Completed video URL backfill")
+
+	response := gin.H{
+		"message":        "Video URL backfill completed",
+		"meetings_count": len(meetings),
+		"updated_count":  updatedCount,
+		"failed_count":   failedCount,
+	}
+
+	if len(errors) > 0 {
+		response["errors"] = errors
+	}
+
+	ctx.JSON(http.StatusOK, response)
+}

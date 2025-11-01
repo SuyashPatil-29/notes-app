@@ -63,6 +63,7 @@ export type MeetingRecording = {
   status: 'pending' | 'recording' | 'processing' | 'completed' | 'failed';
   recallRecordingId?: string;
   transcriptDownloadUrl?: string;
+  videoDownloadUrl?: string;
   generatedNoteId?: string;
   generatedNote?: Notes;
   createdAt: string;

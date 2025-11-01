@@ -163,3 +163,27 @@ export const getMeetingTranscript = async (meetingId: string): Promise<MeetingTr
     throw new Error('Failed to fetch transcript');
   }
 };
+
+/**
+ * Response type for backfill video URLs operation
+ */
+export interface BackfillVideoURLsResponse {
+  message: string;
+  meetings_count: number;
+  updated_count: number;
+  failed_count: number;
+  errors?: string[];
+}
+
+/**
+ * Backfill video URLs for existing meetings that have recording IDs
+ */
+export const backfillVideoURLs = async (): Promise<BackfillVideoURLsResponse> => {
+  try {
+    const response = await api.post<BackfillVideoURLsResponse>('/meetings/backfill-videos');
+    return response.data;
+  } catch (error) {
+    console.error('Failed to backfill video URLs:', error);
+    throw new Error('Failed to backfill video URLs');
+  }
+};

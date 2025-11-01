@@ -150,16 +150,24 @@ func (s *MeetingService) ProcessCompletedMeeting(ctx context.Context, botID stri
 		return fmt.Errorf("no recordings found for bot")
 	}
 
-	// Get transcript download URL
+	// Get transcript and video download URLs
 	transcriptURL := botDetails.Recordings[0].MediaShortcuts.Transcript.Data.DownloadURL
+	videoURL := botDetails.Recordings[0].MediaShortcuts.VideoMixed.Data.DownloadURL
 	recording.RecallRecordingID = botDetails.Recordings[0].ID
 	recording.TranscriptDownloadURL = transcriptURL
+	recording.VideoDownloadURL = videoURL
 	if err := s.db.Save(&recording).Error; err != nil {
 		log.Error().
 			Err(err).
 			Str("recording_id", recording.ID).
-			Msg("Failed to update recording with transcript URL")
+			Msg("Failed to update recording with transcript and video URLs")
 	}
+	
+	log.Info().
+		Str("recording_id", recording.ID).
+		Bool("has_transcript", transcriptURL != "").
+		Bool("has_video", videoURL != "").
+		Msg("Retrieved recording URLs from Recall.ai")
 
 	// Download transcript
 	transcript, err := s.recallClient.DownloadTranscript(transcriptURL)

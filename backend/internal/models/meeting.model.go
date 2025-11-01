@@ -16,6 +16,7 @@ type MeetingRecording struct {
 	Status                string     `json:"status" gorm:"default:'pending'"` // pending, recording, processing, completed, failed
 	RecallRecordingID     string     `json:"recallRecordingId,omitempty"`
 	TranscriptDownloadURL string     `json:"transcriptDownloadUrl,omitempty"`
+	VideoDownloadURL      string     `json:"videoDownloadUrl,omitempty"`
 	GeneratedNoteID       *string    `json:"generatedNoteId,omitempty" gorm:"type:varchar(255)"`
 	GeneratedNote         *Notes     `json:"generatedNote,omitempty" gorm:"foreignKey:GeneratedNoteID;references:ID"`
 	CreatedAt             time.Time  `json:"createdAt"`

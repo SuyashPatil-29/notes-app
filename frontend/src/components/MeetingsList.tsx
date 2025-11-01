@@ -1,14 +1,16 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import {
   Loader2,
   CheckCircle2,
   XCircle,
   Video,
   Clock,
+  Download,
 } from "lucide-react";
 import {
   getUserMeetings,
   getMeetingPlatform,
+  backfillVideoURLs,
 } from "@/utils/meeting";
 import type { MeetingRecording } from "@/types/backend";
 import { useNavigate } from "react-router-dom";
@@ -22,6 +24,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { toast } from "sonner";
 
 export function MeetingsList() {
   const navigate = useNavigate();
@@ -47,6 +50,37 @@ export function MeetingsList() {
           (meeting.status === "completed" && !meeting.generatedNote)
       );
       return hasActiveMeetings ? 5000 : false;
+    },
+  });
+
+  // Mutation for backfilling video URLs
+  const backfillMutation = useMutation({
+    mutationFn: backfillVideoURLs,
+    onSuccess: (data) => {
+      // Invalidate meetings query to refresh the list
+      queryClient.invalidateQueries({ queryKey: ["userMeetings"] });
+      
+      // Show success toast
+      if (data.updated_count === 0) {
+        toast.success("All up to date - " + data.message);
+      } else {
+        toast.success(
+          `Videos fetched successfully! Updated ${data.updated_count} meeting${data.updated_count !== 1 ? 's' : ''} with video recordings`
+        );
+      }
+
+      // Show error details if any
+      if (data.failed_count > 0 && data.errors) {
+        console.error('Backfill errors:', data.errors);
+        toast.error(
+          `Some meetings couldn't be updated: ${data.failed_count} meeting${data.failed_count !== 1 ? 's' : ''} failed. Check console for details.`
+        );
+      }
+    },
+    onError: (error) => {
+      toast.error(
+        error.message || "Failed to fetch video URLs - An error occurred"
+      );
     },
   });
 
@@ -131,8 +165,47 @@ export function MeetingsList() {
     );
   }
 
+  // Check if any completed meetings are missing video URLs
+  const meetingsNeedingVideoBackfill = meetings.filter(
+    (m) => m.status === "completed" && m.recallRecordingId && !m.videoDownloadUrl
+  );
+
   return (
     <>
+      {/* Backfill Video URLs Banner */}
+      {meetingsNeedingVideoBackfill.length > 0 && (
+        <div className="mb-6 p-4 bg-blue-500/10 border border-blue-500/20 rounded-lg flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Download className="w-5 h-5 text-blue-500" />
+            <div>
+              <p className="text-sm font-medium text-foreground">
+                {meetingsNeedingVideoBackfill.length} meeting{meetingsNeedingVideoBackfill.length !== 1 ? 's' : ''} missing video recordings
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Fetch video recordings for your previous meetings
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => backfillMutation.mutate()}
+            disabled={backfillMutation.isPending}
+            className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium flex items-center gap-2"
+          >
+            {backfillMutation.isPending ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Fetching...
+              </>
+            ) : (
+              <>
+                <Download className="w-4 h-4" />
+                Fetch Videos
+              </>
+            )}
+          </button>
+        </div>
+      )}
+
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         {/* Record New Meeting Card */}
         <button
