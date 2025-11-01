@@ -674,13 +674,14 @@ func (c *Client) ScheduleBotForEvent(eventID string, deduplicationKey string, bo
 }
 
 // RemoveBotFromEvent removes a scheduled bot from a calendar event
+// Uses Recall's managed scheduling endpoint which doesn't require botID in the path
 func (c *Client) RemoveBotFromEvent(eventID string, botID string) error {
 	if c.APIKey == "" {
 		return fmt.Errorf("RECALL_AI_API_KEY environment variable is not set")
 	}
 
-	if eventID == "" || botID == "" {
-		return fmt.Errorf("event ID and bot ID cannot be empty")
+	if eventID == "" {
+		return fmt.Errorf("event ID cannot be empty")
 	}
 
 	log.Info().
@@ -688,7 +689,9 @@ func (c *Client) RemoveBotFromEvent(eventID string, botID string) error {
 		Str("bot_id", botID).
 		Msg("Removing bot from calendar event")
 
-	resp, err := c.makeCalendarRequest("DELETE", "/calendar-events/"+eventID+"/bot/"+botID+"/", nil)
+	// Use Recall's managed scheduling endpoint: DELETE /calendar-events/{id}/bot/
+	// Note: botID is not in the URL path - Recall manages the association internally
+	resp, err := c.makeCalendarRequest("DELETE", "/calendar-events/"+eventID+"/bot/", nil)
 	if err != nil {
 		return fmt.Errorf("failed to remove bot from event: %w", err)
 	}

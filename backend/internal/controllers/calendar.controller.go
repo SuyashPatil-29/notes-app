@@ -405,14 +405,19 @@ func CancelBotForEvent(c *gin.Context) {
 		return
 	}
 
-	if !event.BotScheduled || event.BotID == nil {
+	if !event.BotScheduled {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "No bot scheduled for this event"})
 		return
 	}
 
 	// Cancel bot via Recall.ai
+	// Note: Recall's managed scheduling endpoint doesn't require botID in the path
 	recallClient := recallai.NewClient()
-	if err := recallClient.RemoveBotFromEvent(event.RecallEventID, *event.BotID); err != nil {
+	botIDStr := ""
+	if event.BotID != nil {
+		botIDStr = *event.BotID
+	}
+	if err := recallClient.RemoveBotFromEvent(event.RecallEventID, botIDStr); err != nil {
 		log.Error().Err(err).Str("event_id", eventID).Msg("Error removing bot from event")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to cancel bot"})
 		return

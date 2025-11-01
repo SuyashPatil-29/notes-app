@@ -1,1 +1,1 @@
-stat main.go: no such file or directory
+cmd/main.go:6:2: open /Users/suyash/Library/Caches/go-build/db/db17e34e7c304ceacd4a0475eee278685f50e6ae35d228b2c7e0009fe3e7b4f3-a: operation not permitted

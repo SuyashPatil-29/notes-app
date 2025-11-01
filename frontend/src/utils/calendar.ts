@@ -75,7 +75,8 @@ export const syncMissingCalendars = async () => {
  * Schedule a bot to join a specific event
  */
 export const scheduleBotForEvent = async (eventId: string) => {
-  await api.post(`/api/calendar-events/${eventId}/schedule-bot`);
+  const response = await api.post(`/api/calendar-events/${eventId}/schedule-bot`);
+  return response.data;
 };
 
 /**

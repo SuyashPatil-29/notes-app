@@ -63,13 +63,12 @@ export function CalendarEventsList() {
     try {
       await scheduleBotForEvent(eventId);
       toast.success("Bot scheduled for meeting");
-      // Update the event in state
-      setEvents(events.map(e => 
-        e.id === eventId ? { ...e, botScheduled: true } : e
-      ));
-    } catch (error) {
+      // Refresh data from backend to ensure state is synchronized
+      await fetchData();
+    } catch (error: any) {
       console.error("Failed to schedule bot:", error);
-      toast.error("Failed to schedule bot");
+      const errorMsg = error.response?.data?.error || "Failed to schedule bot";
+      toast.error(errorMsg);
     } finally {
       setIsSchedulingId(null);
     }
@@ -80,13 +79,12 @@ export function CalendarEventsList() {
     try {
       await cancelBotForEvent(eventId);
       toast.success("Bot cancelled");
-      // Update the event in state
-      setEvents(events.map(e => 
-        e.id === eventId ? { ...e, botScheduled: false, botId: undefined } : e
-      ));
-    } catch (error) {
+      // Refresh data from backend to ensure state is synchronized
+      await fetchData();
+    } catch (error: any) {
       console.error("Failed to cancel bot:", error);
-      toast.error("Failed to cancel bot");
+      const errorMsg = error.response?.data?.error || "Failed to cancel bot";
+      toast.error(errorMsg);
     } finally {
       setIsSchedulingId(null);
     }

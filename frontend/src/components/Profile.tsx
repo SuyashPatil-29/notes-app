@@ -4,10 +4,9 @@ import { Header } from "@/components/Header";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Key, Trash2, User, Mail, Save } from "lucide-react";
+import { Key, Trash2, User as UserIcon, Mail, Save, Calendar, Video, Sparkles, Check, X } from "lucide-react";
 import { toast } from "sonner";
 import api from "@/utils/api";
 import { useQueryClient } from "@tanstack/react-query";
@@ -20,13 +19,37 @@ interface ApiKeyStatus {
   google: boolean;
 }
 
+const AI_PROVIDERS = [
+  {
+    id: "openai",
+    name: "OpenAI",
+    placeholder: "sk-...",
+    description: "GPT-4, GPT-3.5 models"
+  },
+  {
+    id: "anthropic",
+    name: "Anthropic",
+    placeholder: "sk-ant-...",
+    description: "Claude 3 Opus, Sonnet, Haiku"
+  },
+  {
+    id: "google",
+    name: "Google AI",
+    placeholder: "AIza...",
+    description: "Gemini Pro models"
+  }
+];
+
 export function Profile() {
   const { user, loading: userLoading, refetch: refetchUser } = useUser();
   const queryClient = useQueryClient();
-  const [openAIKey, setOpenAIKey] = useState("");
-  const [anthropicKey, setAnthropicKey] = useState("");
-  const [googleKey, setGoogleKey] = useState("");
-  const [isSavingKey, setIsSavingKey] = useState(false);
+  const [activeTab, setActiveTab] = useState<'profile' | 'ai-keys' | 'calendar' | 'meetings'>('profile');
+  const [apiKeys, setApiKeys] = useState<Record<string, string>>({
+    openai: "",
+    anthropic: "",
+    google: ""
+  });
+  const [isSavingKey, setIsSavingKey] = useState<string | null>(null);
   const [isDeletingKey, setIsDeletingKey] = useState<string | null>(null);
   const [apiKeyStatus, setApiKeyStatus] = useState<ApiKeyStatus>({
     openai: false,
@@ -34,8 +57,9 @@ export function Profile() {
     google: false,
   });
   const [calendarSyncTrigger, setCalendarSyncTrigger] = useState(0);
+  const [hasCalendar, setHasCalendar] = useState(false);
 
-  // Fetch API key status on mount
+  // Fetch API key status and calendar status on mount
   useEffect(() => {
     const fetchApiKeyStatus = async () => {
       try {
@@ -50,16 +74,28 @@ export function Profile() {
         console.error("Failed to fetch API key status:", error);
       }
     };
+    
+    const fetchCalendarStatus = async () => {
+      try {
+        const response = await api.get("/api/calendars");
+        setHasCalendar(response.data.calendars?.length > 0);
+      } catch (error) {
+        console.error("Failed to fetch calendar status:", error);
+      }
+    };
+    
     fetchApiKeyStatus();
+    fetchCalendarStatus();
   }, []);
 
-  const handleSaveApiKey = async (provider: string, apiKey: string) => {
+  const handleSaveApiKey = async (provider: string) => {
+    const apiKey = apiKeys[provider];
     if (!apiKey.trim()) {
       toast.error("Please enter an API key");
       return;
     }
 
-    setIsSavingKey(true);
+    setIsSavingKey(provider);
     // Optimistic update
     setApiKeyStatus((prev) => ({ ...prev, [provider]: true }));
     
@@ -71,9 +107,7 @@ export function Profile() {
       toast.success(`${provider} API key saved successfully`);
       
       // Clear the input
-      if (provider === "openai") setOpenAIKey("");
-      if (provider === "anthropic") setAnthropicKey("");
-      if (provider === "google") setGoogleKey("");
+      setApiKeys(prev => ({ ...prev, [provider]: "" }));
       
       // Refresh user data and API key status
       await refetchUser();
@@ -93,7 +127,7 @@ export function Profile() {
       const errorMessage = error.response?.data?.error || "Failed to save API key";
       toast.error(errorMessage);
     } finally {
-      setIsSavingKey(false);
+      setIsSavingKey(null);
     }
   };
 
@@ -145,10 +179,12 @@ export function Profile() {
       // Clear the query params
       window.history.replaceState({}, '', window.location.pathname);
       
-      // Reload page after a short delay to show synced events
-      setTimeout(() => {
-        window.location.reload();
-      }, 3000);
+      // Update calendar status
+      setHasCalendar(true);
+      // Trigger a calendar sync refresh without full page reload
+      setCalendarSyncTrigger(prev => prev + 1);
+      // Switch to calendar tab
+      setActiveTab('calendar');
     }
     
     if (params.get('calendar_error')) {
@@ -163,28 +199,17 @@ export function Profile() {
       <div className="flex flex-col h-screen">
         <Header user={null} breadcrumbs={[{ label: "Profile" }]} />
         <main className="flex-1 overflow-auto">
-          <div className="max-w-4xl mx-auto px-6 py-12 space-y-8">
+          <div className="max-w-6xl mx-auto px-6 py-12 space-y-8">
             {/* Loading skeleton */}
-            <div className="space-y-4">
-              <Skeleton className="h-8 w-48" />
-              <div className="bg-card border rounded-lg p-6 space-y-4">
-                <div className="flex items-center gap-4">
-                  <Skeleton className="w-16 h-16 rounded-full" />
-                  <div className="space-y-2">
-                    <Skeleton className="h-6 w-48" />
-                    <Skeleton className="h-4 w-64" />
-                  </div>
-                </div>
-              </div>
+            <div className="space-y-2">
+              <Skeleton className="h-9 w-64" />
+              <Skeleton className="h-5 w-96" />
             </div>
-            <Separator />
-            <div className="space-y-4">
-              <Skeleton className="h-8 w-32" />
-              <div className="space-y-4">
-                <Skeleton className="h-24 w-full rounded-lg" />
-                <Skeleton className="h-24 w-full rounded-lg" />
-                <Skeleton className="h-24 w-full rounded-lg" />
-              </div>
+            <div className="h-12" />
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {[1, 2, 3].map((i) => (
+                <Skeleton key={i} className="h-40 rounded-lg" />
+              ))}
             </div>
           </div>
         </main>
@@ -203,251 +228,312 @@ export function Profile() {
     );
   }
 
+  const configuredKeysCount = Object.values(apiKeyStatus).filter(Boolean).length;
+
   return (
     <div className="flex flex-col h-screen">
       <Header user={user} breadcrumbs={[{ label: "Profile" }]} onOnboardingReset={handleOnboardingReset} />
       
       <main className="flex-1 overflow-auto">
-        <div className="max-w-4xl mx-auto px-6 py-12 space-y-8">
-          {/* User Information Section */}
-          <div className="space-y-4">
-            <h2 className="text-2xl font-semibold">User Information</h2>
-            <div className="bg-card border rounded-lg p-6 space-y-4">
-              <div className="flex items-center gap-4">
-                {user.imageUrl ? (
-                  <img
-                    src={user.imageUrl}
-                    alt={user.name}
-                    className="w-16 h-16 rounded-full ring-2 ring-border"
-                  />
-                ) : (
-                  <div className="w-16 h-16 rounded-full bg-primary flex items-center justify-center ring-2 ring-border">
-                    <User className="w-8 h-8 text-primary-foreground" />
-                  </div>
-                )}
-                <div className="space-y-1">
-                  <h3 className="text-lg font-semibold">{user.name}</h3>
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Mail className="w-4 h-4" />
-                    <span>{user.email}</span>
-                  </div>
-                </div>
-              </div>
-              
-              <Separator />
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label className="text-sm font-medium text-muted-foreground">Onboarding Type</Label>
-                  <div className="text-sm">
-                    {user.onboardingCompleted ? (
-                      <Badge variant="secondary">Completed</Badge>
-                    ) : (
-                      <Badge variant="outline">Not Completed</Badge>
-                    )}
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-sm font-medium text-muted-foreground">API Keys Status</Label>
-                  <div className="text-sm">
-                    {user.hasApiKey ? (
-                      <Badge variant="secondary" className="gap-1">
-                        <Key className="w-3 h-3" />
-                        Configured
-                      </Badge>
-                    ) : (
-                      <Badge variant="outline">Not Configured</Badge>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
+        <div className="max-w-6xl mx-auto px-6 py-12 space-y-8">
+          {/* Welcome Section */}
+          <div className="space-y-2">
+            <h2 className="text-3xl font-bold text-foreground">
+              Profile & Settings
+            </h2>
+            <p className="text-muted-foreground">
+              Manage your account, API keys, and integrations
+            </p>
           </div>
 
-          {/* API Keys Section */}
-          <div className="space-y-4">
-            <div>
-              <h2 className="text-2xl font-semibold mb-2">AI API Keys</h2>
-              <p className="text-sm text-muted-foreground">
-                Manage your API keys for different AI providers. Keys are encrypted and stored securely.
-              </p>
+          {/* Tabs */}
+          <div className="flex items-center gap-1 border-b border-border">
+            <button
+              onClick={() => setActiveTab('profile')}
+              className={`flex items-center gap-2 px-4 py-3 font-medium transition-colors relative ${
+                activeTab === 'profile'
+                  ? 'text-primary'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              <UserIcon className="h-4 w-4" />
+              Profile
+              {activeTab === 'profile' && (
+                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-t-lg" />
+              )}
+            </button>
+            <button
+              onClick={() => setActiveTab('ai-keys')}
+              className={`flex items-center gap-2 px-4 py-3 font-medium transition-colors relative ${
+                activeTab === 'ai-keys'
+                  ? 'text-primary'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              <Sparkles className="h-4 w-4" />
+              AI Keys
+              {configuredKeysCount > 0 && (
+                <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-xs">
+                  {configuredKeysCount}
+                </Badge>
+              )}
+              {activeTab === 'ai-keys' && (
+                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-t-lg" />
+              )}
+            </button>
+            <button
+              onClick={() => setActiveTab('calendar')}
+              className={`flex items-center gap-2 px-4 py-3 font-medium transition-colors relative ${
+                activeTab === 'calendar'
+                  ? 'text-primary'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              <Calendar className="h-4 w-4" />
+              Calendar
+              {activeTab === 'calendar' && (
+                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-t-lg" />
+              )}
+            </button>
+            <button
+              onClick={() => setActiveTab('meetings')}
+              className={`flex items-center gap-2 px-4 py-3 font-medium transition-colors relative ${
+                activeTab === 'meetings'
+                  ? 'text-primary'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              <Video className="h-4 w-4" />
+              Meetings
+              {activeTab === 'meetings' && (
+                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-t-lg" />
+              )}
+            </button>
+          </div>
+
+          {/* Profile Tab */}
+          {activeTab === 'profile' && (
+            <div className="space-y-6">
+              {/* User Card */}
+              <div className="bg-card border border-border rounded-lg p-6">
+                <div className="flex items-start gap-6">
+                  {user.imageUrl ? (
+                    <img
+                      src={user.imageUrl}
+                      alt={user.name}
+                      className="w-20 h-20 rounded-full ring-2 ring-border"
+                    />
+                  ) : (
+                    <div className="w-20 h-20 rounded-full bg-primary flex items-center justify-center ring-2 ring-border">
+                      <UserIcon className="w-10 h-10 text-primary-foreground" />
+                    </div>
+                  )}
+                  <div className="flex-1 space-y-4">
+                    <div>
+                      <h3 className="text-2xl font-semibold mb-2">{user.name}</h3>
+                      <div className="flex items-center gap-2 text-muted-foreground">
+                        <Mail className="w-4 h-4" />
+                        <span>{user.email}</span>
+                      </div>
+                    </div>
+                    
+                    <div className="flex items-center gap-4">
+                      <div className="flex items-center gap-2">
+                        {user.onboardingCompleted ? (
+                          <>
+                            <Check className="w-4 h-4 text-green-500" />
+                            <span className="text-sm text-muted-foreground">Onboarding Complete</span>
+                          </>
+                        ) : (
+                          <>
+                            <X className="w-4 h-4 text-muted-foreground" />
+                            <span className="text-sm text-muted-foreground">Onboarding Incomplete</span>
+                          </>
+                        )}
+                      </div>
+                      <Separator orientation="vertical" className="h-4" />
+                      <div className="flex items-center gap-2">
+                        {configuredKeysCount > 0 ? (
+                          <>
+                            <Key className="w-4 h-4 text-primary" />
+                            <span className="text-sm text-muted-foreground">{configuredKeysCount} API Key{configuredKeysCount !== 1 ? 's' : ''} Configured</span>
+                          </>
+                        ) : (
+                          <>
+                            <Key className="w-4 h-4 text-muted-foreground" />
+                            <span className="text-sm text-muted-foreground">No API Keys</span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Quick Actions */}
+              <div>
+                <h3 className="text-lg font-semibold mb-4">Quick Actions</h3>
+                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                  <Button
+                    variant="outline"
+                    className="h-auto py-6 justify-start"
+                    onClick={() => setActiveTab('ai-keys')}
+                  >
+                    <div className="flex items-start gap-3 text-left">
+                      <Sparkles className="w-5 h-5 mt-0.5 text-primary" />
+                      <div>
+                        <div className="font-medium">Configure AI Keys</div>
+                        <div className="text-xs text-muted-foreground mt-1">Set up OpenAI, Anthropic, or Google AI</div>
+                      </div>
+                    </div>
+                  </Button>
+                  
+                  <Button
+                    variant="outline"
+                    className="h-auto py-6 justify-start"
+                    onClick={() => setActiveTab('calendar')}
+                  >
+                    <div className="flex items-start gap-3 text-left">
+                      <Calendar className={`w-5 h-5 mt-0.5 ${hasCalendar ? 'text-green-500' : 'text-primary'}`} />
+                      <div>
+                        <div className="font-medium flex items-center gap-2">
+                          {hasCalendar ? 'Calendar Connected' : 'Connect Calendar'}
+                          {hasCalendar && <Check className="w-4 h-4 text-green-500" />}
+                        </div>
+                        <div className="text-xs text-muted-foreground mt-1">
+                          {hasCalendar ? 'Manage calendar integration' : 'Enable automatic meeting recording'}
+                        </div>
+                      </div>
+                    </div>
+                  </Button>
+                  
+                  <Button
+                    variant="outline"
+                    className="h-auto py-6 justify-start"
+                    onClick={() => setActiveTab('meetings')}
+                  >
+                    <div className="flex items-start gap-3 text-left">
+                      <Video className="w-5 h-5 mt-0.5 text-primary" />
+                      <div>
+                        <div className="font-medium">View Meetings</div>
+                        <div className="text-xs text-muted-foreground mt-1">Upcoming virtual meetings</div>
+                      </div>
+                    </div>
+                  </Button>
+                </div>
+              </div>
             </div>
+          )}
 
-            <div className="bg-card border rounded-lg p-6 space-y-6">
-              {/* OpenAI */}
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="openai-key" className="text-sm font-medium">
-                    OpenAI API Key
-                  </Label>
-                  {apiKeyStatus.openai && (
-                    <Badge variant="secondary" className="text-xs">
-                      <Key className="w-3 h-3 mr-1" />
-                      Configured
-                    </Badge>
-                  )}
-                </div>
-                <div className="flex gap-2">
-                  <Input
-                    id="openai-key"
-                    type="password"
-                    placeholder="sk-..."
-                    value={openAIKey}
-                    onChange={(e) => setOpenAIKey(e.target.value)}
-                    className="flex-1"
-                    disabled={isSavingKey}
-                  />
-                  <Button
-                    onClick={() => handleSaveApiKey("openai", openAIKey)}
-                    disabled={isSavingKey || !openAIKey.trim()}
-                    size="sm"
-                  >
-                    {isSavingKey ? <Save className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                    Save
-                  </Button>
-                </div>
-                {apiKeyStatus.openai && (
-                  <div className="flex justify-between items-center p-3 bg-muted rounded-md">
-                    <div className="flex items-center gap-2">
-                      <Key className="w-4 h-4 text-muted-foreground" />
-                      <span className="text-sm text-muted-foreground">
-                        API key configured for OpenAI
-                      </span>
-                    </div>
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      onClick={() => handleDeleteApiKey("openai")}
-                      disabled={isDeletingKey === "openai"}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
-                  </div>
-                )}
-              </div>
-
-              <Separator />
-
-              {/* Anthropic */}
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="anthropic-key" className="text-sm font-medium">
-                    Anthropic API Key
-                  </Label>
-                  {apiKeyStatus.anthropic && (
-                    <Badge variant="secondary" className="text-xs">
-                      <Key className="w-3 h-3 mr-1" />
-                      Configured
-                    </Badge>
-                  )}
-                </div>
-                <div className="flex gap-2">
-                  <Input
-                    id="anthropic-key"
-                    type="password"
-                    placeholder="sk-ant-..."
-                    value={anthropicKey}
-                    onChange={(e) => setAnthropicKey(e.target.value)}
-                    className="flex-1"
-                    disabled={isSavingKey}
-                  />
-                  <Button
-                    onClick={() => handleSaveApiKey("anthropic", anthropicKey)}
-                    disabled={isSavingKey || !anthropicKey.trim()}
-                    size="sm"
-                  >
-                    {isSavingKey ? <Save className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                    Save
-                  </Button>
-                </div>
-                {apiKeyStatus.anthropic && (
-                  <div className="flex justify-between items-center p-3 bg-muted rounded-md">
-                    <div className="flex items-center gap-2">
-                      <Key className="w-4 h-4 text-muted-foreground" />
-                      <span className="text-sm text-muted-foreground">
-                        API key configured for Anthropic
-                      </span>
-                    </div>
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      onClick={() => handleDeleteApiKey("anthropic")}
-                      disabled={isDeletingKey === "anthropic"}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
-                  </div>
-                )}
-              </div>
-
-              <Separator />
-
-              {/* Google */}
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="google-key" className="text-sm font-medium">
-                    Google API Key
-                  </Label>
-                  {apiKeyStatus.google && (
-                    <Badge variant="secondary" className="text-xs">
-                      <Key className="w-3 h-3 mr-1" />
-                      Configured
-                    </Badge>
-                  )}
-                </div>
-                <div className="flex gap-2">
-                  <Input
-                    id="google-key"
-                    type="password"
-                    placeholder="AIza..."
-                    value={googleKey}
-                    onChange={(e) => setGoogleKey(e.target.value)}
-                    className="flex-1"
-                    disabled={isSavingKey}
-                  />
-                  <Button
-                    onClick={() => handleSaveApiKey("google", googleKey)}
-                    disabled={isSavingKey || !googleKey.trim()}
-                    size="sm"
-                  >
-                    {isSavingKey ? <Save className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                    Save
-                  </Button>
-                </div>
-                {apiKeyStatus.google && (
-                  <div className="flex justify-between items-center p-3 bg-muted rounded-md">
-                    <div className="flex items-center gap-2">
-                      <Key className="w-4 h-4 text-muted-foreground" />
-                      <span className="text-sm text-muted-foreground">
-                        API key configured for Google
-                      </span>
-                    </div>
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      onClick={() => handleDeleteApiKey("google")}
-                      disabled={isDeletingKey === "google"}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
-                  </div>
-                )}
-              </div>
-
-              {/* Security Notice */}
-              <div className="p-3 rounded-md bg-muted/50 border border-border">
-                <p className="text-xs text-muted-foreground">
-                  <strong className="text-foreground">🔒 Secure Storage:</strong> Your API keys are encrypted using AES-256 encryption and stored securely on our servers. They are never exposed in plain text and only decrypted when needed for API calls.
+          {/* AI Keys Tab */}
+          {activeTab === 'ai-keys' && (
+            <div className="space-y-6">
+              <div className="p-4 rounded-lg bg-muted/30 border border-border">
+                <p className="text-sm text-muted-foreground">
+                  <strong className="text-foreground">🔒 Secure Storage:</strong> Your API keys are encrypted using AES-256 encryption and stored securely. They are never exposed in plain text and only decrypted when needed for API calls.
                 </p>
               </div>
+
+              <div className="grid gap-4 md:grid-cols-1 lg:grid-cols-1">
+                {AI_PROVIDERS.map((provider) => {
+                  const isConfigured = apiKeyStatus[provider.id as keyof ApiKeyStatus];
+                  const isSaving = isSavingKey === provider.id;
+                  const isDeleting = isDeletingKey === provider.id;
+                  
+                  return (
+                    <div
+                      key={provider.id}
+                      className="bg-card border border-border rounded-lg p-6 hover:border-primary/30 transition-colors"
+                    >
+                      <div className="flex items-start gap-4">
+                        <div className="flex-1 space-y-4">
+                          <div className="flex items-start justify-between">
+                            <div>
+                              <div className="flex items-center gap-2 mb-1">
+                                <h3 className="text-lg font-semibold">{provider.name}</h3>
+                                {isConfigured && (
+                                  <Badge variant="secondary" className="text-xs">
+                                    <Key className="w-3 h-3 mr-1" />
+                                    Configured
+                                  </Badge>
+                                )}
+                              </div>
+                              <p className="text-sm text-muted-foreground">{provider.description}</p>
+                            </div>
+                          </div>
+
+                          {!isConfigured ? (
+                            <div className="flex gap-2">
+                              <Input
+                                type="password"
+                                placeholder={provider.placeholder}
+                                value={apiKeys[provider.id] || ""}
+                                onChange={(e) => setApiKeys(prev => ({ ...prev, [provider.id]: e.target.value }))}
+                                className="flex-1"
+                                disabled={isSaving}
+                              />
+                              <Button
+                                onClick={() => handleSaveApiKey(provider.id)}
+                                disabled={isSaving || !apiKeys[provider.id]?.trim()}
+                                size="sm"
+                              >
+                                {isSaving ? (
+                                  <Save className="w-4 h-4 animate-spin" />
+                                ) : (
+                                  <>
+                                    <Save className="w-4 h-4 mr-2" />
+                                    Save
+                                  </>
+                                )}
+                              </Button>
+                            </div>
+                          ) : (
+                            <div className="flex items-center justify-between p-3 bg-muted/50 rounded-md">
+                              <div className="flex items-center gap-2">
+                                <Check className="w-4 h-4 text-green-500" />
+                                <span className="text-sm text-muted-foreground">
+                                  API key is configured and ready to use
+                                </span>
+                              </div>
+                              <Button
+                                variant="destructive"
+                                size="sm"
+                                onClick={() => handleDeleteApiKey(provider.id)}
+                                disabled={isDeleting}
+                              >
+                                {isDeleting ? (
+                                  <Trash2 className="w-4 h-4 animate-spin" />
+                                ) : (
+                                  <>
+                                    <Trash2 className="w-4 h-4 mr-2" />
+                                    Delete
+                                  </>
+                                )}
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
-          </div>
+          )}
 
-          {/* Calendar Integration Section */}
-          <CalendarSettings onSyncComplete={() => setCalendarSyncTrigger(prev => prev + 1)} />
+          {/* Calendar Tab */}
+          {activeTab === 'calendar' && (
+            <div className="space-y-6">
+              <CalendarSettings onSyncComplete={() => setCalendarSyncTrigger(prev => prev + 1)} />
+            </div>
+          )}
 
-          {/* Upcoming Meetings Section */}
-          <CalendarEventsList key={calendarSyncTrigger} />
+          {/* Meetings Tab */}
+          {activeTab === 'meetings' && (
+            <div className="space-y-6">
+              <CalendarEventsList key={calendarSyncTrigger} />
+            </div>
+          )}
         </div>
       </main>
     </div>
