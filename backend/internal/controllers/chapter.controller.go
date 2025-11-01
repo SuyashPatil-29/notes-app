@@ -28,7 +28,7 @@ func CreateChapter(c *gin.Context) {
 
 	// Verify that the notebook belongs to the authenticated user
 	var notebook models.Notebook
-	if err := db.DB.Where("id = ? AND user_id = ?", chapter.NotebookID, userID).First(&notebook).Error; err != nil {
+	if err := db.DB.Where("id = ? AND clerk_user_id = ?", chapter.NotebookID, userID).First(&notebook).Error; err != nil {
 		log.Print("Notebook not found or unauthorized for user: ", userID, " Error: ", err)
 		c.JSON(http.StatusForbidden, gin.H{"error": "Unauthorized: Notebook does not belong to user"})
 		return
@@ -55,7 +55,7 @@ func GetChaptersByNotebook(c *gin.Context) {
 
 	// Verify that the notebook belongs to the authenticated user
 	var notebook models.Notebook
-	if err := db.DB.Where("id = ? AND user_id = ?", notebookID, userID).First(&notebook).Error; err != nil {
+	if err := db.DB.Where("id = ? AND clerk_user_id = ?", notebookID, userID).First(&notebook).Error; err != nil {
 		log.Print("Notebook not found or unauthorized for user: ", userID, " Error: ", err)
 		c.JSON(http.StatusForbidden, gin.H{"error": "Unauthorized: Notebook does not belong to user"})
 		return
@@ -91,7 +91,7 @@ func GetChapterById(c *gin.Context) {
 	}
 
 	// Verify the notebook belongs to the authenticated user
-	if chapter.Notebook.UserID != userID {
+	if chapter.Notebook.ClerkUserID != userID {
 		log.Print("Unauthorized access attempt to chapter: ", id, " by user: ", userID)
 		c.JSON(http.StatusForbidden, gin.H{"error": "Unauthorized"})
 		return
@@ -119,7 +119,7 @@ func DeleteChapter(c *gin.Context) {
 	}
 
 	// Verify the notebook belongs to the authenticated user
-	if chapter.Notebook.UserID != userID {
+	if chapter.Notebook.ClerkUserID != userID {
 		log.Print("Unauthorized delete attempt on chapter: ", id, " by user: ", userID)
 		c.JSON(http.StatusForbidden, gin.H{"error": "Unauthorized"})
 		return
@@ -154,7 +154,7 @@ func UpdateChapter(c *gin.Context) {
 	}
 
 	// Verify the notebook belongs to the authenticated user
-	if chapter.Notebook.UserID != userID {
+	if chapter.Notebook.ClerkUserID != userID {
 		log.Print("Unauthorized update attempt on chapter: ", id, " by user: ", userID)
 		c.JSON(http.StatusForbidden, gin.H{"error": "Unauthorized"})
 		return
@@ -200,7 +200,7 @@ func MoveChapter(c *gin.Context) {
 	}
 
 	// Verify the notebook belongs to the authenticated user
-	if chapter.Notebook.UserID != userID {
+	if chapter.Notebook.ClerkUserID != userID {
 		log.Print("Unauthorized move attempt on chapter: ", id, " by user: ", userID)
 		c.JSON(http.StatusForbidden, gin.H{"error": "Unauthorized"})
 		return
@@ -218,7 +218,7 @@ func MoveChapter(c *gin.Context) {
 
 	// Verify that the target notebook exists and belongs to the user
 	var targetNotebook models.Notebook
-	if err := db.DB.Where("id = ? AND user_id = ?", moveData.NotebookID, userID).First(&targetNotebook).Error; err != nil {
+	if err := db.DB.Where("id = ? AND clerk_user_id = ?", moveData.NotebookID, userID).First(&targetNotebook).Error; err != nil {
 		log.Print("Target notebook not found or unauthorized for user: ", userID, " Error: ", err)
 		c.JSON(http.StatusForbidden, gin.H{"error": "Unauthorized: Target notebook does not belong to user"})
 		return

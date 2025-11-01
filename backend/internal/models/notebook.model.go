@@ -8,14 +8,13 @@ import (
 )
 
 type Notebook struct {
-	ID        string    `json:"id" gorm:"primaryKey;type:varchar(255)"`
-	Name      string    `json:"name"`
-	UserID    uint      `json:"userId" gorm:"index"`
-	User      User      `json:"user" gorm:"foreignKey:UserID"`
-	Chapters  []Chapter `json:"chapters" gorm:"foreignKey:NotebookID"`
-	IsPublic  bool      `json:"isPublic" gorm:"default:false"`
-	CreatedAt time.Time `json:"createdAt"`
-	UpdatedAt time.Time `json:"updatedAt"`
+	ID          string    `json:"id" gorm:"primaryKey;type:varchar(255)"`
+	Name        string    `json:"name"`
+	ClerkUserID string    `json:"clerkUserId" gorm:"not null;index"`
+	Chapters    []Chapter `json:"chapters" gorm:"foreignKey:NotebookID"`
+	IsPublic    bool      `json:"isPublic" gorm:"default:false"`
+	CreatedAt   time.Time `json:"createdAt"`
+	UpdatedAt   time.Time `json:"updatedAt"`
 }
 
 // BeforeCreate hook to generate CUID before creating a notebook

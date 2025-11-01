@@ -129,8 +129,8 @@ html[data-theme='notebook'].dark {
   --secondary-foreground: 0 0% 75.2941%;
   --muted: 0 0% 27.0588%;
   --muted-foreground: 0 0% 62.7451%;
-  --accent: 0 0% 87.8431%;
-  --accent-foreground: 0 0% 20%;
+  --accent: 0 0% 30%;
+  --accent-foreground: 0 0% 95%;
   --destructive: 0 35.5932% 76.8627%;
   --destructive-foreground: 0 0% 16.8627%;
   --border: 0 0% 30.9804%;
@@ -145,8 +145,8 @@ html[data-theme='notebook'].dark {
   --sidebar-foreground: 0 0% 86.2745%;
   --sidebar-primary: 0 0% 69.0196%;
   --sidebar-primary-foreground: 0 0% 12.9412%;
-  --sidebar-accent: 0 0% 87.8431%;
-  --sidebar-accent-foreground: 0 0% 20%;
+  --sidebar-accent: 0 0% 30%;
+  --sidebar-accent-foreground: 0 0% 95%;
   --sidebar-border: 0 0% 30.9804%;
   --sidebar-ring: 0 0% 75.2941%;
   --font-sans: Architects Daughter, sans-serif;

@@ -1,9 +1,11 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Routes, Route } from 'react-router-dom'
 import { getUserNotebooks, createNotebook, updateNotebook, deleteNotebook } from '@/utils/notebook'
 import { createChapter, updateChapter, deleteChapter } from '@/utils/chapter'
 import { createNote, updateNote, deleteNote } from '@/utils/notes'
 import { useUser } from '@/hooks/auth'
+import { useAuth, SignedIn, ClerkLoading } from '@clerk/clerk-react'
+import { setAuthTokenGetter } from '@/utils/api'
 import { toast, Toaster } from 'sonner'
 import { LeftSidebarContent } from '@/components/left-sidebar-content'
 import { RightSidebarContent } from '@/components/right-sidebar-content'
@@ -29,12 +31,30 @@ import { createId } from '@paralleldrive/cuid2'
 import CommandMenu from './components/cmdk'
 import { OnboardingWizard } from './components/OnboardingWizard'
 import { Profile } from './components/Profile'
+import { SignInPage } from '@/pages/sign-in-page'
+import { SignUpPage } from '@/pages/sign-up-page'
+import { SSOCallback } from '@/components/auth/sso-callback'
+import { LandingPage } from '@/pages/landing-page'
+import { PublicOnlyRoute } from '@/components/auth/protected-route'
 
 function App() {
   const { user, loading: userLoading, refetch: refetchUser } = useUser()
+  const { getToken } = useAuth()
   const queryClient = useQueryClient()
   const [createNotebookDialog, setCreateNotebookDialog] = useState(false)
   const [onboardingCompleted, setOnboardingCompleted] = useState(false)
+
+  // Set up auth token getter for API calls
+  useEffect(() => {
+    setAuthTokenGetter(async () => {
+      try {
+        return await getToken();
+      } catch (error) {
+        console.error('Error getting token:', error);
+        return null;
+      }
+    });
+  }, [getToken]);
 
   const [createChapterDialog, setCreateChapterDialog] = useState<{
     open: boolean
@@ -114,7 +134,7 @@ function App() {
     noteName: "",
   })
 
-  const {data : userNotebooks, isLoading: userNotebooksLoading} = useQuery({
+  const { data: userNotebooks, isLoading: userNotebooksLoading } = useQuery({
     queryKey: ['userNotebooks'],
     queryFn: getUserNotebooks,
     refetchOnWindowFocus: false,
@@ -184,7 +204,7 @@ function App() {
 
       await createChapter(newChapter)
       toast.success("Chapter created successfully!")
-      
+
       // Invalidate and refetch notebooks to get the updated data
       queryClient.invalidateQueries({ queryKey: ['userNotebooks'] })
     } catch (error: any) {
@@ -462,151 +482,177 @@ function App() {
     await refetchUser()
   }
 
-  if (userLoading) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="text-muted-foreground text-lg">Loading...</div>
-      </div>
-    )
-  }
-
-  // Show onboarding wizard if user exists but hasn't completed onboarding
-  if (user && !user.onboardingCompleted && !onboardingCompleted) {
-    return <OnboardingWizard onComplete={handleOnboardingComplete} />
-  }
-
   return (
     <>
       <Toaster />
-      <LeftSidebarProvider defaultOpen>
-        <LeftSidebarContent 
-          notebooks={userNotebooks}
-          loading={userNotebooksLoading}
-          onCreateNotebook={handleCreateNotebook}
-          onCreateChapter={handleCreateChapter}
-          onRenameNotebook={handleRenameNotebook}
-          onDeleteNotebook={handleDeleteNotebook}
-          onCreateNote={handleCreateNote}
-          onRenameChapter={handleRenameChapter}
-          onDeleteChapter={handleDeleteChapter}
-          onRenameNote={handleRenameNote}
-          onDeleteNote={handleDeleteNote}
-        />
-        <LeftSidebarInset>
-          <RightSidebarProvider defaultOpen={false}>
-            <RightSidebarInset>
-              <Routes>
-                <Route path="/" element={<Dashboard user={user} />} />
-                <Route path="/profile" element={<Profile />} />
-                <Route path="/meetings/:meetingId" element={<MeetingDetail />} />
-                <Route path="/public/:notebookId" element={<PublicNotebookView />} />
-                <Route path="/public/:notebookId/:chapterId" element={<PublicChapterView />} />
-                <Route path="/public/:notebookId/:chapterId/:noteId" element={<PublicNoteView />} />
-                <Route path="/public/user/:email" element={<PublicUserProfile />} />
-                <Route path="/:notebookId" element={<NotebookView user={user} onCreateChapter={handleCreateChapter} />} />
-                <Route path="/:notebookId/:chapterId" element={<ChapterView user={user} onCreateNote={handleCreateNote} />} />
-                <Route path="/:notebookId/:chapterId/:noteId" element={<NoteEditor user={user} />} />
-              </Routes>
-            </RightSidebarInset>
-            <RightSidebarContent />
-          </RightSidebarProvider>
-        </LeftSidebarInset>
-      </LeftSidebarProvider>
+      <ClerkLoading>
+        <div className="min-h-screen bg-background flex items-center justify-center">
+          <div className="text-muted-foreground text-lg">Loading your account</div>
+        </div>
+      </ClerkLoading>
+      <Routes>
+        {/* Landing Page - redirects to /dashboard if signed in */}
+        <Route path="/" element={
+          <PublicOnlyRoute>
+            <LandingPage />
+          </PublicOnlyRoute>
+        } />
+ 
+        {/* Public routes - redirect to /dashboard if signed in */}
+        <Route path="/sign-in" element={
+          <PublicOnlyRoute>
+            <SignInPage />
+          </PublicOnlyRoute>
+        } />
+        <Route path="/sign-up" element={
+          <PublicOnlyRoute>
+            <SignUpPage />
+          </PublicOnlyRoute>
+        } />
+        <Route path="/sso-callback" element={<SSOCallback />} />
 
-      <CreateNotebookDialog
-        open={createNotebookDialog}
-        onOpenChange={setCreateNotebookDialog}
-        onSubmit={handleCreateNotebookSubmit}
-      />
+        {/* Public content routes - accessible without auth */}
+        <Route path="/public/:notebookId" element={<PublicNotebookView />} />
+        <Route path="/public/:notebookId/:chapterId" element={<PublicChapterView />} />
+        <Route path="/public/:notebookId/:chapterId/:noteId" element={<PublicNoteView />} />
+        <Route path="/public/user/:email" element={<PublicUserProfile />} />
 
-      <CreateChapterDialog
-        open={createChapterDialog.open}
-        onOpenChange={(open) =>
-          setCreateChapterDialog({ ...createChapterDialog, open })
-        }
-        onSubmit={handleCreateChapterSubmit}
-        notebookName={createChapterDialog.notebookName}
-      />
+        {/* Protected routes */}
+        <Route path="/*" element={
+          <SignedIn>
+            {user && !user.onboardingCompleted && !onboardingCompleted ? (
+              <OnboardingWizard onComplete={handleOnboardingComplete} />
+            ) : (
+              <LeftSidebarProvider defaultOpen>
+                <LeftSidebarContent
+                  notebooks={userNotebooks}
+                  loading={userNotebooksLoading}
+                  onCreateNotebook={handleCreateNotebook}
+                  onCreateChapter={handleCreateChapter}
+                  onRenameNotebook={handleRenameNotebook}
+                  onDeleteNotebook={handleDeleteNotebook}
+                  onCreateNote={handleCreateNote}
+                  onRenameChapter={handleRenameChapter}
+                  onDeleteChapter={handleDeleteChapter}
+                  onRenameNote={handleRenameNote}
+                  onDeleteNote={handleDeleteNote}
+                />
+                <LeftSidebarInset>
+                  <RightSidebarProvider defaultOpen={false}>
+                    <RightSidebarInset>
+                      <Routes>
+                        <Route path="/" element={<Dashboard user={user} userLoading={userLoading} />} />
+                        <Route path="/dashboard" element={<Dashboard user={user} userLoading={userLoading} />} />
+                        <Route path="/profile" element={<Profile />} />
+                        <Route path="/meetings/:meetingId" element={<MeetingDetail />} />
+                        <Route path="/:notebookId" element={<NotebookView user={user} userLoading={userLoading} onCreateChapter={handleCreateChapter} />} />
+                        <Route path="/:notebookId/:chapterId" element={<ChapterView user={user} userLoading={userLoading} onCreateNote={handleCreateNote} />} />
+                        <Route path="/:notebookId/:chapterId/:noteId" element={<NoteEditor user={user} userLoading={userLoading} />} />
+                      </Routes>
+                    </RightSidebarInset>
+                    <RightSidebarContent />
+                  </RightSidebarProvider>
+                </LeftSidebarInset>
+              </LeftSidebarProvider>
+            )}
 
-      <CreateNoteDialog
-        open={createNoteDialog.open}
-        onOpenChange={(open) =>
-          setCreateNoteDialog({ ...createNoteDialog, open })
-        }
-        onSubmit={handleCreateNoteSubmit}
-        chapterName={createNoteDialog.chapterName}
-      />
+            <CreateNotebookDialog
+              open={createNotebookDialog}
+              onOpenChange={setCreateNotebookDialog}
+              onSubmit={handleCreateNotebookSubmit}
+            />
 
-      <RenameDialog
-        open={renameNotebookDialog.open}
-        onOpenChange={(open) =>
-          setRenameNotebookDialog({ ...renameNotebookDialog, open })
-        }
-        onSubmit={handleRenameNotebookSubmit}
-        title="Rename Notebook"
-        currentName={renameNotebookDialog.currentName}
-        itemType="Notebook"
-      />
+            <CreateChapterDialog
+              open={createChapterDialog.open}
+              onOpenChange={(open) =>
+                setCreateChapterDialog({ ...createChapterDialog, open })
+              }
+              onSubmit={handleCreateChapterSubmit}
+              notebookName={createChapterDialog.notebookName}
+            />
 
-      <DeleteConfirmDialog
-        open={deleteNotebookDialog.open}
-        onOpenChange={(open) =>
-          setDeleteNotebookDialog({ ...deleteNotebookDialog, open })
-        }
-        onConfirm={handleDeleteNotebookConfirm}
-        title="Delete Notebook"
-        description="Are you sure you want to delete this notebook? This action cannot be undone and will delete all chapters and notes within this notebook."
-        itemName={deleteNotebookDialog.notebookName}
-        itemType="Notebook"
-      />
+            <CreateNoteDialog
+              open={createNoteDialog.open}
+              onOpenChange={(open) =>
+                setCreateNoteDialog({ ...createNoteDialog, open })
+              }
+              onSubmit={handleCreateNoteSubmit}
+              chapterName={createNoteDialog.chapterName}
+            />
 
-      <RenameDialog
-        open={renameChapterDialog.open}
-        onOpenChange={(open) =>
-          setRenameChapterDialog({ ...renameChapterDialog, open })
-        }
-        onSubmit={handleRenameChapterSubmit}
-        title="Rename Chapter"
-        currentName={renameChapterDialog.currentName}
-        itemType="Chapter"
-      />
+            <RenameDialog
+              open={renameNotebookDialog.open}
+              onOpenChange={(open) =>
+                setRenameNotebookDialog({ ...renameNotebookDialog, open })
+              }
+              onSubmit={handleRenameNotebookSubmit}
+              title="Rename Notebook"
+              currentName={renameNotebookDialog.currentName}
+              itemType="Notebook"
+            />
 
-      <DeleteConfirmDialog
-        open={deleteChapterDialog.open}
-        onOpenChange={(open) =>
-          setDeleteChapterDialog({ ...deleteChapterDialog, open })
-        }
-        onConfirm={handleDeleteChapterConfirm}
-        title="Delete Chapter"
-        description="Are you sure you want to delete this chapter? This action cannot be undone and will delete all notes within this chapter."
-        itemName={deleteChapterDialog.chapterName}
-        itemType="Chapter"
-      />
+            <DeleteConfirmDialog
+              open={deleteNotebookDialog.open}
+              onOpenChange={(open) =>
+                setDeleteNotebookDialog({ ...deleteNotebookDialog, open })
+              }
+              onConfirm={handleDeleteNotebookConfirm}
+              title="Delete Notebook"
+              description="Are you sure you want to delete this notebook? This action cannot be undone and will delete all chapters and notes within this notebook."
+              itemName={deleteNotebookDialog.notebookName}
+              itemType="Notebook"
+            />
 
-      <RenameDialog
-        open={renameNoteDialog.open}
-        onOpenChange={(open) =>
-          setRenameNoteDialog({ ...renameNoteDialog, open })
-        }
-        onSubmit={handleRenameNoteSubmit}
-        title="Rename Note"
-        currentName={renameNoteDialog.currentName}
-        itemType="Note"
-      />
+            <RenameDialog
+              open={renameChapterDialog.open}
+              onOpenChange={(open) =>
+                setRenameChapterDialog({ ...renameChapterDialog, open })
+              }
+              onSubmit={handleRenameChapterSubmit}
+              title="Rename Chapter"
+              currentName={renameChapterDialog.currentName}
+              itemType="Chapter"
+            />
 
-      <DeleteConfirmDialog
-        open={deleteNoteDialog.open}
-        onOpenChange={(open) =>
-          setDeleteNoteDialog({ ...deleteNoteDialog, open })
-        }
-        onConfirm={handleDeleteNoteConfirm}
-        title="Delete Note"
-        description="Are you sure you want to delete this note? This action cannot be undone."
-        itemName={deleteNoteDialog.noteName}
-        itemType="Note"
-      />
+            <DeleteConfirmDialog
+              open={deleteChapterDialog.open}
+              onOpenChange={(open) =>
+                setDeleteChapterDialog({ ...deleteChapterDialog, open })
+              }
+              onConfirm={handleDeleteChapterConfirm}
+              title="Delete Chapter"
+              description="Are you sure you want to delete this chapter? This action cannot be undone and will delete all notes within this chapter."
+              itemName={deleteChapterDialog.chapterName}
+              itemType="Chapter"
+            />
 
-      <CommandMenu notebooks={userNotebooks} />
+            <RenameDialog
+              open={renameNoteDialog.open}
+              onOpenChange={(open) =>
+                setRenameNoteDialog({ ...renameNoteDialog, open })
+              }
+              onSubmit={handleRenameNoteSubmit}
+              title="Rename Note"
+              currentName={renameNoteDialog.currentName}
+              itemType="Note"
+            />
+
+            <DeleteConfirmDialog
+              open={deleteNoteDialog.open}
+              onOpenChange={(open) =>
+                setDeleteNoteDialog({ ...deleteNoteDialog, open })
+              }
+              onConfirm={handleDeleteNoteConfirm}
+              title="Delete Note"
+              description="Are you sure you want to delete this note? This action cannot be undone."
+              itemName={deleteNoteDialog.noteName}
+              itemType="Note"
+            />
+
+            <CommandMenu notebooks={userNotebooks} />
+          </SignedIn>
+        } />
+      </Routes>
     </>
   )
 }

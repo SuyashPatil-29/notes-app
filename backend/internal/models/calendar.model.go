@@ -10,8 +10,7 @@ import (
 // Calendar represents a user's connected calendar (Google/Microsoft)
 type Calendar struct {
 	ID                string     `json:"id" gorm:"primaryKey;type:varchar(255)"`
-	UserID            uint       `json:"userId" gorm:"not null;index"`
-	User              User       `json:"user,omitempty" gorm:"foreignKey:UserID"`
+	ClerkUserID       string     `json:"clerkUserId" gorm:"not null;index"`
 	RecallCalendarID  string     `json:"recallCalendarId" gorm:"uniqueIndex;not null"` // ID from Recall.ai
 	Platform          string     `json:"platform" gorm:"not null"`                     // "google_calendar" or "microsoft_outlook"
 	PlatformEmail     string     `json:"platformEmail" gorm:"not null"`
@@ -64,12 +63,12 @@ func (ce *CalendarEvent) BeforeCreate(tx *gorm.DB) error {
 
 // CalendarOAuthState represents temporary OAuth state for security
 type CalendarOAuthState struct {
-	ID        string    `json:"id" gorm:"primaryKey;type:varchar(255)"`
-	UserID    uint      `json:"userId" gorm:"not null;index"`
-	State     string    `json:"state" gorm:"uniqueIndex;not null"`
-	Platform  string    `json:"platform" gorm:"not null"` // "google" or "microsoft"
-	CreatedAt time.Time `json:"createdAt"`
-	ExpiresAt time.Time `json:"expiresAt" gorm:"index"`
+	ID          string    `json:"id" gorm:"primaryKey;type:varchar(255)"`
+	ClerkUserID string    `json:"clerkUserId" gorm:"not null;index"`
+	State       string    `json:"state" gorm:"uniqueIndex;not null"`
+	Platform    string    `json:"platform" gorm:"not null"` // "google" or "microsoft"
+	CreatedAt   time.Time `json:"createdAt"`
+	ExpiresAt   time.Time `json:"expiresAt" gorm:"index"`
 }
 
 // BeforeCreate hook to generate CUID before creating OAuth state

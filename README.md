@@ -5,8 +5,10 @@ A full-stack notes application with hierarchical organization (Users → Noteboo
 ## ✨ Features
 
 ### 🔐 Authentication & Security
-- **Google OAuth Integration** - Secure login with Google accounts
-- **Session Management** - Cookie-based authentication with secure storage
+- **Clerk Authentication** - Modern, secure authentication with custom UI
+- **Multiple Auth Methods** - Email/password and OAuth (Google, GitHub)
+- **Email Verification** - Required verification for new accounts
+- **Session Management** - Secure JWT-based sessions handled by Clerk
 - **Protected Routes** - Client-side route protection for authenticated users
 
 ### 📚 Hierarchical Organization
@@ -94,11 +96,14 @@ Users
 ```
 
 **Data Flow:**
-1. User authenticates via Google OAuth
-2. Frontend fetches user's notebooks with nested chapters and notes
-3. TanStack Query manages caching and optimistic updates
-4. User edits are auto-saved to the backend
-5. Changes sync across all components via query invalidation
+1. User authenticates via Clerk (email/password or OAuth)
+2. Frontend receives JWT session token
+3. API calls include token in Authorization header
+4. Backend validates token with Clerk
+5. Frontend fetches user's notebooks with nested chapters and notes
+6. TanStack Query manages caching and optimistic updates
+7. User edits are auto-saved to the backend
+8. Changes sync across all components via query invalidation
 
 ## 🛠️ Tech Stack
 
@@ -106,14 +111,15 @@ Users
 - **Go 1.21+** - Modern, performant programming language
 - **Gin** - Fast HTTP web framework
 - **GORM** - Feature-rich ORM for database operations
-- **Goth/Gothic** - Multi-provider OAuth authentication
-- **PostgreSQL** - Robust relational database
+- **Clerk Go SDK** - Modern authentication and user management
+- **SQLite** - Lightweight embedded database (development)
 - **Zerolog** - High-performance structured logging
 
 ### Frontend
-- **React 18** - Modern UI library with hooks
+- **React 19** - Modern UI library with hooks
 - **TypeScript** - Type-safe JavaScript
 - **Vite** - Lightning-fast build tool and dev server
+- **Clerk React SDK** - Custom authentication UI components
 - **TanStack Query** - Powerful data synchronization and caching
 - **TipTap** - Headless WYSIWYG editor framework
 - **Tailwind CSS v4** - Utility-first CSS framework
@@ -204,9 +210,8 @@ notes-app/
 ### Prerequisites
 
 - **Go** 1.21 or higher
-- **Node.js** 18 or higher
-- **PostgreSQL** 14 or higher
-- **Google OAuth Credentials** ([Get them here](https://console.cloud.google.com/))
+- **Node.js** 18 or higher (or **Bun** for faster installs)
+- **Clerk Account** - [Sign up for free](https://clerk.com/)
 - **AI API Key** (Optional, for AI features) - Get from [OpenAI](https://platform.openai.com/), [Anthropic](https://console.anthropic.com/), or [Google AI](https://ai.google.dev/)
 
 ### Backend Setup
@@ -222,9 +227,9 @@ notes-app/
    ```
 
 3. **Configure `.env` file:**
-   - Add your PostgreSQL credentials
-   - Add your Google OAuth credentials
-   - Set a secure session secret
+   - Add your Clerk Secret Key from the [Clerk Dashboard](https://dashboard.clerk.com/)
+   - Set up database path (SQLite by default)
+   - Configure encryption key for API credentials
 
 4. **Install dependencies:**
    ```bash
@@ -252,10 +257,12 @@ notes-app/
    npm install
    ```
 
-3. **Copy environment variables (if needed):**
+3. **Configure environment variables:**
+   Create a `.env.local` file with your Clerk Publishable Key:
    ```bash
-   cp .env.example .env
+   VITE_CLERK_PUBLISHABLE_KEY=pk_test_...
    ```
+   Get your key from the [Clerk Dashboard](https://dashboard.clerk.com/)
 
 4. **Start development server:**
    ```bash
@@ -285,10 +292,14 @@ To enable AI-powered features like intelligent reorganization:
 ## 🔌 API Endpoints
 
 ### Authentication
-- `GET /auth/google` - Initiate Google OAuth flow
-- `GET /auth/google/callback` - OAuth callback handler
 - `GET /auth/user` - Get current authenticated user details
-- `GET /logout/google` - End user session and logout
+- `POST /auth/onboarding/complete` - Mark user onboarding as complete
+- `GET /auth/onboarding/status` - Get onboarding completion status
+- `POST /auth/api-keys` - Set encrypted AI API credentials
+- `GET /auth/api-keys` - Get list of configured AI providers
+- `DELETE /auth/api-keys` - Delete an AI API credential
+
+**Note:** Authentication is handled by Clerk with custom UI pages. See [Custom Auth Setup](./docs/CUSTOM-AUTH-SETUP.md) for details.
 
 ### Notebooks
 - `POST /notebook` - Create a new notebook
@@ -311,41 +322,34 @@ To enable AI-powered features like intelligent reorganization:
 - `PUT /note/:id/move` - Move note to different chapter
 - `DELETE /note/:id` - Delete note
 
-**Authentication:** All endpoints (except auth routes) require valid session cookie.
+**Authentication:** All endpoints (except public routes) require valid Clerk session token in the Authorization header.
 
 ## Database Models
 
 ### User
-```go
-type User struct {
-    ID        uint
-    Name      string
-    Email     string
-    ImageUrl  *string
-    Notebooks []Notebook
-    CreatedAt time.Time
-    UpdatedAt time.Time
-}
-```
+
+**Note:** User data is managed by Clerk. The backend uses `clerk_user_id` to associate data with users. No local user table is stored in the database.
 
 ### Notebook
 ```go
 type Notebook struct {
-    ID        uint
-    Name      string
-    UserID    uint
-    Chapters  []Chapter
-    CreatedAt time.Time
-    UpdatedAt time.Time
+    ID          string  // CUID
+    Name        string
+    ClerkUserID string  // References Clerk user
+    IsPublic    bool
+    Chapters    []Chapter
+    CreatedAt   time.Time
+    UpdatedAt   time.Time
 }
 ```
 
 ### Chapter
 ```go
 type Chapter struct {
-    ID         uint
+    ID         string  // CUID
     Name       string
-    NotebookID uint
+    NotebookID string
+    IsPublic   bool
     Notes      []Notes
     CreatedAt  time.Time
     UpdatedAt  time.Time
@@ -355,10 +359,11 @@ type Chapter struct {
 ### Notes
 ```go
 type Notes struct {
-    ID        uint
+    ID        string  // CUID
     Name      string
     Content   string
-    ChapterID uint
+    ChapterID string
+    IsPublic  bool
     CreatedAt time.Time
     UpdatedAt time.Time
 }
@@ -368,17 +373,25 @@ type Notes struct {
 
 See `.env.example` files in `backend/` and `frontend/` directories for required environment variables.
 
-## Google OAuth Setup
+## Authentication Setup
 
-1. Go to [Google Cloud Console](https://console.cloud.google.com/)
-2. Create a new project (or select existing)
-3. Enable Google+ API
-4. Go to "Credentials" → "Create Credentials" → "OAuth 2.0 Client ID"
-5. Configure OAuth consent screen
-6. Add authorized redirect URIs:
-   - `http://localhost:8080/auth/google/callback` (development)
-   - `https://yourdomain.com/auth/google/callback` (production)
-7. Copy Client ID and Client Secret to `.env` file
+This app uses [Clerk](https://clerk.com/) for authentication with a fully custom UI.
+
+### Quick Setup
+
+1. **Create a Clerk account** at [clerk.com](https://clerk.com/)
+2. **Create an application** in the Clerk Dashboard
+3. **Copy your keys:**
+   - Publishable Key → Frontend `.env.local` as `VITE_CLERK_PUBLISHABLE_KEY`
+   - Secret Key → Backend `.env` as `CLERK_SECRET_KEY`
+4. **Enable OAuth providers** (optional):
+   - Go to "Social Connections" in Clerk Dashboard
+   - Enable Google and/or GitHub
+5. **Test the auth flow:**
+   - Visit `http://localhost:5173/sign-up`
+   - Create an account or sign in with OAuth
+
+For detailed setup instructions and customization options, see [Custom Auth Setup Documentation](./docs/CUSTOM-AUTH-SETUP.md).
 
 ## Development
 
@@ -417,15 +430,16 @@ npm run build
 ⚠️ **This application is currently in development mode**
 
 Before deploying to production:
-- [ ] Use HTTPS everywhere
-- [ ] Generate cryptographically secure session secrets
-- [ ] Implement Redis/PostgreSQL for session storage (not cookie store)
-- [ ] Add CSRF protection
-- [ ] Add rate limiting
-- [ ] Implement session rotation
-- [ ] Use environment-based secret management
+- [ ] Use HTTPS everywhere (required for OAuth)
+- [ ] Use production database (PostgreSQL recommended)
+- [ ] Configure Clerk production instance
+- [ ] Add rate limiting middleware
+- [ ] Implement proper secret management
 - [ ] Enable security headers (HSTS, CSP, etc.)
 - [ ] Add audit logging
+- [ ] Set up proper CORS policies
+- [ ] Configure database backups
+- [ ] Implement monitoring and alerting
 
 ## Contributing
 

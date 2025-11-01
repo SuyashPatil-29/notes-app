@@ -39,7 +39,7 @@ func GetNoteById(c *gin.Context) {
 	}
 
 	// Verify the notebook belongs to the authenticated user
-	if note.Chapter.Notebook.UserID != userID {
+	if note.Chapter.Notebook.ClerkUserID != userID {
 		log.Print("Unauthorized access attempt to note: ", id, " by user: ", userID)
 		c.JSON(http.StatusForbidden, gin.H{"error": "Unauthorized"})
 		return
@@ -66,7 +66,7 @@ func GetNotesByChapter(c *gin.Context) {
 		return
 	}
 
-	if chapter.Notebook.UserID != userID {
+	if chapter.Notebook.ClerkUserID != userID {
 		log.Print("Unauthorized: Chapter does not belong to user: ", userID)
 		c.JSON(http.StatusForbidden, gin.H{"error": "Unauthorized: Chapter does not belong to user"})
 		return
@@ -107,7 +107,7 @@ func CreateNote(c *gin.Context) {
 		return
 	}
 
-	if chapter.Notebook.UserID != userID {
+	if chapter.Notebook.ClerkUserID != userID {
 		log.Print("Unauthorized: Chapter does not belong to user: ", userID)
 		c.JSON(http.StatusForbidden, gin.H{"error": "Unauthorized: Chapter does not belong to user"})
 		return
@@ -141,13 +141,13 @@ func DeleteNote(c *gin.Context) {
 	}
 
 	// Verify the notebook belongs to the authenticated user
-	if note.Chapter.Notebook.UserID != userID {
+	if note.Chapter.Notebook.ClerkUserID != userID {
 		log.Print("Unauthorized delete attempt on note: ", id, " by user: ", userID)
 		c.JSON(http.StatusForbidden, gin.H{"error": "Unauthorized"})
 		return
 	}
 
-	if err := db.DB.Delete(&note, id).Error; err != nil {
+	if err := db.DB.Delete(&note).Error; err != nil {
 		log.Print("Error deleting Note with id: ", id, " Error: ", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -175,7 +175,7 @@ func UpdateNote(c *gin.Context) {
 	}
 
 	// Verify the notebook belongs to the authenticated user
-	if note.Chapter.Notebook.UserID != userID {
+	if note.Chapter.Notebook.ClerkUserID != userID {
 		log.Print("Unauthorized update attempt on note: ", id, " by user: ", userID)
 		c.JSON(http.StatusForbidden, gin.H{"error": "Unauthorized"})
 		return
@@ -221,7 +221,7 @@ func MoveNote(c *gin.Context) {
 	}
 
 	// Verify the notebook belongs to the authenticated user
-	if note.Chapter.Notebook.UserID != userID {
+	if note.Chapter.Notebook.ClerkUserID != userID {
 		log.Print("Unauthorized move attempt on note: ", id, " by user: ", userID)
 		c.JSON(http.StatusForbidden, gin.H{"error": "Unauthorized"})
 		return
@@ -245,7 +245,7 @@ func MoveNote(c *gin.Context) {
 		return
 	}
 
-	if targetChapter.Notebook.UserID != userID {
+	if targetChapter.Notebook.ClerkUserID != userID {
 		log.Print("Unauthorized: Target chapter does not belong to user: ", userID)
 		c.JSON(http.StatusForbidden, gin.H{"error": "Unauthorized: Target chapter does not belong to user"})
 		return
@@ -288,7 +288,7 @@ func GenerateNoteVideo(c *gin.Context) {
 	}
 
 	// Verify the notebook belongs to the authenticated user
-	if note.Chapter.Notebook.UserID != userID {
+	if note.Chapter.Notebook.ClerkUserID != userID {
 		log.Print("Unauthorized video generation attempt on note: ", id, " by user: ", userID)
 		c.JSON(http.StatusForbidden, gin.H{"error": "Unauthorized"})
 		return
@@ -296,7 +296,7 @@ func GenerateNoteVideo(c *gin.Context) {
 
 	// Generate video data with AI based on note content
 	log.Info().Str("note_id", id).Msg("Generating AI-powered video for note")
-	videoData, err := GenerateVideoDataWithAI(note.Chapter.Notebook.UserID, note.Name, note.Content)
+	videoData, err := GenerateVideoDataWithAI(note.Chapter.Notebook.ClerkUserID, note.Name, note.Content)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to generate AI video, using fallback")
 		// Fallback to simple generation
@@ -351,7 +351,7 @@ func DeleteNoteVideo(c *gin.Context) {
 	}
 
 	// Verify the notebook belongs to the authenticated user
-	if note.Chapter.Notebook.UserID != userID {
+	if note.Chapter.Notebook.ClerkUserID != userID {
 		log.Print("Unauthorized video deletion attempt on note: ", id, " by user: ", userID)
 		c.JSON(http.StatusForbidden, gin.H{"error": "Unauthorized"})
 		return
@@ -396,9 +396,9 @@ type VideoStructure struct {
 }
 
 // getUserAPIKeyForVideo retrieves the user's API key for video generation
-func getUserAPIKeyForVideo(userID uint, provider string) (string, error) {
+func getUserAPIKeyForVideo(clerkUserID string, provider string) (string, error) {
 	var credential models.AICredential
-	if err := db.DB.Where("user_id = ? AND provider = ?", userID, provider).First(&credential).Error; err != nil {
+	if err := db.DB.Where("clerk_user_id = ? AND provider = ?", clerkUserID, provider).First(&credential).Error; err != nil {
 		return "", err
 	}
 
@@ -419,7 +419,7 @@ func getUserAPIKeyForVideo(userID uint, provider string) (string, error) {
 }
 
 // GenerateVideoDataWithAI uses AI to create a structured video from note content
-func GenerateVideoDataWithAI(userID uint, title, content string) (map[string]interface{}, error) {
+func GenerateVideoDataWithAI(clerkUserID string, title, content string) (map[string]interface{}, error) {
 	// Extract text from JSON content if needed
 	extractedContent := ExtractTextFromJSON(content)
 
@@ -429,7 +429,7 @@ func GenerateVideoDataWithAI(userID uint, title, content string) (map[string]int
 	var provider string
 
 	for _, p := range providers {
-		key, err := getUserAPIKeyForVideo(userID, p)
+		key, err := getUserAPIKeyForVideo(clerkUserID, p)
 		if err == nil && key != "" {
 			apiKey = key
 			provider = p

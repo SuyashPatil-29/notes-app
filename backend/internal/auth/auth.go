@@ -4,21 +4,18 @@ import (
 	"backend/db"
 	"backend/internal/models"
 	"backend/pkg/utils"
+	"encoding/json"
 	"net/http"
-	"os"
 	"strings"
 
+	"github.com/clerk/clerk-sdk-go/v2"
+	"github.com/clerk/clerk-sdk-go/v2/user"
 	"github.com/gin-gonic/gin"
-	"github.com/gorilla/sessions"
-	"github.com/joho/godotenv"
-	"github.com/markbates/goth"
-	"github.com/markbates/goth/gothic"
-	"github.com/markbates/goth/providers/google"
 	"github.com/rs/zerolog/log"
 )
 
 type CurrentUserDTO struct {
-	ID                  uint    `json:"id"`
+	ClerkUserID         string  `json:"clerkUserId"`
 	Name                string  `json:"name"`
 	Email               string  `json:"email"`
 	ImageUrl            *string `json:"imageUrl"`
@@ -26,178 +23,73 @@ type CurrentUserDTO struct {
 	HasApiKey           bool    `json:"hasApiKey"`
 }
 
-const (
-	MaxAge = 86400 * 30
-)
-
-var Store *sessions.CookieStore
-
-func InitAuth() {
-	var isProd bool
-	err := godotenv.Load()
-	if err != nil {
-		log.Warn().Msg("Error loading .env file, using environment variables")
-	}
-
-	if os.Getenv("IsProd") == "true" {
-		isProd = true
-	} else {
-		isProd = false
-	}
-
-	googleClientId := os.Getenv("GOOGLE_CLIENT_ID")
-	googleClientSecret := os.Getenv("GOOGLE_CLIENT_SECRET")
-	callbackURL := os.Getenv("GOOGLE_CALLBACK_URL")
-	sessionHashKey := os.Getenv("SESSION_HASH_KEY")
-	sessionBlockKey := os.Getenv("SESSION_BLOCK_KEY")
-
-	if callbackURL == "" {
-		callbackURL = "http://localhost:8080/auth/google/callback"
-	}
-
-	if sessionHashKey == "" {
-		sessionHashKey = "MyRandomHashKeyPleaseChangeThis32"
-	}
-	if sessionBlockKey == "" {
-		sessionBlockKey = "MyBlockKey16Bytes"
-	}
-
-	// Ensure keys are proper lengths
-	hashKey := []byte(sessionHashKey)
-	if len(hashKey) < 32 {
-		hashKey = append(hashKey, make([]byte, 32-len(hashKey))...)
-	}
-	blockKey := []byte(sessionBlockKey)
-	if len(blockKey) != 16 && len(blockKey) != 24 && len(blockKey) != 32 {
-		// Pad to 32 bytes for AES-256
-		if len(blockKey) < 32 {
-			blockKey = append(blockKey, make([]byte, 32-len(blockKey))...)
-		} else {
-			blockKey = blockKey[:32]
-		}
-	}
-
-	Store = sessions.NewCookieStore(hashKey, blockKey)
-	Store.MaxAge(MaxAge)
-
-	Store.Options = &sessions.Options{
-		Path:     "/",
-		MaxAge:   MaxAge,
-		HttpOnly: true,
-		Secure:   isProd,
-		SameSite: http.SameSiteLaxMode,
-	}
-
-	gothic.Store = Store
-
-	goth.UseProviders(google.New(googleClientId, googleClientSecret, callbackURL))
-}
-
-// BeginAuth starts the authentication process
-func BeginAuth(c *gin.Context) {
-	provider := c.Param("provider")
-
-	// Set provider in query if not already set
-	q := c.Request.URL.Query()
-	if q.Get("provider") == "" {
-		q.Set("provider", provider)
-		c.Request.URL.RawQuery = q.Encode()
-	}
-
-	gothic.BeginAuthHandler(c.Writer, c.Request)
-}
-
-// AuthCallback handles the OAuth callback
-func AuthCallback(c *gin.Context) {
-	provider := c.Param("provider")
-
-	q := c.Request.URL.Query()
-	if q.Get("provider") == "" {
-		q.Set("provider", provider)
-		c.Request.URL.RawQuery = q.Encode()
-	}
-
-	gothUser, err := gothic.CompleteUserAuth(c.Writer, c.Request)
-	if err != nil {
-		log.Print("Error completing auth: ", err)
-		c.Redirect(http.StatusTemporaryRedirect, "http://localhost:5173?error=auth_failed")
-		return
-	}
-
-	// Check if user exists in database
-	var user models.User
-	result := db.DB.Where("email = ?", gothUser.Email).First(&user)
-
-	if result.Error != nil {
-		// User doesn't exist, create new user
-		imageUrl := gothUser.AvatarURL
-		user = models.User{
-			Name:     gothUser.Name,
-			Email:    gothUser.Email,
-			ImageUrl: &imageUrl,
-		}
-
-		if err := db.DB.Create(&user).Error; err != nil {
-			log.Print("Error creating user in db: ", err)
-			c.Redirect(http.StatusTemporaryRedirect, "http://localhost:5173?error=db_error")
-			return
-		}
-	}
-
-	// Store user in session
-	session, _ := Store.Get(c.Request, "auth-session")
-	session.Values["user_id"] = user.ID
-	session.Values["email"] = user.Email
-	session.Values["name"] = user.Name
-	if err := session.Save(c.Request, c.Writer); err != nil {
-		log.Print("Error saving session: ", err)
-	}
-
-	// Redirect to frontend with user info
-	c.Redirect(http.StatusTemporaryRedirect, "http://localhost:5173?login=success")
-}
-
 // GetCurrentUser returns the currently logged-in user with onboarding and API key status
 func GetCurrentUser(c *gin.Context) {
-	session, err := Store.Get(c.Request, "auth-session")
+	// Get Clerk session claims from context (includes publicMetadata)
+	claims, ok := clerk.SessionClaimsFromContext(c.Request.Context())
+	if !ok || claims == nil {
+		log.Error().Msg("No Clerk session found in context")
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Not authenticated"})
+		return
+	}
+
+	clerkUserID := claims.Subject
+
+	// Fetch user from Clerk to get full details
+	clerkUser, err := user.Get(c.Request.Context(), clerkUserID)
 	if err != nil {
-		log.Print("Error getting session: ", err)
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Not authenticated"})
+		log.Error().Err(err).Msg("Error fetching user from Clerk")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch user"})
 		return
 	}
 
-	userID, ok := session.Values["user_id"]
-	if !ok || userID == nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Not authenticated"})
-		return
+	// Extract user data from Clerk
+	imageUrl := ""
+	if clerkUser.ImageURL != nil {
+		imageUrl = *clerkUser.ImageURL
 	}
 
-	// Fetch user from database with onboarding info
-	var user models.User
-	if err := db.DB.First(&user, userID).Error; err != nil {
-		log.Print("User not found in database: ", err)
-		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
-		return
+	email := ""
+	if len(clerkUser.EmailAddresses) > 0 {
+		for _, emailAddr := range clerkUser.EmailAddresses {
+			if emailAddr.ID == *clerkUser.PrimaryEmailAddressID {
+				email = emailAddr.EmailAddress
+				break
+			}
+		}
+	}
+
+	name := ""
+	if clerkUser.FirstName != nil && clerkUser.LastName != nil {
+		name = *clerkUser.FirstName + " " + *clerkUser.LastName
+	} else if clerkUser.FirstName != nil {
+		name = *clerkUser.FirstName
+	} else if clerkUser.Username != nil {
+		name = *clerkUser.Username
+	}
+
+	// Get onboarding status from Clerk's publicMetadata
+	onboardingCompleted := false
+	if len(clerkUser.PublicMetadata) > 0 {
+		var metadata map[string]interface{}
+		if err := json.Unmarshal(clerkUser.PublicMetadata, &metadata); err == nil {
+			if completed, ok := metadata["onboardingCompleted"].(bool); ok {
+				onboardingCompleted = completed
+			}
+		}
 	}
 
 	// Check if user has any AI credentials
 	var credentialCount int64
-	db.DB.Model(&models.AICredential{}).Where("user_id = ?", userID).Count(&credentialCount)
+	db.DB.Model(&models.AICredential{}).Where("clerk_user_id = ?", clerkUserID).Count(&credentialCount)
 	hasApiKey := credentialCount > 0
 
-	// Update session with current values
-	session.Values["onboarding_completed"] = user.OnboardingCompleted
-	session.Values["has_api_key"] = hasApiKey
-	if err := session.Save(c.Request, c.Writer); err != nil {
-		log.Print("Error saving session: ", err)
-	}
-
 	currentUser := CurrentUserDTO{
-		ID:                  user.ID,
-		Name:                user.Name,
-		Email:               user.Email,
-		ImageUrl:            user.ImageUrl,
-		OnboardingCompleted: user.OnboardingCompleted,
+		ClerkUserID:         clerkUserID,
+		Name:                name,
+		Email:               email,
+		ImageUrl:            &imageUrl,
+		OnboardingCompleted: onboardingCompleted,
 		HasApiKey:           hasApiKey,
 	}
 
@@ -206,43 +98,46 @@ func GetCurrentUser(c *gin.Context) {
 
 // GetOnboardingStatus returns the current onboarding status for the user
 func GetOnboardingStatus(c *gin.Context) {
-	session, err := Store.Get(c.Request, "auth-session")
+	claims, ok := clerk.SessionClaimsFromContext(c.Request.Context())
+	if !ok || claims == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Not authenticated"})
+		return
+	}
+
+	// Fetch user from Clerk to get publicMetadata
+	clerkUser, err := user.Get(c.Request.Context(), claims.Subject)
 	if err != nil {
-		log.Print("Error getting session: ", err)
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Not authenticated"})
+		log.Error().Err(err).Msg("Error fetching user from Clerk")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch user"})
 		return
 	}
 
-	userID, ok := session.Values["user_id"]
-	if !ok || userID == nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Not authenticated"})
-		return
-	}
+	onboardingCompleted := false
+	var onboardingType *string
 
-	var user models.User
-	if err := db.DB.Select("onboarding_completed, onboarding_type").First(&user, userID).Error; err != nil {
-		log.Print("User not found in database: ", err)
-		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
-		return
+	// Extract from publicMetadata
+	if len(clerkUser.PublicMetadata) > 0 {
+		var metadata map[string]interface{}
+		if err := json.Unmarshal(clerkUser.PublicMetadata, &metadata); err == nil {
+			if completed, ok := metadata["onboardingCompleted"].(bool); ok {
+				onboardingCompleted = completed
+			}
+			if typeVal, ok := metadata["onboardingType"].(string); ok {
+				onboardingType = &typeVal
+			}
+		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"completed": user.OnboardingCompleted,
-		"type":      user.OnboardingType,
+		"completed": onboardingCompleted,
+		"type":      onboardingType,
 	})
 }
 
 // CompleteOnboarding completes the onboarding process for the user
 func CompleteOnboarding(c *gin.Context) {
-	session, err := Store.Get(c.Request, "auth-session")
-	if err != nil {
-		log.Print("Error getting session: ", err)
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Not authenticated"})
-		return
-	}
-
-	userID, ok := session.Values["user_id"]
-	if !ok || userID == nil {
+	claims, ok := clerk.SessionClaimsFromContext(c.Request.Context())
+	if !ok || claims == nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Not authenticated"})
 		return
 	}
@@ -256,73 +151,77 @@ func CompleteOnboarding(c *gin.Context) {
 		return
 	}
 
-	// Update user onboarding status
-	if err := db.DB.Model(&models.User{}).Where("id = ?", userID).Updates(map[string]interface{}{
-		"onboarding_completed": true,
-		"onboarding_type":      &requestBody.Type,
-	}).Error; err != nil {
-		log.Print("Error updating user onboarding: ", err)
+	// Update user's publicMetadata in Clerk
+	metadata := map[string]interface{}{
+		"onboardingCompleted": true,
+		"onboardingType":      requestBody.Type,
+	}
+	metadataJSON, err := json.Marshal(metadata)
+	if err != nil {
+		log.Error().Err(err).Msg("Error marshaling metadata")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update onboarding status"})
+		return
+	}
+	rawMessage := json.RawMessage(metadataJSON)
+
+	_, err = user.Update(c.Request.Context(), claims.Subject, &user.UpdateParams{
+		PublicMetadata: &rawMessage,
+	})
+
+	if err != nil {
+		log.Error().Err(err).Msg("Error updating user onboarding in Clerk")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update onboarding status"})
 		return
 	}
 
-	// Update session
-	session.Values["onboarding_completed"] = true
-	if err := session.Save(c.Request, c.Writer); err != nil {
-		log.Print("Error saving session: ", err)
-	}
-
+	log.Info().Str("clerk_user_id", claims.Subject).Str("type", requestBody.Type).Msg("Onboarding completed")
 	c.JSON(http.StatusOK, gin.H{"message": "Onboarding completed successfully"})
 }
 
 // ResetOnboarding resets the onboarding status for the user (dev only)
 func ResetOnboarding(c *gin.Context) {
-	session, err := Store.Get(c.Request, "auth-session")
+	claims, ok := clerk.SessionClaimsFromContext(c.Request.Context())
+	if !ok || claims == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Not authenticated"})
+		return
+	}
+
+	// Reset user's publicMetadata in Clerk
+	metadata := map[string]interface{}{
+		"onboardingCompleted": false,
+		"onboardingType":      nil,
+	}
+	metadataJSON, err := json.Marshal(metadata)
 	if err != nil {
-		log.Print("Error getting session: ", err)
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Not authenticated"})
+		log.Error().Err(err).Msg("Error marshaling metadata")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to reset onboarding status"})
 		return
 	}
+	rawMessage := json.RawMessage(metadataJSON)
 
-	userID, ok := session.Values["user_id"]
-	if !ok || userID == nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Not authenticated"})
-		return
-	}
+	_, err = user.Update(c.Request.Context(), claims.Subject, &user.UpdateParams{
+		PublicMetadata: &rawMessage,
+	})
 
-	// Reset user onboarding status
-	if err := db.DB.Model(&models.User{}).Where("id = ?", userID).Updates(map[string]interface{}{
-		"onboarding_completed": false,
-		"onboarding_type":      nil,
-	}).Error; err != nil {
-		log.Print("Error resetting user onboarding: ", err)
+	if err != nil {
+		log.Error().Err(err).Msg("Error resetting user onboarding in Clerk")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to reset onboarding status"})
 		return
 	}
 
-	// Update session
-	session.Values["onboarding_completed"] = false
-	if err := session.Save(c.Request, c.Writer); err != nil {
-		log.Print("Error saving session: ", err)
-	}
-
+	log.Info().Str("clerk_user_id", claims.Subject).Msg("Onboarding reset")
 	c.JSON(http.StatusOK, gin.H{"message": "Onboarding reset successfully"})
 }
 
 // SetAICredential stores an encrypted AI API key for the user
 func SetAICredential(c *gin.Context) {
-	session, err := Store.Get(c.Request, "auth-session")
-	if err != nil {
-		log.Print("Error getting session: ", err)
+	claims, ok := clerk.SessionClaimsFromContext(c.Request.Context())
+	if !ok || claims == nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Not authenticated"})
 		return
 	}
 
-	userID, ok := session.Values["user_id"]
-	if !ok || userID == nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Not authenticated"})
-		return
-	}
+	clerkUserID := claims.Subject
 
 	var requestBody struct {
 		Provider string `json:"provider" binding:"required"`
@@ -344,30 +243,24 @@ func SetAICredential(c *gin.Context) {
 	// Encrypt the API key
 	encryptedKey, err := utils.Encrypt(apiKey)
 	if err != nil {
-		log.Print("Error encrypting API key: ", err)
+		log.Error().Err(err).Msg("Error encrypting API key")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to encrypt API key"})
 		return
 	}
 
 	// Create or update the credential
 	credential := models.AICredential{
-		UserID:    userID.(uint),
-		Provider:  requestBody.Provider,
-		KeyCipher: encryptedKey,
+		ClerkUserID: clerkUserID,
+		Provider:    requestBody.Provider,
+		KeyCipher:   encryptedKey,
 	}
 
-	if err := db.DB.Where(models.AICredential{UserID: userID.(uint), Provider: requestBody.Provider}).
+	if err := db.DB.Where(models.AICredential{ClerkUserID: clerkUserID, Provider: requestBody.Provider}).
 		Assign(models.AICredential{KeyCipher: encryptedKey}).
 		FirstOrCreate(&credential).Error; err != nil {
-		log.Print("Error saving AI credential: ", err)
+		log.Error().Err(err).Msg("Error saving AI credential")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save API key"})
 		return
-	}
-
-	// Update session
-	session.Values["has_api_key"] = true
-	if err := session.Save(c.Request, c.Writer); err != nil {
-		log.Print("Error saving session: ", err)
 	}
 
 	// Return masked key for UI display
@@ -381,18 +274,13 @@ func SetAICredential(c *gin.Context) {
 
 // DeleteAICredential removes an AI API key for the user
 func DeleteAICredential(c *gin.Context) {
-	session, err := Store.Get(c.Request, "auth-session")
-	if err != nil {
-		log.Print("Error getting session: ", err)
+	claims, ok := clerk.SessionClaimsFromContext(c.Request.Context())
+	if !ok || claims == nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Not authenticated"})
 		return
 	}
 
-	userID, ok := session.Values["user_id"]
-	if !ok || userID == nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Not authenticated"})
-		return
-	}
+	clerkUserID := claims.Subject
 
 	var requestBody struct {
 		Provider string `json:"provider" binding:"required"`
@@ -404,21 +292,11 @@ func DeleteAICredential(c *gin.Context) {
 	}
 
 	// Delete the credential
-	if err := db.DB.Where("user_id = ? AND provider = ?", userID, requestBody.Provider).
+	if err := db.DB.Where("clerk_user_id = ? AND provider = ?", clerkUserID, requestBody.Provider).
 		Delete(&models.AICredential{}).Error; err != nil {
-		log.Print("Error deleting AI credential: ", err)
+		log.Error().Err(err).Msg("Error deleting AI credential")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete API key"})
 		return
-	}
-
-	// Check if user still has any credentials
-	var credentialCount int64
-	db.DB.Model(&models.AICredential{}).Where("user_id = ?", userID).Count(&credentialCount)
-
-	// Update session
-	session.Values["has_api_key"] = credentialCount > 0
-	if err := session.Save(c.Request, c.Writer); err != nil {
-		log.Print("Error saving session: ", err)
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "API key deleted successfully"})
@@ -426,23 +304,18 @@ func DeleteAICredential(c *gin.Context) {
 
 // GetAICredentials returns the list of providers for which the user has API keys configured
 func GetAICredentials(c *gin.Context) {
-	session, err := Store.Get(c.Request, "auth-session")
-	if err != nil {
-		log.Print("Error getting session: ", err)
+	claims, ok := clerk.SessionClaimsFromContext(c.Request.Context())
+	if !ok || claims == nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Not authenticated"})
 		return
 	}
 
-	userID, ok := session.Values["user_id"]
-	if !ok || userID == nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Not authenticated"})
-		return
-	}
+	clerkUserID := claims.Subject
 
 	// Get all credentials for the user
 	var credentials []models.AICredential
-	if err := db.DB.Where("user_id = ?", userID).Find(&credentials).Error; err != nil {
-		log.Print("Error fetching AI credentials: ", err)
+	if err := db.DB.Where("clerk_user_id = ?", clerkUserID).Find(&credentials).Error; err != nil {
+		log.Error().Err(err).Msg("Error fetching AI credentials")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch API keys"})
 		return
 	}
@@ -458,29 +331,11 @@ func GetAICredentials(c *gin.Context) {
 	})
 }
 
-// Logout logs out the user
-func Logout(c *gin.Context) {
-	provider := c.Param("provider")
-
-	q := c.Request.URL.Query()
-	if q.Get("provider") == "" {
-		q.Set("provider", provider)
-		c.Request.URL.RawQuery = q.Encode()
-	}
-
-	// Clear session
-	session, _ := Store.Get(c.Request, "auth-session")
-	session.Values["user_id"] = nil
-	session.Values["email"] = nil
-	session.Values["name"] = nil
-	session.Options.MaxAge = -1
-	session.Save(c.Request, c.Writer)
-
-	if err := gothic.Logout(c.Writer, c.Request); err != nil {
-		log.Print("Error during logout: ", err)
-		c.Redirect(http.StatusTemporaryRedirect, "http://localhost:5173?error=logout_failed")
-		return
-	}
-
-	c.Redirect(http.StatusTemporaryRedirect, "http://localhost:5173?logout=success")
+// UserCreatedWebhook handles Clerk user.created webhook events
+// Note: With the users table removed, this webhook is no longer needed
+// but kept for future extensibility if we need to trigger actions on user creation
+func UserCreatedWebhook(c *gin.Context) {
+	// No database sync needed anymore since Clerk is the source of truth
+	// This can be used for other side effects like sending welcome emails, etc.
+	c.JSON(http.StatusOK, gin.H{"message": "User webhook received"})
 }

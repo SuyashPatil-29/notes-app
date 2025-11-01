@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { getNote, updateNote, generateNoteVideo, deleteNoteVideo } from '@/utils/notes'
 import { getUserNotebooks } from '@/utils/notebook'
 import { Header } from '@/components/Header'
+import { Skeleton } from '@/components/ui/skeleton'
 import { NoteVideoPlayer } from '@/components/NoteVideoPlayer'
 import type { AuthenticatedUser } from '@/types/backend'
 import { Loader2, Calendar, Clock, Video, VideoOff } from 'lucide-react'
@@ -45,9 +46,10 @@ const extensions = [...defaultExtensions, slashCommand];
 
 interface NoteEditorProps {
   user: AuthenticatedUser | null
+  userLoading?: boolean
 }
 
-export function NoteEditor({ user }: NoteEditorProps) {
+export function NoteEditor({ user, userLoading = false }: NoteEditorProps) {
   const { notebookId, chapterId, noteId } = useParams<{
     notebookId: string
     chapterId: string
@@ -217,19 +219,27 @@ export function NoteEditor({ user }: NoteEditorProps) {
     }
   }, [])
 
-  if (isLoading) {
+  if (userLoading || isLoading) {
     return (
       <div className="flex flex-col h-screen">
         <Header
-          user={user}
+          user={null}
           breadcrumbs={[
             { label: 'Dashboard', href: '/' },
             { label: 'Loading...' },
           ]}
         />
-        <div className="flex-1 flex items-center justify-center">
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-        </div>
+        <main className="flex-1 overflow-auto p-6">
+          <div className="max-w-4xl mx-auto space-y-4">
+            <Skeleton className="h-10 w-3/4" />
+            <div className="space-y-2">
+              <Skeleton className="h-4 w-full" />
+              <Skeleton className="h-4 w-full" />
+              <Skeleton className="h-4 w-2/3" />
+            </div>
+            <Skeleton className="h-64 w-full" />
+          </div>
+        </main>
       </div>
     )
   }

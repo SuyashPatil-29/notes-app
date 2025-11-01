@@ -7,7 +7,6 @@ import {
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
 import { cn } from '@/lib/utils';
-import type { ToolUIPart } from 'ai';
 import {
   CheckCircleIcon,
   ChevronDownIcon,
@@ -18,6 +17,16 @@ import {
 } from 'lucide-react';
 import type { ComponentProps, ReactNode } from 'react';
 import { CodeBlock } from './code-block';
+
+// Tool UI Part types
+export type ToolState = 'input-streaming' | 'input-available' | 'output-available' | 'output-error';
+
+export interface ToolUIPart {
+  type: string;
+  state: ToolState;
+  input: Record<string, unknown>;
+  errorText?: string;
+}
 
 export type ToolProps = ComponentProps<typeof Collapsible>;
 
@@ -34,20 +43,20 @@ export type ToolHeaderProps = {
   className?: string;
 };
 
-const getStatusBadge = (status: ToolUIPart['state']) => {
-  const labels = {
+const getStatusBadge = (status: ToolState) => {
+  const labels: Record<ToolState, string> = {
     'input-streaming': 'Pending',
     'input-available': 'Running',
     'output-available': 'Completed',
     'output-error': 'Error',
-  } as const;
+  };
 
-  const icons = {
+  const icons: Record<ToolState, ReactNode> = {
     'input-streaming': <CircleIcon className="size-4" />,
     'input-available': <ClockIcon className="size-4 animate-pulse" />,
     'output-available': <CheckCircleIcon className="size-4 text-primary" />,
     'output-error': <XCircleIcon className="size-4 text-red-600" />,
-  } as const;
+  };
 
   return (
     <Badge className="rounded-full text-xs" variant="secondary">

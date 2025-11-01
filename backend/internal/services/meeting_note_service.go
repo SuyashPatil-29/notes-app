@@ -55,12 +55,12 @@ func (s *MeetingNoteService) ProcessMeetingTranscript(ctx context.Context, recor
 
 	// Get user's existing notebooks for context
 	var notebooks []models.Notebook
-	if err := db.DB.Where("user_id = ?", recording.UserID).
+	if err := db.DB.Where("clerk_user_id = ?", recording.ClerkUserID).
 		Select("name").
 		Find(&notebooks).Error; err != nil {
 		log.Warn().
 			Err(err).
-			Uint("user_id", recording.UserID).
+			Str("clerk_user_id", recording.ClerkUserID).
 			Msg("Failed to fetch user notebooks, continuing without context")
 	}
 
@@ -88,7 +88,7 @@ func (s *MeetingNoteService) ProcessMeetingTranscript(ctx context.Context, recor
 		Msg("AI analysis complete")
 
 	// Create or find notebook and chapter, then create note
-	noteID, err := s.createNoteFromAnalysis(recording.UserID, analysis, transcript)
+	noteID, err := s.createNoteFromAnalysis(recording.ClerkUserID, analysis, transcript)
 	if err != nil {
 		log.Error().
 			Err(err).
@@ -125,7 +125,7 @@ type NoteCreationResult struct {
 
 // createNoteFromAnalysis creates notebook, chapter, and note from AI analysis
 func (s *MeetingNoteService) createNoteFromAnalysis(
-	userID uint,
+	clerkUserID string,
 	analysis *TranscriptAnalysis,
 	transcript []recallai.TranscriptEntry,
 ) (string, error) {
@@ -135,15 +135,15 @@ func (s *MeetingNoteService) createNoteFromAnalysis(
 	err := db.DB.Transaction(func(tx *gorm.DB) error {
 		// 1. Find or create notebook
 		var notebook models.Notebook
-		result := tx.Where("user_id = ? AND name = ?", userID, analysis.NotebookName).
+		result := tx.Where("clerk_user_id = ? AND name = ?", clerkUserID, analysis.NotebookName).
 			First(&notebook)
 
 		if result.Error == gorm.ErrRecordNotFound {
 			// Create new notebook
 			notebook = models.Notebook{
-				UserID:   userID,
-				Name:     analysis.NotebookName,
-				IsPublic: false,
+				ClerkUserID: clerkUserID,
+				Name:        analysis.NotebookName,
+				IsPublic:    false,
 			}
 			if err := tx.Create(&notebook).Error; err != nil {
 				return fmt.Errorf("failed to create notebook: %w", err)

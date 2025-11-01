@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react"
 import { useNavigate, useLocation } from "react-router-dom"
-import { ChevronRight, Book, BookOpen, FileText, Plus, Pencil, Trash2, Loader, Eye, Globe } from "lucide-react"
+import { ChevronRight, Book, BookOpen, FileText, Plus, Pencil, Trash2, Eye, Globe } from "lucide-react"
+import { Skeleton } from "@/components/ui/skeleton"
 import { moveChapter } from "@/utils/chapter"
 import { moveNote } from "@/utils/notes"
 import { isNotebookPublished } from "@/utils/publish"
@@ -352,7 +353,7 @@ export function LeftSidebarContent({
     setOverId(null)
   }
 
-  if (loading) {
+  if (loading || !notebooks) {
     return (
       <LeftSidebar collapsible="icon">
         <LeftSidebarHeader className="h-16 border-b">
@@ -360,7 +361,7 @@ export function LeftSidebarContent({
             <LeftSidebarMenuItem>
               <LeftSidebarMenuButton size="lg" onClick={() => navigate("/")}>
                 <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
-                  <Loader className="size-4" />
+                  <Book className="size-4" />
                 </div>
                 <div className="grid flex-1 text-left text-sm leading-tight">
                   <span className="truncate font-semibold">Notebooks</span>
@@ -372,8 +373,17 @@ export function LeftSidebarContent({
         <LeftSidebarContentWrapper>
           <LeftSidebarGroup>
             <LeftSidebarGroupContent>
-              <div className="px-2 py-4 text-sm text-muted-foreground">
-                Loading...
+              <div className="px-2 py-2 space-y-2">
+                {/* Notebook skeleton items */}
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="space-y-1">
+                    <Skeleton className="h-10 w-full rounded-md" />
+                    <div className="pl-4 space-y-1">
+                      <Skeleton className="h-8 w-full rounded-md" />
+                      <Skeleton className="h-8 w-full rounded-md" />
+                    </div>
+                  </div>
+                ))}
               </div>
             </LeftSidebarGroupContent>
           </LeftSidebarGroup>
@@ -383,7 +393,7 @@ export function LeftSidebarContent({
     )
   }
 
-  if (!notebooks || notebooks.length === 0) {
+  if (notebooks.length === 0) {
     return (
       <LeftSidebar collapsible="icon">
         <LeftSidebarHeader className="h-16 border-b">

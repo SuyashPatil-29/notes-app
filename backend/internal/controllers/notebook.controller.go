@@ -11,8 +11,8 @@ import (
 )
 
 func GetUserNotebooks(c *gin.Context) {
-	// Get authenticated user ID
-	userID, exists := middleware.GetUserID(c)
+	// Get authenticated user ID from Clerk
+	clerkUserID, exists := middleware.GetClerkUserID(c)
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
 		return
@@ -21,8 +21,8 @@ func GetUserNotebooks(c *gin.Context) {
 	var notebooks []models.Notebook
 
 	// Get all notebooks for the authenticated user with chapters and notes preloaded
-	if err := db.DB.Where("user_id = ?", userID).Preload("Chapters.Files").Preload("Chapters").Find(&notebooks).Error; err != nil {
-		log.Print("Error fetching notebooks for user: ", userID, " Error: ", err)
+	if err := db.DB.Where("clerk_user_id = ?", clerkUserID).Preload("Chapters.Files").Preload("Chapters").Find(&notebooks).Error; err != nil {
+		log.Print("Error fetching notebooks for user: ", clerkUserID, " Error: ", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -31,8 +31,8 @@ func GetUserNotebooks(c *gin.Context) {
 }
 
 func GetNotebookById(c *gin.Context) {
-	// Get authenticated user ID
-	userID, exists := middleware.GetUserID(c)
+	// Get authenticated user ID from Clerk
+	clerkUserID, exists := middleware.GetClerkUserID(c)
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
 		return
@@ -42,8 +42,8 @@ func GetNotebookById(c *gin.Context) {
 	id := c.Param("id")
 
 	// Find notebook and verify ownership
-	if err := db.DB.Where("id = ? AND user_id = ?", id, userID).First(&notebook).Error; err != nil {
-		log.Print("Notebook not found with id: ", id, " for user: ", userID, " Error: ", err)
+	if err := db.DB.Where("id = ? AND clerk_user_id = ?", id, clerkUserID).First(&notebook).Error; err != nil {
+		log.Print("Notebook not found with id: ", id, " for user: ", clerkUserID, " Error: ", err)
 		c.JSON(http.StatusNotFound, gin.H{"error": "Notebook not found"})
 		return
 	}
@@ -52,8 +52,8 @@ func GetNotebookById(c *gin.Context) {
 }
 
 func CreateNotebook(c *gin.Context) {
-	// Get authenticated user ID
-	userID, exists := middleware.GetUserID(c)
+	// Get authenticated user ID from Clerk
+	clerkUserID, exists := middleware.GetClerkUserID(c)
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
 		return
@@ -67,8 +67,8 @@ func CreateNotebook(c *gin.Context) {
 		return
 	}
 
-	// Set the user ID from authenticated session (security)
-	notebook.UserID = userID
+	// Set the Clerk user ID from authenticated session (security)
+	notebook.ClerkUserID = clerkUserID
 
 	if err := db.DB.Create(&notebook).Error; err != nil {
 		log.Print("Error creating Notebook in db: ", err)
@@ -80,8 +80,8 @@ func CreateNotebook(c *gin.Context) {
 }
 
 func DeleteNotebook(c *gin.Context) {
-	// Get authenticated user ID
-	userID, exists := middleware.GetUserID(c)
+	// Get authenticated user ID from Clerk
+	clerkUserID, exists := middleware.GetClerkUserID(c)
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
 		return
@@ -91,8 +91,8 @@ func DeleteNotebook(c *gin.Context) {
 	id := c.Param("id")
 
 	// Find notebook and verify ownership
-	if err := db.DB.Where("id = ? AND user_id = ?", id, userID).First(&notebook).Error; err != nil {
-		log.Print("Notebook not found with id: ", id, " for user: ", userID, " Error: ", err)
+	if err := db.DB.Where("id = ? AND clerk_user_id = ?", id, clerkUserID).First(&notebook).Error; err != nil {
+		log.Print("Notebook not found with id: ", id, " for user: ", clerkUserID, " Error: ", err)
 		c.JSON(http.StatusNotFound, gin.H{"error": "Notebook not found"})
 		return
 	}
@@ -107,8 +107,8 @@ func DeleteNotebook(c *gin.Context) {
 }
 
 func UpdateNotebook(c *gin.Context) {
-	// Get authenticated user ID
-	userID, exists := middleware.GetUserID(c)
+	// Get authenticated user ID from Clerk
+	clerkUserID, exists := middleware.GetClerkUserID(c)
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
 		return
@@ -118,8 +118,8 @@ func UpdateNotebook(c *gin.Context) {
 	var notebook models.Notebook
 
 	// Check if notebook exists and verify ownership
-	if err := db.DB.Where("id = ? AND user_id = ?", id, userID).First(&notebook).Error; err != nil {
-		log.Print("Notebook not found with id: ", id, " for user: ", userID, " Error: ", err)
+	if err := db.DB.Where("id = ? AND clerk_user_id = ?", id, clerkUserID).First(&notebook).Error; err != nil {
+		log.Print("Notebook not found with id: ", id, " for user: ", clerkUserID, " Error: ", err)
 		c.JSON(http.StatusNotFound, gin.H{"error": "Notebook not found"})
 		return
 	}
@@ -132,8 +132,8 @@ func UpdateNotebook(c *gin.Context) {
 		return
 	}
 
-	// Prevent changing user_id through update
-	updateData.UserID = notebook.UserID
+	// Prevent changing clerk_user_id through update
+	updateData.ClerkUserID = notebook.ClerkUserID
 
 	// Update the notebook
 	if err := db.DB.Model(&notebook).Updates(updateData).Error; err != nil {

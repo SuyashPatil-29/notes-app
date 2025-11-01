@@ -5,20 +5,34 @@ import (
 	"backend/internal/auth"
 	"backend/internal/controllers"
 	"backend/internal/middleware"
+	"os"
 
+	"github.com/clerk/clerk-sdk-go/v2"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	"github.com/joho/godotenv"
+	"github.com/rs/zerolog/log"
 )
 
 func main() {
+	// Load environment variables
+	err := godotenv.Load()
+	if err != nil {
+		log.Warn().Msg("Error loading .env file, using environment variables")
+	}
+
 	// Initialize database
 	db.InitDB()
 
-	// Initialize authentication
-	auth.InitAuth()
-
 	// Initialize calendar OAuth
 	auth.InitCalendarOAuth()
+
+	// Initialize Clerk SDK
+	clerkSecretKey := os.Getenv("CLERK_SECRET_KEY")
+	if clerkSecretKey == "" {
+		log.Fatal().Msg("CLERK_SECRET_KEY environment variable is required")
+	}
+	clerk.SetKey(clerkSecretKey)
 
 	r := gin.Default()
 
@@ -26,18 +40,14 @@ func main() {
 	r.Use(cors.New(cors.Config{
 		AllowOrigins:     []string{"http://localhost:5173"},
 		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization", "Cookie"},
-		ExposeHeaders:    []string{"Content-Length", "Set-Cookie"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization"},
+		ExposeHeaders:    []string{"Content-Length"},
 		AllowCredentials: true,
 	}))
 
 	// Public routes (no authentication required)
 	public := r.Group("/")
 	{
-		// OAuth routes - public for authentication flow
-		public.GET("/auth/:provider", auth.BeginAuth)
-		public.GET("/auth/:provider/callback", auth.AuthCallback)
-
 		// Calendar OAuth callback routes - public for OAuth flow
 		public.GET("/api/calendar/google/callback", auth.GoogleCalendarCallback)
 		public.GET("/api/calendar/microsoft/callback", auth.MicrosoftCalendarCallback)
@@ -49,13 +59,13 @@ func main() {
 		public.GET("/public/user/:email", controllers.GetPublicUserProfile)
 	}
 
-	// Protected routes (authentication required)
+	// Protected routes (authentication required via Clerk)
 	protected := r.Group("/")
+	protected.Use(middleware.ClerkMiddleware())
 	protected.Use(middleware.RequireAuth())
 	{
 		// Auth routes
 		protected.GET("/auth/user", auth.GetCurrentUser)
-		protected.GET("/logout/:provider", auth.Logout)
 
 		// Onboarding routes
 		protected.GET("/onboarding", auth.GetOnboardingStatus)
@@ -125,6 +135,7 @@ func main() {
 	{
 		webhook.POST("/recall", controllers.HandleRecallWebhook)
 		webhook.POST("/calendar/sync", controllers.HandleCalendarWebhook)
+		webhook.POST("/clerk", auth.UserCreatedWebhook) // Clerk user sync webhook
 	}
 
 	r.Run(":8080")

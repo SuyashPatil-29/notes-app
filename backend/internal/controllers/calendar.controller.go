@@ -2,7 +2,7 @@ package controllers
 
 import (
 	"backend/db"
-	"backend/internal/auth"
+	"backend/internal/middleware"
 	"backend/internal/models"
 	"backend/pkg/recallai"
 	"crypto/hmac"
@@ -19,20 +19,14 @@ import (
 
 // GetUserCalendars returns all calendars connected by the user
 func GetUserCalendars(c *gin.Context) {
-	session, err := auth.Store.Get(c.Request, "auth-session")
-	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Not authenticated"})
-		return
-	}
-
-	userID, ok := session.Values["user_id"]
-	if !ok || userID == nil {
+	clerkUserID, exists := middleware.GetClerkUserID(c)
+	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Not authenticated"})
 		return
 	}
 
 	var calendars []models.Calendar
-	if err := db.DB.Where("user_id = ?", userID).Find(&calendars).Error; err != nil {
+	if err := db.DB.Where("clerk_user_id = ?", clerkUserID).Find(&calendars).Error; err != nil {
 		log.Error().Err(err).Msg("Error fetching user calendars")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch calendars"})
 		return
@@ -43,21 +37,15 @@ func GetUserCalendars(c *gin.Context) {
 
 // SyncMissingCalendars fetches all calendars from Recall for user's existing connections and saves missing ones
 func SyncMissingCalendars(c *gin.Context) {
-	session, err := auth.Store.Get(c.Request, "auth-session")
-	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Not authenticated"})
-		return
-	}
-
-	userID, ok := session.Values["user_id"]
-	if !ok || userID == nil {
+	clerkUserID, exists := middleware.GetClerkUserID(c)
+	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Not authenticated"})
 		return
 	}
 
 	// Get user's existing calendars
 	var existingCalendars []models.Calendar
-	if err := db.DB.Where("user_id = ?", userID).Find(&existingCalendars).Error; err != nil {
+	if err := db.DB.Where("clerk_user_id = ?", clerkUserID).Find(&existingCalendars).Error; err != nil {
 		log.Error().Err(err).Msg("Error fetching existing calendars")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch existing calendars"})
 		return
@@ -100,7 +88,7 @@ func SyncMissingCalendars(c *gin.Context) {
 		for _, recallCal := range allCalendars {
 			// Check if calendar already exists
 			var existingCal models.Calendar
-			result := db.DB.Where("recall_calendar_id = ? AND user_id = ?", recallCal.ID, userID).First(&existingCal)
+			result := db.DB.Where("recall_calendar_id = ? AND clerk_user_id = ?", recallCal.ID, clerkUserID).First(&existingCal)
 
 			if result.Error == nil {
 				// Calendar already exists
@@ -110,7 +98,7 @@ func SyncMissingCalendars(c *gin.Context) {
 
 			// Add missing calendar
 			newCalendar := models.Calendar{
-				UserID:            userID.(uint),
+				ClerkUserID:       clerkUserID,
 				RecallCalendarID:  recallCal.ID,
 				Platform:          recallCal.Platform,
 				PlatformEmail:     recallCal.PlatformEmail,
@@ -141,7 +129,7 @@ func SyncMissingCalendars(c *gin.Context) {
 	}
 
 	log.Info().
-		Uint("user_id", userID.(uint)).
+		Str("clerk_user_id", clerkUserID).
 		Int("added_count", addedCount).
 		Msg("Completed syncing missing calendars")
 
@@ -153,14 +141,8 @@ func SyncMissingCalendars(c *gin.Context) {
 
 // DisconnectCalendar removes a calendar connection
 func DisconnectCalendar(c *gin.Context) {
-	session, err := auth.Store.Get(c.Request, "auth-session")
-	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Not authenticated"})
-		return
-	}
-
-	userID, ok := session.Values["user_id"]
-	if !ok || userID == nil {
+	clerkUserID, exists := middleware.GetClerkUserID(c)
+	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Not authenticated"})
 		return
 	}
@@ -169,7 +151,7 @@ func DisconnectCalendar(c *gin.Context) {
 
 	// Find calendar
 	var calendar models.Calendar
-	if err := db.DB.Where("id = ? AND user_id = ?", calendarID, userID).First(&calendar).Error; err != nil {
+	if err := db.DB.Where("id = ? AND clerk_user_id = ?", calendarID, clerkUserID).First(&calendar).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Calendar not found"})
 		return
 	}
@@ -189,7 +171,7 @@ func DisconnectCalendar(c *gin.Context) {
 	}
 
 	log.Info().
-		Uint("user_id", userID.(uint)).
+		Str("clerk_user_id", clerkUserID).
 		Str("calendar_id", calendarID).
 		Msg("Calendar disconnected successfully")
 
@@ -198,14 +180,8 @@ func DisconnectCalendar(c *gin.Context) {
 
 // GetCalendarEvents returns all events for a specific calendar
 func GetCalendarEvents(c *gin.Context) {
-	session, err := auth.Store.Get(c.Request, "auth-session")
-	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Not authenticated"})
-		return
-	}
-
-	userID, ok := session.Values["user_id"]
-	if !ok || userID == nil {
+	clerkUserID, exists := middleware.GetClerkUserID(c)
+	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Not authenticated"})
 		return
 	}
@@ -214,7 +190,7 @@ func GetCalendarEvents(c *gin.Context) {
 
 	// Verify calendar belongs to user
 	var calendar models.Calendar
-	if err := db.DB.Where("id = ? AND user_id = ?", calendarID, userID).First(&calendar).Error; err != nil {
+	if err := db.DB.Where("id = ? AND clerk_user_id = ?", calendarID, clerkUserID).First(&calendar).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Calendar not found"})
 		return
 	}
@@ -254,14 +230,8 @@ func GetCalendarEvents(c *gin.Context) {
 
 // SyncCalendarEvents syncs events from Recall.ai to local database
 func SyncCalendarEvents(c *gin.Context) {
-	session, err := auth.Store.Get(c.Request, "auth-session")
-	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Not authenticated"})
-		return
-	}
-
-	userID, ok := session.Values["user_id"]
-	if !ok || userID == nil {
+	clerkUserID, exists := middleware.GetClerkUserID(c)
+	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Not authenticated"})
 		return
 	}
@@ -270,7 +240,7 @@ func SyncCalendarEvents(c *gin.Context) {
 
 	// Verify calendar belongs to user
 	var calendar models.Calendar
-	if err := db.DB.Where("id = ? AND user_id = ?", calendarID, userID).First(&calendar).Error; err != nil {
+	if err := db.DB.Where("id = ? AND clerk_user_id = ?", calendarID, clerkUserID).First(&calendar).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Calendar not found"})
 		return
 	}
@@ -323,7 +293,7 @@ func SyncCalendarEvents(c *gin.Context) {
 	db.DB.Model(&calendar).Update("last_synced_at", time.Now())
 
 	log.Info().
-		Uint("user_id", userID.(uint)).
+		Str("clerk_user_id", clerkUserID).
 		Str("calendar_id", calendarID).
 		Int("synced_count", syncedCount).
 		Msg("Calendar events synced successfully")
@@ -337,14 +307,8 @@ func SyncCalendarEvents(c *gin.Context) {
 
 // ScheduleBotForEvent schedules a bot to join a specific calendar event
 func ScheduleBotForEvent(c *gin.Context) {
-	session, err := auth.Store.Get(c.Request, "auth-session")
-	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Not authenticated"})
-		return
-	}
-
-	userID, ok := session.Values["user_id"]
-	if !ok || userID == nil {
+	clerkUserID, exists := middleware.GetClerkUserID(c)
+	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Not authenticated"})
 		return
 	}
@@ -358,7 +322,7 @@ func ScheduleBotForEvent(c *gin.Context) {
 		return
 	}
 
-	if event.Calendar.UserID != userID.(uint) {
+	if event.Calendar.ClerkUserID != clerkUserID {
 		c.JSON(http.StatusForbidden, gin.H{"error": "Unauthorized"})
 		return
 	}
@@ -409,7 +373,7 @@ func ScheduleBotForEvent(c *gin.Context) {
 	}
 
 	log.Info().
-		Uint("user_id", userID.(uint)).
+		Str("clerk_user_id", clerkUserID).
 		Str("event_id", eventID).
 		Msg("Bot scheduled for calendar event")
 
@@ -421,14 +385,8 @@ func ScheduleBotForEvent(c *gin.Context) {
 
 // CancelBotForEvent cancels a scheduled bot for an event
 func CancelBotForEvent(c *gin.Context) {
-	session, err := auth.Store.Get(c.Request, "auth-session")
-	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Not authenticated"})
-		return
-	}
-
-	userID, ok := session.Values["user_id"]
-	if !ok || userID == nil {
+	clerkUserID, exists := middleware.GetClerkUserID(c)
+	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Not authenticated"})
 		return
 	}
@@ -442,7 +400,7 @@ func CancelBotForEvent(c *gin.Context) {
 		return
 	}
 
-	if event.Calendar.UserID != userID.(uint) {
+	if event.Calendar.ClerkUserID != clerkUserID {
 		c.JSON(http.StatusForbidden, gin.H{"error": "Unauthorized"})
 		return
 	}
@@ -469,7 +427,7 @@ func CancelBotForEvent(c *gin.Context) {
 	}
 
 	log.Info().
-		Uint("user_id", userID.(uint)).
+		Str("clerk_user_id", clerkUserID).
 		Str("event_id", eventID).
 		Msg("Bot cancelled for calendar event")
 

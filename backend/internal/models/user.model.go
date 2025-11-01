@@ -1,29 +1,15 @@
 package models
 
-import (
-	"time"
-)
+// User model is no longer needed as Clerk is the source of truth
+// Keeping this file for reference of what data Clerk stores
 
-type User struct {
-	ID                  uint       `json:"id" gorm:"primaryKey"`
-	Name                string     `json:"name"`
-	Email               string     `json:"email" gorm:"index:idx_email,unique"`
-	ImageUrl            *string    `json:"imageUrl"`
-	OnboardingCompleted bool       `json:"onboardingCompleted" gorm:"default:false"`
-	OnboardingType      *string    `json:"onboardingType"`
-	Notebooks           []Notebook `json:"notebooks,omitempty" gorm:"foreignKey:UserID"`
-	CreatedAt           time.Time  `json:"createdAt"`
-	UpdatedAt           time.Time  `json:"updatedAt"`
-}
-
+// AuthenticatedUser represents user data fetched from Clerk
+// This is not a database model, just a DTO for API responses
 type AuthenticatedUser struct {
-	ID       uint    `json:"id" gorm:"primaryKey"`
-	Name     string  `json:"name"`
-	Email    string  `json:"email"`
-	ImageUrl *string `json:"imageUrl"`
-}
-
-// TableName tells GORM to use the 'users' table for AuthenticatedUser
-func (AuthenticatedUser) TableName() string {
-	return "users"
+	ClerkUserID         string  `json:"clerkUserId"`
+	Name                string  `json:"name"`
+	Email               string  `json:"email"`
+	ImageUrl            *string `json:"imageUrl"`
+	OnboardingCompleted bool    `json:"onboardingCompleted"`
+	HasApiKey           bool    `json:"hasApiKey"`
 }

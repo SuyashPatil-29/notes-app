@@ -36,7 +36,7 @@ func PublishNotebook(c *gin.Context) {
 
 	// Verify notebook ownership
 	var notebook models.Notebook
-	if err := db.DB.Where("id = ? AND user_id = ?", notebookID, userID).First(&notebook).Error; err != nil {
+	if err := db.DB.Where("id = ? AND clerk_user_id = ?", notebookID, userID).First(&notebook).Error; err != nil {
 		log.Print("Notebook not found with id: ", notebookID, " for user: ", userID, " Error: ", err)
 		c.JSON(http.StatusNotFound, gin.H{"error": "Notebook not found"})
 		return
@@ -139,7 +139,7 @@ func UpdatePublishedNotes(c *gin.Context) {
 
 	// Verify notebook ownership and that it's published
 	var notebook models.Notebook
-	if err := db.DB.Where("id = ? AND user_id = ? AND is_public = ?", notebookID, userID, true).First(&notebook).Error; err != nil {
+	if err := db.DB.Where("id = ? AND clerk_user_id = ? AND is_public = ?", notebookID, userID, true).First(&notebook).Error; err != nil {
 		log.Print("Published notebook not found with id: ", notebookID, " for user: ", userID, " Error: ", err)
 		c.JSON(http.StatusNotFound, gin.H{"error": "Notebook not found or not published"})
 		return
@@ -225,7 +225,7 @@ func UnpublishNotebook(c *gin.Context) {
 
 	// Verify notebook ownership
 	var notebook models.Notebook
-	if err := db.DB.Where("id = ? AND user_id = ?", notebookID, userID).First(&notebook).Error; err != nil {
+	if err := db.DB.Where("id = ? AND clerk_user_id = ?", notebookID, userID).First(&notebook).Error; err != nil {
 		log.Print("Notebook not found with id: ", notebookID, " for user: ", userID, " Error: ", err)
 		c.JSON(http.StatusNotFound, gin.H{"error": "Notebook not found"})
 		return
@@ -285,7 +285,7 @@ func PublishNote(c *gin.Context) {
 	// Get note and verify ownership through notebook
 	var note models.Notes
 	if err := db.DB.Where("id = ?", noteID).
-		Preload("Chapter.Notebook", "user_id = ?", userID).
+		Preload("Chapter.Notebook", "clerk_user_id = ?", userID).
 		First(&note).Error; err != nil {
 		log.Print("Note not found with id: ", noteID, " Error: ", err)
 		c.JSON(http.StatusNotFound, gin.H{"error": "Note not found"})
@@ -293,7 +293,7 @@ func PublishNote(c *gin.Context) {
 	}
 
 	// Verify ownership
-	if note.Chapter.Notebook.UserID != userID {
+	if note.Chapter.Notebook.ClerkUserID != userID {
 		c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 		return
 	}

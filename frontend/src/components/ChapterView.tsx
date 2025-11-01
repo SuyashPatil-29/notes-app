@@ -3,20 +3,22 @@ import { useQuery } from '@tanstack/react-query'
 import { getUserNotebooks } from '@/utils/notebook'
 import { Header } from '@/components/Header'
 import { Button } from '@/components/ui/button'
+import { Skeleton } from '@/components/ui/skeleton'
 import { FileText, Plus } from 'lucide-react'
 import type { AuthenticatedUser } from '@/types/backend'
 import { getPreviewText } from '@/utils/markdown'
 
 interface ChapterViewProps {
   user: AuthenticatedUser | null
+  userLoading?: boolean
   onCreateNote?: (chapterId: string) => void
 }
 
-export function ChapterView({ user, onCreateNote }: ChapterViewProps) {
+export function ChapterView({ user, userLoading = false, onCreateNote }: ChapterViewProps) {
   const { notebookId, chapterId } = useParams<{ notebookId: string; chapterId: string }>()
   const navigate = useNavigate()
 
-  const { data: notebooks } = useQuery({
+  const { data: notebooks, isLoading: notebooksLoading } = useQuery({
     queryKey: ['userNotebooks'],
     queryFn: getUserNotebooks,
     enabled: !!user,
@@ -24,6 +26,27 @@ export function ChapterView({ user, onCreateNote }: ChapterViewProps) {
 
   const notebook = notebooks?.find((n) => n.id === notebookId)
   const chapter = notebook?.chapters?.find((c) => c.id === chapterId)
+
+  if (userLoading || notebooksLoading) {
+    return (
+      <div className="flex flex-col h-screen">
+        <Header user={null} breadcrumbs={[{ label: 'Loading...' }]} />
+        <main className="flex-1 overflow-auto">
+          <div className="max-w-6xl mx-auto px-6 py-12 space-y-8">
+            <div className="space-y-2">
+              <Skeleton className="h-10 w-64" />
+              <Skeleton className="h-5 w-32" />
+            </div>
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {[1, 2, 3].map((i) => (
+                <Skeleton key={i} className="h-40 rounded-lg" />
+              ))}
+            </div>
+          </div>
+        </main>
+      </div>
+    )
+  }
 
   if (!notebook || !chapter) {
     return (

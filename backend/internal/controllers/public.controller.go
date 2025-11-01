@@ -108,25 +108,18 @@ func GetPublicNote(c *gin.Context) {
 }
 
 // GetPublicUserProfile returns a user's public profile with their public notebooks
+// TODO: Without users table, we need to query by clerk_user_id instead of email
+// For now, this endpoint requires clerk_user_id as the parameter instead of email
 func GetPublicUserProfile(c *gin.Context) {
-	email := c.Param("email")
-
-	var user models.User
-
-	// Get user by email
-	if err := db.DB.Where("email = ?", email).First(&user).Error; err != nil {
-		log.Print("User not found with email: ", email, " Error: ", err)
-		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
-		return
-	}
+	clerkUserID := c.Param("email") // Actually expecting clerk_user_id now
 
 	// Get user's public notebooks with public chapters and notes
 	var notebooks []models.Notebook
-	if err := db.DB.Where("user_id = ? AND is_public = ?", user.ID, true).
+	if err := db.DB.Where("clerk_user_id = ? AND is_public = ?", clerkUserID, true).
 		Preload("Chapters", "is_public = ?", true).
 		Preload("Chapters.Files", "is_public = ?", true).
 		Find(&notebooks).Error; err != nil {
-		log.Print("Error fetching public notebooks for user: ", user.ID, " Error: ", err)
+		log.Print("Error fetching public notebooks for user: ", clerkUserID, " Error: ", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch notebooks"})
 		return
 	}
@@ -150,22 +143,15 @@ func GetPublicUserProfile(c *gin.Context) {
 		}
 	}
 
-	user.Notebooks = filteredNotebooks
-
-	// Return only necessary user info for public profile
-	publicUser := struct {
-		ID        uint              `json:"id"`
-		Name      string            `json:"name"`
-		Email     string            `json:"email"`
-		ImageUrl  *string           `json:"imageUrl"`
-		Notebooks []models.Notebook `json:"notebooks"`
+	// Return public notebooks
+	// TODO: Add user info from Clerk if needed
+	publicProfile := struct {
+		ClerkUserID string            `json:"clerkUserId"`
+		Notebooks   []models.Notebook `json:"notebooks"`
 	}{
-		ID:        user.ID,
-		Name:      user.Name,
-		Email:     user.Email,
-		ImageUrl:  user.ImageUrl,
-		Notebooks: filteredNotebooks,
+		ClerkUserID: clerkUserID,
+		Notebooks:   filteredNotebooks,
 	}
 
-	c.JSON(http.StatusOK, publicUser)
+	c.JSON(http.StatusOK, publicProfile)
 }

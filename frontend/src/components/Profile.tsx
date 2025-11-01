@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useUser } from "@/hooks/auth";
 import { Header } from "@/components/Header";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
@@ -20,7 +21,7 @@ interface ApiKeyStatus {
 }
 
 export function Profile() {
-  const { user, refetch: refetchUser } = useUser();
+  const { user, loading: userLoading, refetch: refetchUser } = useUser();
   const queryClient = useQueryClient();
   const [openAIKey, setOpenAIKey] = useState("");
   const [anthropicKey, setAnthropicKey] = useState("");
@@ -156,6 +157,40 @@ export function Profile() {
       window.history.replaceState({}, '', window.location.pathname);
     }
   }, []);
+
+  if (userLoading) {
+    return (
+      <div className="flex flex-col h-screen">
+        <Header user={null} breadcrumbs={[{ label: "Profile" }]} />
+        <main className="flex-1 overflow-auto">
+          <div className="max-w-4xl mx-auto px-6 py-12 space-y-8">
+            {/* Loading skeleton */}
+            <div className="space-y-4">
+              <Skeleton className="h-8 w-48" />
+              <div className="bg-card border rounded-lg p-6 space-y-4">
+                <div className="flex items-center gap-4">
+                  <Skeleton className="w-16 h-16 rounded-full" />
+                  <div className="space-y-2">
+                    <Skeleton className="h-6 w-48" />
+                    <Skeleton className="h-4 w-64" />
+                  </div>
+                </div>
+              </div>
+            </div>
+            <Separator />
+            <div className="space-y-4">
+              <Skeleton className="h-8 w-32" />
+              <div className="space-y-4">
+                <Skeleton className="h-24 w-full rounded-lg" />
+                <Skeleton className="h-24 w-full rounded-lg" />
+                <Skeleton className="h-24 w-full rounded-lg" />
+              </div>
+            </div>
+          </div>
+        </main>
+      </div>
+    );
+  }
 
   if (!user) {
     return (

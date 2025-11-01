@@ -14,6 +14,7 @@ import Magic from "@/components/ui/icons/magic";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import AICompletionCommands from "./ai-completion-command";
 import AISelectorCommands from "./ai-selector-commands";
+import { useAuth } from "@clerk/clerk-react";
 //TODO: I think it makes more sense to create a custom Tiptap extension for this functionality https://tiptap.dev/docs/editor/ai/introduction
 
 interface AISelectorProps {
@@ -23,6 +24,7 @@ interface AISelectorProps {
 
 export function AISelector({ onOpenChange }: AISelectorProps) {
   const { editor } = useEditor();
+  const { getToken } = useAuth();
   const [inputValue, setInputValue] = useState("");
   const [completion, setCompletion] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -40,10 +42,12 @@ export function AISelector({ onOpenChange }: AISelectorProps) {
     console.log("Sending generate request:", requestBody);
 
     try {
+      const token = await getToken();
       const response = await fetch("http://localhost:8080/api/generate", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          "Authorization": token ? `Bearer ${token}` : "",
         },
         credentials: "include",
         body: JSON.stringify(requestBody),

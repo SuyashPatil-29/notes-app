@@ -57,18 +57,18 @@ func isValidMeetingURL(meetingURL string) bool {
 // GetUserMeetings retrieves all meeting recordings for the authenticated user
 func GetUserMeetings(ctx *gin.Context) {
 	// Get authenticated user ID
-	userID, exists := middleware.GetUserID(ctx)
+	clerkUserID, exists := middleware.GetClerkUserID(ctx)
 	if !exists {
 		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
 		return
 	}
 
 	log.Debug().
-		Uint("user_id", userID).
+		Str("clerk_user_id", clerkUserID).
 		Msg("Retrieving user meetings")
 
 	var meetings []models.MeetingRecording
-	err := db.DB.Where("user_id = ?", userID).
+	err := db.DB.Where("clerk_user_id = ?", clerkUserID).
 		Preload("GeneratedNote.Chapter.Notebook").
 		Order("created_at DESC").
 		Find(&meetings).Error
@@ -76,14 +76,14 @@ func GetUserMeetings(ctx *gin.Context) {
 	if err != nil {
 		log.Error().
 			Err(err).
-			Uint("user_id", userID).
+			Str("clerk_user_id", clerkUserID).
 			Msg("Failed to retrieve user meetings")
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve meetings: " + err.Error()})
 		return
 	}
 
 	log.Debug().
-		Uint("user_id", userID).
+		Str("clerk_user_id", clerkUserID).
 		Int("meetings_count", len(meetings)).
 		Msg("Successfully retrieved user meetings")
 
@@ -93,7 +93,7 @@ func GetUserMeetings(ctx *gin.Context) {
 // StartMeetingRecording is the package-level function for starting meeting recordings
 func StartMeetingRecording(ctx *gin.Context) {
 	// Get authenticated user ID
-	userID, exists := middleware.GetUserID(ctx)
+	clerkUserID, exists := middleware.GetClerkUserID(ctx)
 	if !exists {
 		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
 		return
@@ -114,7 +114,7 @@ func StartMeetingRecording(ctx *gin.Context) {
 	}
 
 	log.Info().
-		Uint("user_id", userID).
+		Str("clerk_user_id", clerkUserID).
 		Str("meeting_url", req.MeetingURL).
 		Msg("Starting meeting recording")
 
@@ -126,7 +126,7 @@ func StartMeetingRecording(ctx *gin.Context) {
 	if err != nil {
 		log.Error().
 			Err(err).
-			Uint("user_id", userID).
+			Str("clerk_user_id", clerkUserID).
 			Str("meeting_url", req.MeetingURL).
 			Msg("Failed to create Recall.ai bot")
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create meeting bot: " + err.Error()})
@@ -135,16 +135,16 @@ func StartMeetingRecording(ctx *gin.Context) {
 
 	// Save meeting recording to database
 	recording := &models.MeetingRecording{
-		UserID:     userID,
-		BotID:      botResp.ID,
-		MeetingURL: req.MeetingURL,
-		Status:     "pending",
+		ClerkUserID: clerkUserID,
+		BotID:       botResp.ID,
+		MeetingURL:  req.MeetingURL,
+		Status:      "pending",
 	}
 
 	if err := db.DB.Create(recording).Error; err != nil {
 		log.Error().
 			Err(err).
-			Uint("user_id", userID).
+			Str("clerk_user_id", clerkUserID).
 			Str("bot_id", botResp.ID).
 			Msg("Failed to save meeting recording to database")
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save meeting recording: " + err.Error()})
@@ -165,7 +165,7 @@ func StartMeetingRecording(ctx *gin.Context) {
 // GetMeetingTranscript retrieves and formats the transcript for a specific meeting
 func GetMeetingTranscript(ctx *gin.Context) {
 	// Get authenticated user ID
-	userID, exists := middleware.GetUserID(ctx)
+	clerkUserID, exists := middleware.GetClerkUserID(ctx)
 	if !exists {
 		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
 		return
@@ -179,11 +179,11 @@ func GetMeetingTranscript(ctx *gin.Context) {
 
 	// Find the meeting recording
 	var recording models.MeetingRecording
-	if err := db.DB.Where("id = ? AND user_id = ?", meetingID, userID).First(&recording).Error; err != nil {
+	if err := db.DB.Where("id = ? AND clerk_user_id = ?", meetingID, clerkUserID).First(&recording).Error; err != nil {
 		log.Error().
 			Err(err).
 			Str("meeting_id", meetingID).
-			Uint("user_id", userID).
+			Str("clerk_user_id", clerkUserID).
 			Msg("Meeting recording not found")
 		ctx.JSON(http.StatusNotFound, gin.H{"error": "Meeting not found"})
 		return
@@ -559,26 +559,26 @@ func HandleRecallWebhook(ctx *gin.Context) {
 // BackfillVideoURLs fetches and updates video URLs for existing meetings that have recording IDs
 func BackfillVideoURLs(ctx *gin.Context) {
 	// Get authenticated user ID
-	userID, exists := middleware.GetUserID(ctx)
+	clerkUserID, exists := middleware.GetClerkUserID(ctx)
 	if !exists {
 		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
 		return
 	}
 
 	log.Info().
-		Uint("user_id", userID).
+		Str("clerk_user_id", clerkUserID).
 		Msg("Starting video URL backfill for user meetings")
 
 	// Find all completed meetings for this user that have recall_recording_id but missing video_download_url
 	var meetings []models.MeetingRecording
-	err := db.DB.Where("user_id = ? AND status = ? AND recall_recording_id != ? AND (video_download_url IS NULL OR video_download_url = ?)",
-		userID, "completed", "", "").
+	err := db.DB.Where("clerk_user_id = ? AND status = ? AND recall_recording_id != ? AND (video_download_url IS NULL OR video_download_url = ?)",
+		clerkUserID, "completed", "", "").
 		Find(&meetings).Error
 
 	if err != nil {
 		log.Error().
 			Err(err).
-			Uint("user_id", userID).
+			Str("clerk_user_id", clerkUserID).
 			Msg("Failed to retrieve meetings for backfill")
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve meetings"})
 		return
@@ -586,7 +586,7 @@ func BackfillVideoURLs(ctx *gin.Context) {
 
 	if len(meetings) == 0 {
 		log.Info().
-			Uint("user_id", userID).
+			Str("clerk_user_id", clerkUserID).
 			Msg("No meetings found needing video URL backfill")
 		ctx.JSON(http.StatusOK, gin.H{
 			"message":        "No meetings need video URL updates",
@@ -597,7 +597,7 @@ func BackfillVideoURLs(ctx *gin.Context) {
 	}
 
 	log.Info().
-		Uint("user_id", userID).
+		Str("clerk_user_id", clerkUserID).
 		Int("meetings_count", len(meetings)).
 		Msg("Found meetings needing video URL backfill")
 
@@ -670,7 +670,7 @@ func BackfillVideoURLs(ctx *gin.Context) {
 	}
 
 	log.Info().
-		Uint("user_id", userID).
+		Str("clerk_user_id", clerkUserID).
 		Int("total_meetings", len(meetings)).
 		Int("updated_count", updatedCount).
 		Int("failed_count", failedCount).

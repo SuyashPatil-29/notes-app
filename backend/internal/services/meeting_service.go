@@ -30,13 +30,13 @@ func NewMeetingService() *MeetingService {
 }
 
 // StartMeetingRecording initiates a new meeting recording by creating a Recall.ai bot
-func (s *MeetingService) StartMeetingRecording(ctx context.Context, userID uint, meetingURL string) (*models.MeetingRecording, error) {
+func (s *MeetingService) StartMeetingRecording(ctx context.Context, clerkUserID string, meetingURL string) (*models.MeetingRecording, error) {
 	if meetingURL == "" {
 		return nil, fmt.Errorf("meeting URL cannot be empty")
 	}
 
 	log.Info().
-		Uint("user_id", userID).
+		Str("clerk_user_id", clerkUserID).
 		Str("meeting_url", meetingURL).
 		Msg("Starting meeting recording")
 
@@ -45,7 +45,7 @@ func (s *MeetingService) StartMeetingRecording(ctx context.Context, userID uint,
 	if err != nil {
 		log.Error().
 			Err(err).
-			Uint("user_id", userID).
+			Str("clerk_user_id", clerkUserID).
 			Str("meeting_url", meetingURL).
 			Msg("Failed to create Recall.ai bot")
 		return nil, fmt.Errorf("failed to create recall.ai bot: %w", err)
@@ -53,16 +53,16 @@ func (s *MeetingService) StartMeetingRecording(ctx context.Context, userID uint,
 
 	// Save meeting recording to database
 	recording := &models.MeetingRecording{
-		UserID:     userID,
-		BotID:      botResp.ID,
-		MeetingURL: meetingURL,
-		Status:     "pending",
+		ClerkUserID: clerkUserID,
+		BotID:       botResp.ID,
+		MeetingURL:  meetingURL,
+		Status:      "pending",
 	}
 
 	if err := s.db.Create(recording).Error; err != nil {
 		log.Error().
 			Err(err).
-			Uint("user_id", userID).
+			Str("clerk_user_id", clerkUserID).
 			Str("bot_id", botResp.ID).
 			Msg("Failed to save meeting recording to database")
 		return nil, fmt.Errorf("failed to save meeting recording: %w", err)
@@ -77,10 +77,10 @@ func (s *MeetingService) StartMeetingRecording(ctx context.Context, userID uint,
 }
 
 // GetUserMeetings retrieves all meeting recordings for a specific user
-func (s *MeetingService) GetUserMeetings(ctx context.Context, userID uint) ([]models.MeetingRecording, error) {
+func (s *MeetingService) GetUserMeetings(ctx context.Context, clerkUserID string) ([]models.MeetingRecording, error) {
 	var meetings []models.MeetingRecording
 
-	err := s.db.Where("user_id = ?", userID).
+	err := s.db.Where("clerk_user_id = ?", clerkUserID).
 		Preload("Participants").
 		Preload("GeneratedNote").
 		Order("created_at DESC").
@@ -89,13 +89,13 @@ func (s *MeetingService) GetUserMeetings(ctx context.Context, userID uint) ([]mo
 	if err != nil {
 		log.Error().
 			Err(err).
-			Uint("user_id", userID).
+			Str("clerk_user_id", clerkUserID).
 			Msg("Failed to retrieve user meetings")
 		return nil, fmt.Errorf("failed to retrieve meetings: %w", err)
 	}
 
 	log.Debug().
-		Uint("user_id", userID).
+		Str("clerk_user_id", clerkUserID).
 		Int("meetings_count", len(meetings)).
 		Msg("Retrieved user meetings")
 
@@ -162,7 +162,7 @@ func (s *MeetingService) ProcessCompletedMeeting(ctx context.Context, botID stri
 			Str("recording_id", recording.ID).
 			Msg("Failed to update recording with transcript and video URLs")
 	}
-	
+
 	log.Info().
 		Str("recording_id", recording.ID).
 		Bool("has_transcript", transcriptURL != "").
@@ -223,10 +223,10 @@ func (s *MeetingService) processTranscriptAndCreateNote(ctx context.Context, rec
 
 	// Get user's existing notebooks
 	var notebooks []models.Notebook
-	if err := s.db.Where("user_id = ?", recording.UserID).Find(&notebooks).Error; err != nil {
+	if err := s.db.Where("clerk_user_id = ?", recording.ClerkUserID).Find(&notebooks).Error; err != nil {
 		log.Error().
 			Err(err).
-			Uint("user_id", recording.UserID).
+			Str("clerk_user_id", recording.ClerkUserID).
 			Msg("Failed to retrieve existing notebooks")
 		return err
 	}
@@ -248,7 +248,7 @@ func (s *MeetingService) processTranscriptAndCreateNote(ctx context.Context, rec
 	}
 
 	// Find or create notebook
-	notebook, err := s.findOrCreateNotebook(recording.UserID, analysis.NotebookName)
+	notebook, err := s.findOrCreateNotebook(recording.ClerkUserID, analysis.NotebookName)
 	if err != nil {
 		return fmt.Errorf("failed to find or create notebook: %w", err)
 	}
@@ -301,11 +301,11 @@ func (s *MeetingService) processTranscriptAndCreateNote(ctx context.Context, rec
 }
 
 // findOrCreateNotebook finds an existing notebook or creates a new one
-func (s *MeetingService) findOrCreateNotebook(userID uint, notebookName string) (*models.Notebook, error) {
+func (s *MeetingService) findOrCreateNotebook(clerkUserID string, notebookName string) (*models.Notebook, error) {
 	var notebook models.Notebook
 
 	// Try to find existing notebook
-	err := s.db.Where("name = ? AND user_id = ?", notebookName, userID).First(&notebook).Error
+	err := s.db.Where("name = ? AND clerk_user_id = ?", notebookName, clerkUserID).First(&notebook).Error
 	if err == nil {
 		return &notebook, nil
 	}
@@ -316,14 +316,14 @@ func (s *MeetingService) findOrCreateNotebook(userID uint, notebookName string) 
 
 	// Create new notebook
 	notebook = models.Notebook{
-		Name:   notebookName,
-		UserID: userID,
+		Name:        notebookName,
+		ClerkUserID: clerkUserID,
 	}
 
 	if err := s.db.Create(&notebook).Error; err != nil {
 		log.Error().
 			Err(err).
-			Uint("user_id", userID).
+			Str("clerk_user_id", clerkUserID).
 			Str("notebook_name", notebookName).
 			Msg("Failed to create notebook")
 		return nil, err
@@ -332,7 +332,7 @@ func (s *MeetingService) findOrCreateNotebook(userID uint, notebookName string) 
 	log.Info().
 		Str("notebook_id", notebook.ID).
 		Str("notebook_name", notebookName).
-		Uint("user_id", userID).
+		Str("clerk_user_id", clerkUserID).
 		Msg("Created new notebook for meeting")
 
 	return &notebook, nil

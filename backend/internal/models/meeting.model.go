@@ -9,8 +9,7 @@ import (
 
 type MeetingRecording struct {
 	ID                    string     `json:"id" gorm:"primaryKey;type:varchar(255)"`
-	UserID                uint       `json:"userId" gorm:"not null;index"`
-	User                  User       `json:"user,omitempty" gorm:"foreignKey:UserID"`
+	ClerkUserID           string     `json:"clerkUserId" gorm:"not null;index"`
 	BotID                 string     `json:"botId" gorm:"uniqueIndex;not null"`
 	MeetingURL            string     `json:"meetingUrl" gorm:"not null"`
 	Status                string     `json:"status" gorm:"default:'pending'"` // pending, recording, processing, completed, failed

@@ -1,8 +1,8 @@
 import { useState, useMemo } from 'react'
 import { Button } from '@/components/ui/button'
+import { Skeleton } from '@/components/ui/skeleton'
 import { Book, BookOpen, FileText, Video } from 'lucide-react'
 import { Header } from '@/components/Header'
-import { handleGoogleLogin } from '@/utils/auth'
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { getUserNotebooks, createNotebook } from '@/utils/notebook'
@@ -17,14 +17,14 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { getPreviewText } from '@/utils/markdown'
-import { MeetingRecorder } from '@/components/MeetingRecorder'
 import { MeetingsList } from '@/components/MeetingsList'
 
 interface DashboardProps {
   user: AuthenticatedUser | null
+  userLoading?: boolean
 }
 
-export function Dashboard({ user }: DashboardProps) {
+export function Dashboard({ user, userLoading = false }: DashboardProps) {
   const navigate = useNavigate()
   const [activeTab, setActiveTab] = useState<'notebooks' | 'chapters' | 'notes' | 'meetings'>('notebooks')
   const queryClient = useQueryClient()
@@ -175,13 +175,30 @@ export function Dashboard({ user }: DashboardProps) {
     }
   }
 
+  console.log('userLoading:', userLoading)
+  console.log('user:', user)
+
   return (
     <div className="flex flex-col h-screen">
       <Header user={user} breadcrumbs={[{ label: 'Dashboard' }]} />
       
       {/* Main Content */}
       <main className="flex-1 overflow-auto">
-        {user ? (
+        {userLoading ? (
+          <div className="max-w-6xl mx-auto px-6 py-12 space-y-8">
+            {/* Loading Skeleton */}
+            <div className="space-y-2">
+              <Skeleton className="h-9 w-64" />
+              <Skeleton className="h-5 w-96" />
+            </div>
+            <div className="h-12" />
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {[1, 2, 3].map((i) => (
+                <Skeleton key={i} className="h-40 rounded-lg" />
+              ))}
+            </div>
+          </div>
+        ) : user ? (
           <div className="max-w-6xl mx-auto px-6 py-12 space-y-8">
             {/* Welcome Section */}
             <div className="space-y-2">
@@ -411,12 +428,9 @@ export function Dashboard({ user }: DashboardProps) {
             <div className="text-center space-y-3">
               <h2 className="text-4xl font-bold text-foreground">Welcome to Notes App</h2>
               <p className="text-lg text-muted-foreground max-w-md">
-                Sign in with your Google account to start organizing your thoughts and ideas
+                Get started by creating your first notebook
               </p>
             </div>
-            <Button size="lg" onClick={handleGoogleLogin}>
-              Login with Google
-            </Button>
           </div>
         )}
       </main>

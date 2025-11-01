@@ -3,7 +3,6 @@ import {
     CharacterCount,
     CodeBlockLowlight,
     Color,
-    CustomKeymap,
     HighlightExtension,
     HorizontalRule,
     MarkdownExtension,

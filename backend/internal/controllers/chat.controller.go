@@ -53,9 +53,9 @@ func getGoogleClient(ctx context.Context, apiKey string) (*genai.Client, error) 
 }
 
 // getUserAPIKey retrieves the user's API key for a specific provider
-func getUserAPIKey(userID uint, provider string) (string, error) {
+func getUserAPIKey(clerkUserID string, provider string) (string, error) {
 	var credential models.AICredential
-	if err := db.DB.Where("user_id = ? AND provider = ?", userID, provider).First(&credential).Error; err != nil {
+	if err := db.DB.Where("clerk_user_id = ? AND provider = ?", clerkUserID, provider).First(&credential).Error; err != nil {
 		return "", err
 	}
 
@@ -77,7 +77,7 @@ func getUserAPIKey(userID uint, provider string) (string, error) {
 }
 
 // handleNotesToolCall handles tool calls for notes-related operations
-func handleNotesToolCall(toolCall aisdk.ToolCall, userID uint) any {
+func handleNotesToolCall(toolCall aisdk.ToolCall, clerkUserID string) any {
 	log.Info().Str("tool", toolCall.Name).Interface("args", toolCall.Args).Msg("Tool called")
 
 	switch toolCall.Name {
@@ -86,38 +86,38 @@ func handleNotesToolCall(toolCall aisdk.ToolCall, userID uint) any {
 		if !ok {
 			return map[string]string{"error": "Invalid query parameter"}
 		}
-		return searchNotes(userID, query)
+		return searchNotes(clerkUserID, query)
 
 	case "listNotebooks":
-		return listNotebooks(userID)
+		return listNotebooks(clerkUserID)
 
 	case "listChapters":
 		notebookID, ok := toolCall.Args["notebookId"].(string)
 		if !ok {
 			return map[string]string{"error": "Invalid notebookId parameter"}
 		}
-		return listChapters(userID, notebookID)
+		return listChapters(clerkUserID, notebookID)
 
 	case "getNoteContent":
 		noteID, ok := toolCall.Args["noteId"].(string)
 		if !ok {
 			return map[string]string{"error": "Invalid noteId parameter"}
 		}
-		return getNoteContent(userID, noteID)
+		return getNoteContent(clerkUserID, noteID)
 
 	case "listNotesInChapter":
 		chapterID, ok := toolCall.Args["chapterId"].(string)
 		if !ok {
 			return map[string]string{"error": "Invalid chapterId parameter"}
 		}
-		return listNotesInChapter(userID, chapterID)
+		return listNotesInChapter(clerkUserID, chapterID)
 
 	case "createNotebook":
 		name, ok := toolCall.Args["name"].(string)
 		if !ok {
 			return map[string]string{"error": "Invalid name parameter"}
 		}
-		return createNotebook(userID, name)
+		return createNotebook(clerkUserID, name)
 
 	case "createChapter":
 		notebookID, ok := toolCall.Args["notebookId"].(string)
@@ -128,7 +128,7 @@ func handleNotesToolCall(toolCall aisdk.ToolCall, userID uint) any {
 		if !ok {
 			return map[string]string{"error": "Invalid name parameter"}
 		}
-		return createChapter(userID, notebookID, name)
+		return createChapter(clerkUserID, notebookID, name)
 
 	case "renameNotebook":
 		notebookID, ok := toolCall.Args["notebookId"].(string)
@@ -139,7 +139,7 @@ func handleNotesToolCall(toolCall aisdk.ToolCall, userID uint) any {
 		if !ok {
 			return map[string]string{"error": "Invalid newName parameter"}
 		}
-		return renameNotebook(userID, notebookID, newName)
+		return renameNotebook(clerkUserID, notebookID, newName)
 
 	case "renameChapter":
 		chapterID, ok := toolCall.Args["chapterId"].(string)
@@ -150,7 +150,7 @@ func handleNotesToolCall(toolCall aisdk.ToolCall, userID uint) any {
 		if !ok {
 			return map[string]string{"error": "Invalid newName parameter"}
 		}
-		return renameChapter(userID, chapterID, newName)
+		return renameChapter(clerkUserID, chapterID, newName)
 
 	case "createNote":
 		chapterID, ok := toolCall.Args["chapterId"].(string)
@@ -166,7 +166,7 @@ func handleNotesToolCall(toolCall aisdk.ToolCall, userID uint) any {
 		if contentArg, ok := toolCall.Args["content"].(string); ok {
 			content = contentArg
 		}
-		return createNote(userID, chapterID, title, content)
+		return createNote(clerkUserID, chapterID, title, content)
 
 	case "moveNote":
 		noteID, ok := toolCall.Args["noteId"].(string)
@@ -177,7 +177,7 @@ func handleNotesToolCall(toolCall aisdk.ToolCall, userID uint) any {
 		if !ok {
 			return map[string]string{"error": "Invalid targetChapterId parameter"}
 		}
-		return moveNote(userID, noteID, targetChapterID)
+		return moveNote(clerkUserID, noteID, targetChapterID)
 
 	case "moveChapter":
 		chapterID, ok := toolCall.Args["chapterId"].(string)
@@ -188,21 +188,21 @@ func handleNotesToolCall(toolCall aisdk.ToolCall, userID uint) any {
 		if !ok {
 			return map[string]string{"error": "Invalid targetNotebookId parameter"}
 		}
-		return moveChapter(userID, chapterID, targetNotebookID)
+		return moveChapter(clerkUserID, chapterID, targetNotebookID)
 
 	case "generateNoteVideo":
 		noteID, ok := toolCall.Args["noteId"].(string)
 		if !ok {
 			return map[string]string{"error": "Invalid noteId parameter"}
 		}
-		return generateNoteVideo(userID, noteID)
+		return generateNoteVideo(clerkUserID, noteID)
 
 	case "deleteNoteVideo":
 		noteID, ok := toolCall.Args["noteId"].(string)
 		if !ok {
 			return map[string]string{"error": "Invalid noteId parameter"}
 		}
-		return deleteNoteVideo(userID, noteID)
+		return deleteNoteVideo(clerkUserID, noteID)
 
 	case "renameNote":
 		noteID, ok := toolCall.Args["noteId"].(string)
@@ -213,14 +213,14 @@ func handleNotesToolCall(toolCall aisdk.ToolCall, userID uint) any {
 		if !ok {
 			return map[string]string{"error": "Invalid newName parameter"}
 		}
-		return renameNote(userID, noteID, newName)
+		return renameNote(clerkUserID, noteID, newName)
 
 	case "deleteNote":
 		noteID, ok := toolCall.Args["noteId"].(string)
 		if !ok {
 			return map[string]string{"error": "Invalid noteId parameter"}
 		}
-		return deleteNote(userID, noteID)
+		return deleteNote(clerkUserID, noteID)
 
 	case "updateNoteContent":
 		log.Info().Interface("args", toolCall.Args).Msg("updateNoteContent tool called")
@@ -235,7 +235,7 @@ func handleNotesToolCall(toolCall aisdk.ToolCall, userID uint) any {
 			return map[string]string{"error": "Invalid content parameter"}
 		}
 		log.Info().Str("noteID", noteID).Int("contentLen", len(content)).Msg("Calling updateNoteContent")
-		return updateNoteContent(userID, noteID, content)
+		return updateNoteContent(clerkUserID, noteID, content)
 
 	default:
 		return map[string]string{"error": "Unknown tool: " + toolCall.Name}
@@ -243,7 +243,7 @@ func handleNotesToolCall(toolCall aisdk.ToolCall, userID uint) any {
 }
 
 // searchNotes searches for notes by query in title and content
-func searchNotes(userID uint, query string) any {
+func searchNotes(clerkUserID string, query string) any {
 	var notes []models.Notes
 
 	// Search in both title and content
@@ -251,8 +251,8 @@ func searchNotes(userID uint, query string) any {
 	err := db.DB.Preload("Chapter.Notebook").
 		Joins("JOIN chapters ON notes.chapter_id = chapters.id").
 		Joins("JOIN notebooks ON chapters.notebook_id = notebooks.id").
-		Where("notebooks.user_id = ? AND (LOWER(notes.name) LIKE ? OR LOWER(notes.content) LIKE ?)",
-			userID, searchQuery, searchQuery).
+		Where("notebooks.clerk_user_id = ? AND (LOWER(notes.name) LIKE ? OR LOWER(notes.content) LIKE ?)",
+			clerkUserID, searchQuery, searchQuery).
 		Limit(10).
 		Find(&notes).Error
 
@@ -296,11 +296,11 @@ func searchNotes(userID uint, query string) any {
 }
 
 // listNotebooks lists all notebooks for a user
-func listNotebooks(userID uint) any {
+func listNotebooks(clerkUserID string) any {
 	var notebooks []models.Notebook
 
 	err := db.DB.Preload("Chapters").
-		Where("user_id = ?", userID).
+		Where("clerk_user_id = ?", clerkUserID).
 		Order("updated_at DESC").
 		Find(&notebooks).Error
 
@@ -336,10 +336,10 @@ func listNotebooks(userID uint) any {
 }
 
 // listChapters lists all chapters in a notebook
-func listChapters(userID uint, notebookID string) any {
+func listChapters(clerkUserID string, notebookID string) any {
 	// Verify notebook belongs to user
 	var notebook models.Notebook
-	err := db.DB.Where("id = ? AND user_id = ?", notebookID, userID).First(&notebook).Error
+	err := db.DB.Where("id = ? AND clerk_user_id = ?", notebookID, clerkUserID).First(&notebook).Error
 	if err != nil {
 		log.Error().Err(err).Msg("Notebook not found")
 		return map[string]string{"error": "Notebook not found or access denied"}
@@ -386,13 +386,13 @@ func listChapters(userID uint, notebookID string) any {
 }
 
 // getNoteContent gets the full content of a note
-func getNoteContent(userID uint, noteID string) any {
+func getNoteContent(clerkUserID string, noteID string) any {
 	var note models.Notes
 
 	err := db.DB.Preload("Chapter.Notebook").
 		Joins("JOIN chapters ON notes.chapter_id = chapters.id").
 		Joins("JOIN notebooks ON chapters.notebook_id = notebooks.id").
-		Where("notes.id = ? AND notebooks.user_id = ?", noteID, userID).
+		Where("notes.id = ? AND notebooks.clerk_user_id = ?", noteID, clerkUserID).
 		First(&note).Error
 
 	if err != nil {
@@ -412,12 +412,12 @@ func getNoteContent(userID uint, noteID string) any {
 }
 
 // listNotesInChapter lists all notes in a chapter
-func listNotesInChapter(userID uint, chapterID string) any {
+func listNotesInChapter(clerkUserID string, chapterID string) any {
 	// Verify chapter belongs to user's notebook
 	var chapter models.Chapter
 	err := db.DB.Preload("Notebook").
 		Joins("JOIN notebooks ON chapters.notebook_id = notebooks.id").
-		Where("chapters.id = ? AND notebooks.user_id = ?", chapterID, userID).
+		Where("chapters.id = ? AND notebooks.clerk_user_id = ?", chapterID, clerkUserID).
 		First(&chapter).Error
 
 	if err != nil {
@@ -473,12 +473,12 @@ func listNotesInChapter(userID uint, chapterID string) any {
 }
 
 // createNote creates a new note in a chapter
-func createNote(userID uint, chapterID string, title string, content string) any {
+func createNote(clerkUserID string, chapterID string, title string, content string) any {
 	// Verify chapter belongs to user's notebook
 	var chapter models.Chapter
 	err := db.DB.Preload("Notebook").
 		Joins("JOIN notebooks ON chapters.notebook_id = notebooks.id").
-		Where("chapters.id = ? AND notebooks.user_id = ?", chapterID, userID).
+		Where("chapters.id = ? AND notebooks.clerk_user_id = ?", chapterID, clerkUserID).
 		First(&chapter).Error
 
 	if err != nil {
@@ -521,12 +521,12 @@ func createNote(userID uint, chapterID string, title string, content string) any
 }
 
 // moveChapter moves a chapter to a different notebook
-func moveChapter(userID uint, chapterID string, targetNotebookID string) any {
+func moveChapter(clerkUserID string, chapterID string, targetNotebookID string) any {
 	// Verify chapter belongs to user's notebook
 	var chapter models.Chapter
 	err := db.DB.Preload("Notebook").
 		Joins("JOIN notebooks ON chapters.notebook_id = notebooks.id").
-		Where("chapters.id = ? AND notebooks.user_id = ?", chapterID, userID).
+		Where("chapters.id = ? AND notebooks.clerk_user_id = ?", chapterID, clerkUserID).
 		First(&chapter).Error
 
 	if err != nil {
@@ -536,7 +536,7 @@ func moveChapter(userID uint, chapterID string, targetNotebookID string) any {
 
 	// Verify target notebook belongs to user
 	var targetNotebook models.Notebook
-	err = db.DB.Where("id = ? AND user_id = ?", targetNotebookID, userID).First(&targetNotebook).Error
+	err = db.DB.Where("id = ? AND clerk_user_id = ?", targetNotebookID, clerkUserID).First(&targetNotebook).Error
 	if err != nil {
 		log.Error().Err(err).Msg("Target notebook not found")
 		return map[string]string{"error": "Target notebook not found or access denied"}
@@ -569,13 +569,13 @@ func moveChapter(userID uint, chapterID string, targetNotebookID string) any {
 }
 
 // moveNote moves a note to a different chapter
-func moveNote(userID uint, noteID string, targetChapterID string) any {
+func moveNote(clerkUserID string, noteID string, targetChapterID string) any {
 	// Verify note belongs to user
 	var note models.Notes
 	err := db.DB.Preload("Chapter.Notebook").
 		Joins("JOIN chapters ON notes.chapter_id = chapters.id").
 		Joins("JOIN notebooks ON chapters.notebook_id = notebooks.id").
-		Where("notes.id = ? AND notebooks.user_id = ?", noteID, userID).
+		Where("notes.id = ? AND notebooks.clerk_user_id = ?", noteID, clerkUserID).
 		First(&note).Error
 
 	if err != nil {
@@ -587,7 +587,7 @@ func moveNote(userID uint, noteID string, targetChapterID string) any {
 	var targetChapter models.Chapter
 	err = db.DB.Preload("Notebook").
 		Joins("JOIN notebooks ON chapters.notebook_id = notebooks.id").
-		Where("chapters.id = ? AND notebooks.user_id = ?", targetChapterID, userID).
+		Where("chapters.id = ? AND notebooks.clerk_user_id = ?", targetChapterID, clerkUserID).
 		First(&targetChapter).Error
 
 	if err != nil {
@@ -620,13 +620,13 @@ func moveNote(userID uint, noteID string, targetChapterID string) any {
 }
 
 // renameNote renames a note
-func renameNote(userID uint, noteID string, newName string) any {
+func renameNote(clerkUserID string, noteID string, newName string) any {
 	// Verify note belongs to user
 	var note models.Notes
 	err := db.DB.Preload("Chapter.Notebook").
 		Joins("JOIN chapters ON notes.chapter_id = chapters.id").
 		Joins("JOIN notebooks ON chapters.notebook_id = notebooks.id").
-		Where("notes.id = ? AND notebooks.user_id = ?", noteID, userID).
+		Where("notes.id = ? AND notebooks.clerk_user_id = ?", noteID, clerkUserID).
 		First(&note).Error
 
 	if err != nil {
@@ -657,13 +657,13 @@ func renameNote(userID uint, noteID string, newName string) any {
 }
 
 // deleteNote deletes a note
-func deleteNote(userID uint, noteID string) any {
+func deleteNote(clerkUserID string, noteID string) any {
 	// Verify note belongs to user
 	var note models.Notes
 	err := db.DB.Preload("Chapter.Notebook").
 		Joins("JOIN chapters ON notes.chapter_id = chapters.id").
 		Joins("JOIN notebooks ON chapters.notebook_id = notebooks.id").
-		Where("notes.id = ? AND notebooks.user_id = ?", noteID, userID).
+		Where("notes.id = ? AND notebooks.clerk_user_id = ?", noteID, clerkUserID).
 		First(&note).Error
 
 	if err != nil {
@@ -695,9 +695,9 @@ func deleteNote(userID uint, noteID string) any {
 }
 
 // updateNoteContent updates the content of a note
-func updateNoteContent(userID uint, noteID string, content string) any {
+func updateNoteContent(clerkUserID string, noteID string, content string) any {
 	log.Info().
-		Uint("userID", userID).
+		Str("clerk_user_id", clerkUserID).
 		Str("noteID", noteID).
 		Int("contentLength", len(content)).
 		Str("contentPreview", func() string {
@@ -713,7 +713,7 @@ func updateNoteContent(userID uint, noteID string, content string) any {
 	err := db.DB.Preload("Chapter.Notebook").
 		Joins("JOIN chapters ON notes.chapter_id = chapters.id").
 		Joins("JOIN notebooks ON chapters.notebook_id = notebooks.id").
-		Where("notes.id = ? AND notebooks.user_id = ?", noteID, userID).
+		Where("notes.id = ? AND notebooks.clerk_user_id = ?", noteID, clerkUserID).
 		First(&note).Error
 
 	if err != nil {
@@ -755,13 +755,13 @@ func updateNoteContent(userID uint, noteID string, content string) any {
 }
 
 // generateNoteVideo creates video data for a note using AI
-func generateNoteVideo(userID uint, noteID string) any {
+func generateNoteVideo(clerkUserID string, noteID string) any {
 	// Verify note belongs to user
 	var note models.Notes
 	err := db.DB.Preload("Chapter.Notebook").
 		Joins("JOIN chapters ON notes.chapter_id = chapters.id").
 		Joins("JOIN notebooks ON chapters.notebook_id = notebooks.id").
-		Where("notes.id = ? AND notebooks.user_id = ?", noteID, userID).
+		Where("notes.id = ? AND notebooks.clerk_user_id = ?", noteID, clerkUserID).
 		First(&note).Error
 
 	if err != nil {
@@ -771,7 +771,7 @@ func generateNoteVideo(userID uint, noteID string) any {
 
 	// Generate video data with AI based on note content
 	log.Info().Str("noteID", noteID).Msg("Generating AI-powered video for note via chat tool")
-	videoData, err := GenerateVideoDataWithAI(userID, note.Name, note.Content)
+	videoData, err := GenerateVideoDataWithAI(clerkUserID, note.Name, note.Content)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to generate AI video, using fallback")
 		// Fallback to simple generation
@@ -830,13 +830,13 @@ func generateNoteVideo(userID uint, noteID string) any {
 }
 
 // deleteNoteVideo removes video data from a note
-func deleteNoteVideo(userID uint, noteID string) any {
+func deleteNoteVideo(clerkUserID string, noteID string) any {
 	// Verify note belongs to user
 	var note models.Notes
 	err := db.DB.Preload("Chapter.Notebook").
 		Joins("JOIN chapters ON notes.chapter_id = chapters.id").
 		Joins("JOIN notebooks ON chapters.notebook_id = notebooks.id").
-		Where("notes.id = ? AND notebooks.user_id = ?", noteID, userID).
+		Where("notes.id = ? AND notebooks.clerk_user_id = ?", noteID, clerkUserID).
 		First(&note).Error
 
 	if err != nil {
@@ -871,11 +871,11 @@ func deleteNoteVideo(userID uint, noteID string) any {
 }
 
 // createNotebook creates a new notebook
-func createNotebook(userID uint, name string) any {
+func createNotebook(clerkUserID string, name string) any {
 	// Create the notebook
 	notebook := models.Notebook{
-		Name:   name,
-		UserID: userID,
+		Name:        name,
+		ClerkUserID: clerkUserID,
 	}
 
 	err := db.DB.Create(&notebook).Error
@@ -896,10 +896,10 @@ func createNotebook(userID uint, name string) any {
 }
 
 // createChapter creates a new chapter in a notebook
-func createChapter(userID uint, notebookID string, name string) any {
+func createChapter(clerkUserID string, notebookID string, name string) any {
 	// Verify notebook belongs to user
 	var notebook models.Notebook
-	err := db.DB.Where("id = ? AND user_id = ?", notebookID, userID).First(&notebook).Error
+	err := db.DB.Where("id = ? AND clerk_user_id = ?", notebookID, clerkUserID).First(&notebook).Error
 	if err != nil {
 		log.Error().Err(err).Msg("Notebook not found")
 		return map[string]string{"error": "Notebook not found or access denied"}
@@ -931,10 +931,10 @@ func createChapter(userID uint, notebookID string, name string) any {
 }
 
 // renameNotebook renames a notebook
-func renameNotebook(userID uint, notebookID string, newName string) any {
+func renameNotebook(clerkUserID string, notebookID string, newName string) any {
 	// Verify notebook belongs to user
 	var notebook models.Notebook
-	err := db.DB.Where("id = ? AND user_id = ?", notebookID, userID).First(&notebook).Error
+	err := db.DB.Where("id = ? AND clerk_user_id = ?", notebookID, clerkUserID).First(&notebook).Error
 	if err != nil {
 		log.Error().Err(err).Msg("Notebook not found")
 		return map[string]string{"error": "Notebook not found or access denied"}
@@ -961,12 +961,12 @@ func renameNotebook(userID uint, notebookID string, newName string) any {
 }
 
 // renameChapter renames a chapter
-func renameChapter(userID uint, chapterID string, newName string) any {
+func renameChapter(clerkUserID string, chapterID string, newName string) any {
 	// Verify chapter belongs to user's notebook
 	var chapter models.Chapter
 	err := db.DB.Preload("Notebook").
 		Joins("JOIN notebooks ON chapters.notebook_id = notebooks.id").
-		Where("chapters.id = ? AND notebooks.user_id = ?", chapterID, userID).
+		Where("chapters.id = ? AND notebooks.clerk_user_id = ?", chapterID, clerkUserID).
 		First(&chapter).Error
 
 	if err != nil {
@@ -1029,16 +1029,16 @@ func GenerateHandler(c *gin.Context) {
 	}
 
 	// Get user ID from session
-	userID, exists := middleware.GetUserID(c)
+	clerkUserID, exists := middleware.GetClerkUserID(c)
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
 		return
 	}
 
 	// Get user's OpenAI API key (defaulting to OpenAI for text generation)
-	apiKey, err := getUserAPIKey(userID, "openai")
+	apiKey, err := getUserAPIKey(clerkUserID, "openai")
 	if err != nil {
-		log.Error().Err(err).Uint("userID", userID).Msg("Failed to get user API key")
+		log.Error().Err(err).Str("clerk_user_id", clerkUserID).Msg("Failed to get user API key")
 		c.JSON(http.StatusBadRequest, gin.H{"error": "OpenAI API key not configured. Please set up your API key in settings."})
 		return
 	}
@@ -1188,16 +1188,16 @@ func ChatHandler(c *gin.Context) {
 	}
 
 	// Get user ID from session
-	userID, exists := middleware.GetUserID(c)
+	clerkUserID, exists := middleware.GetClerkUserID(c)
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
 		return
 	}
 
 	// Get user's API key for the requested provider
-	apiKey, err := getUserAPIKey(userID, req.Provider)
+	apiKey, err := getUserAPIKey(clerkUserID, req.Provider)
 	if err != nil {
-		log.Error().Err(err).Str("provider", req.Provider).Uint("userID", userID).Msg("Failed to get user API key")
+		log.Error().Err(err).Str("provider", req.Provider).Str("clerk_user_id", clerkUserID).Msg("Failed to get user API key")
 		c.JSON(http.StatusBadRequest, gin.H{"error": "API key not configured for this provider. Please set up your API key in settings."})
 		return
 	}
@@ -1460,7 +1460,7 @@ func ChatHandler(c *gin.Context) {
 	// Tool handler
 	handleToolCall := func(toolCall aisdk.ToolCall) any {
 		log.Info().Str("toolName", toolCall.Name).Str("toolCallId", toolCall.ID).Msg("handleToolCall invoked")
-		result := handleNotesToolCall(toolCall, userID)
+		result := handleNotesToolCall(toolCall, clerkUserID)
 		log.Info().Str("toolName", toolCall.Name).Interface("result", result).Msg("handleToolCall completed")
 		return result
 	}

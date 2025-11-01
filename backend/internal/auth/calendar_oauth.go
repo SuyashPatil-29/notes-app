@@ -14,6 +14,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/clerk/clerk-sdk-go/v2"
 	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog/log"
 )
@@ -62,19 +63,15 @@ func generateSecureState() (string, error) {
 func BeginCalendarOAuth(c *gin.Context) {
 	provider := c.Param("provider") // "google" or "microsoft"
 
-	// Get user from session
-	session, err := Store.Get(c.Request, "auth-session")
-	if err != nil {
-		log.Error().Err(err).Msg("Error getting session")
+	// Get Clerk session claims
+	claims, ok := clerk.SessionClaimsFromContext(c.Request.Context())
+	if !ok || claims == nil {
+		log.Error().Msg("No Clerk session found")
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Not authenticated"})
 		return
 	}
 
-	userID, ok := session.Values["user_id"]
-	if !ok || userID == nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Not authenticated"})
-		return
-	}
+	clerkUserID := claims.Subject
 
 	// Generate state for CSRF protection
 	state, err := generateSecureState()
@@ -86,10 +83,10 @@ func BeginCalendarOAuth(c *gin.Context) {
 
 	// Store state in database
 	oauthState := models.CalendarOAuthState{
-		UserID:    userID.(uint),
-		State:     state,
-		Platform:  provider,
-		ExpiresAt: time.Now().Add(10 * time.Minute),
+		ClerkUserID: clerkUserID,
+		State:       state,
+		Platform:    provider,
+		ExpiresAt:   time.Now().Add(10 * time.Minute),
 	}
 
 	if err := db.DB.Create(&oauthState).Error; err != nil {
@@ -233,7 +230,7 @@ func GoogleCalendarCallback(c *gin.Context) {
 	}
 
 	log.Info().
-		Uint("user_id", oauthState.UserID).
+		Str("clerk_user_id", oauthState.ClerkUserID).
 		Str("user_email", userEmail).
 		Int("calendars_count", len(allCalendars)).
 		Msg("Fetched all calendars from Recall")
@@ -243,7 +240,7 @@ func GoogleCalendarCallback(c *gin.Context) {
 	for _, calendarResp := range allCalendars {
 		// Check if this calendar already exists for this user
 		var existingCalendar models.Calendar
-		result := db.DB.Where("user_id = ? AND recall_calendar_id = ?", oauthState.UserID, calendarResp.ID).First(&existingCalendar)
+		result := db.DB.Where("clerk_user_id = ? AND recall_calendar_id = ?", oauthState.ClerkUserID, calendarResp.ID).First(&existingCalendar)
 
 		if result.Error == nil {
 			// Calendar already exists, skip
@@ -254,7 +251,7 @@ func GoogleCalendarCallback(c *gin.Context) {
 		}
 
 		calendar := models.Calendar{
-			UserID:            oauthState.UserID,
+			ClerkUserID:       oauthState.ClerkUserID,
 			RecallCalendarID:  calendarResp.ID,
 			Platform:          "google_calendar",
 			PlatformEmail:     calendarResp.PlatformEmail,
@@ -267,7 +264,7 @@ func GoogleCalendarCallback(c *gin.Context) {
 		if err := db.DB.Create(&calendar).Error; err != nil {
 			log.Error().
 				Err(err).
-				Uint("user_id", oauthState.UserID).
+				Str("clerk_user_id", oauthState.ClerkUserID).
 				Str("recall_calendar_id", calendarResp.ID).
 				Msg("Error saving calendar to database")
 			continue
@@ -276,7 +273,7 @@ func GoogleCalendarCallback(c *gin.Context) {
 		savedCount++
 
 		log.Info().
-			Uint("user_id", oauthState.UserID).
+			Str("clerk_user_id", oauthState.ClerkUserID).
 			Str("calendar_id", calendar.ID).
 			Str("recall_calendar_id", calendar.RecallCalendarID).
 			Str("platform_email", calendar.PlatformEmail).
@@ -285,14 +282,14 @@ func GoogleCalendarCallback(c *gin.Context) {
 
 	if savedCount == 0 {
 		log.Error().
-			Uint("user_id", oauthState.UserID).
+			Str("clerk_user_id", oauthState.ClerkUserID).
 			Msg("No calendars were saved to database")
 		c.Redirect(http.StatusTemporaryRedirect, "http://localhost:5173/profile?calendar_error=no_calendars_saved")
 		return
 	}
 
 	log.Info().
-		Uint("user_id", oauthState.UserID).
+		Str("clerk_user_id", oauthState.ClerkUserID).
 		Int("saved_count", savedCount).
 		Str("platform", "google_calendar").
 		Msg("Successfully connected Google Calendar(s)")
@@ -300,7 +297,7 @@ func GoogleCalendarCallback(c *gin.Context) {
 	// Trigger initial sync in background for all calendars
 	for _, calendarResp := range allCalendars {
 		var calendar models.Calendar
-		if err := db.DB.Where("recall_calendar_id = ? AND user_id = ?", calendarResp.ID, oauthState.UserID).First(&calendar).Error; err == nil {
+		if err := db.DB.Where("recall_calendar_id = ? AND clerk_user_id = ?", calendarResp.ID, oauthState.ClerkUserID).First(&calendar).Error; err == nil {
 			go performInitialCalendarSync(calendar)
 		}
 	}
@@ -390,7 +387,7 @@ func MicrosoftCalendarCallback(c *gin.Context) {
 	}
 
 	log.Info().
-		Uint("user_id", oauthState.UserID).
+		Str("clerk_user_id", oauthState.ClerkUserID).
 		Str("user_email", userEmail).
 		Int("calendars_count", len(allCalendars)).
 		Msg("Fetched all calendars from Recall")
@@ -400,7 +397,7 @@ func MicrosoftCalendarCallback(c *gin.Context) {
 	for _, calendarResp := range allCalendars {
 		// Check if this calendar already exists for this user
 		var existingCalendar models.Calendar
-		result := db.DB.Where("user_id = ? AND recall_calendar_id = ?", oauthState.UserID, calendarResp.ID).First(&existingCalendar)
+		result := db.DB.Where("clerk_user_id = ? AND recall_calendar_id = ?", oauthState.ClerkUserID, calendarResp.ID).First(&existingCalendar)
 
 		if result.Error == nil {
 			// Calendar already exists, skip
@@ -411,7 +408,7 @@ func MicrosoftCalendarCallback(c *gin.Context) {
 		}
 
 		calendar := models.Calendar{
-			UserID:            oauthState.UserID,
+			ClerkUserID:       oauthState.ClerkUserID,
 			RecallCalendarID:  calendarResp.ID,
 			Platform:          "microsoft_outlook",
 			PlatformEmail:     calendarResp.PlatformEmail,
@@ -424,7 +421,7 @@ func MicrosoftCalendarCallback(c *gin.Context) {
 		if err := db.DB.Create(&calendar).Error; err != nil {
 			log.Error().
 				Err(err).
-				Uint("user_id", oauthState.UserID).
+				Str("clerk_user_id", oauthState.ClerkUserID).
 				Str("recall_calendar_id", calendarResp.ID).
 				Msg("Error saving calendar to database")
 			continue
@@ -433,7 +430,7 @@ func MicrosoftCalendarCallback(c *gin.Context) {
 		savedCount++
 
 		log.Info().
-			Uint("user_id", oauthState.UserID).
+			Str("clerk_user_id", oauthState.ClerkUserID).
 			Str("calendar_id", calendar.ID).
 			Str("recall_calendar_id", calendar.RecallCalendarID).
 			Str("platform_email", calendar.PlatformEmail).
@@ -442,14 +439,14 @@ func MicrosoftCalendarCallback(c *gin.Context) {
 
 	if savedCount == 0 {
 		log.Error().
-			Uint("user_id", oauthState.UserID).
+			Str("clerk_user_id", oauthState.ClerkUserID).
 			Msg("No calendars were saved to database")
 		c.Redirect(http.StatusTemporaryRedirect, "http://localhost:5173/profile?calendar_error=no_calendars_saved")
 		return
 	}
 
 	log.Info().
-		Uint("user_id", oauthState.UserID).
+		Str("clerk_user_id", oauthState.ClerkUserID).
 		Int("saved_count", savedCount).
 		Str("platform", "microsoft_outlook").
 		Msg("Successfully connected Microsoft Calendar(s)")
@@ -457,7 +454,7 @@ func MicrosoftCalendarCallback(c *gin.Context) {
 	// Trigger initial sync in background for all calendars
 	for _, calendarResp := range allCalendars {
 		var calendar models.Calendar
-		if err := db.DB.Where("recall_calendar_id = ? AND user_id = ?", calendarResp.ID, oauthState.UserID).First(&calendar).Error; err == nil {
+		if err := db.DB.Where("recall_calendar_id = ? AND clerk_user_id = ?", calendarResp.ID, oauthState.ClerkUserID).First(&calendar).Error; err == nil {
 			go performInitialCalendarSync(calendar)
 		}
 	}

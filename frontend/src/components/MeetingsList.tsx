@@ -155,13 +155,42 @@ export function MeetingsList() {
 
   if (!meetings || meetings.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center p-12 text-center">
-        <Video className="w-12 h-12 text-muted-foreground mb-4" />
-        <p className="text-muted-foreground">No meeting recordings yet</p>
-        <p className="text-sm text-muted-foreground mt-1">
-          Start recording a meeting to see it here
-        </p>
-      </div>
+      <>
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {/* Record New Meeting Card */}
+          <button
+            onClick={() => setIsRecordDialogOpen(true)}
+            className="border-2 border-dashed border-border/80 rounded-2xl p-6 h-40 flex items-center justify-center text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors"
+            title="Record new meeting"
+          >
+            <span className="text-4xl leading-none">+</span>
+          </button>
+        </div>
+
+        <div className="flex flex-col items-center justify-center p-12 text-center mt-8">
+          <Video className="w-12 h-12 text-muted-foreground mb-4" />
+          <p className="text-muted-foreground">No meeting recordings yet</p>
+          <p className="text-sm text-muted-foreground mt-1">
+            Click the + button above to start recording your first meeting
+          </p>
+        </div>
+
+        {/* Record Meeting Dialog */}
+        <Dialog open={isRecordDialogOpen} onOpenChange={setIsRecordDialogOpen}>
+          <DialogContent className="sm:max-w-[600px]">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Video className="w-5 h-5" />
+                Record Meeting
+              </DialogTitle>
+              <DialogDescription>
+                Start recording a meeting from Zoom or Google Meet
+              </DialogDescription>
+            </DialogHeader>
+            <MeetingRecorder onSuccess={() => setIsRecordDialogOpen(false)} />
+          </DialogContent>
+        </Dialog>
+      </>
     );
   }
 

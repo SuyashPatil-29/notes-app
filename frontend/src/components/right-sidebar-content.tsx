@@ -11,6 +11,7 @@ import {
     RightSidebarRail,
     useRightSidebar,
 } from "@/components/ui/right-sidebar"
+import { Skeleton } from "@/components/ui/skeleton"
 import { useChat } from "@ai-sdk/react"
 import React, { useState, useRef, useEffect, useMemo } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
@@ -37,6 +38,7 @@ import { Reasoning, ReasoningTrigger, ReasoningContent } from "@/components/ai/r
 import { Tool, ToolHeader, ToolContent, ToolInput, ToolOutput } from "@/components/ai/tool"
 import { Input } from "@/components/ui/input"
 import { useUser } from "@/hooks/auth"
+import { useAuth } from "@clerk/clerk-react"
 import api from "@/utils/api"
 import { SelectGroup, SelectLabel, SelectSeparator } from "@/components/ui/select"
 import { MentionNotesPopover, MentionedNotesBadges } from "@/components/ai/mention-notes"
@@ -530,12 +532,23 @@ interface MentionedNote {
 }
 
 export function RightSidebarContent() {
-    const { user } = useUser()
+    const { user, loading: userLoading } = useUser()
+    const { getToken } = useAuth()
     const navigate = useNavigate()
     const [model, setModel] = useState<Model>("gpt-5-mini")
     const [files, setFiles] = useState<FileList | null>(null)
+    const [authToken, setAuthToken] = useState<string>('')
     const { open } = useRightSidebar()
     const inputRef = useRef<HTMLTextAreaElement>(null)
+    
+    // Fetch auth token when component mounts or user changes
+    useEffect(() => {
+        const fetchToken = async () => {
+            const token = await getToken()
+            setAuthToken(token || '')
+        }
+        fetchToken()
+    }, [getToken])
     const queryClient = useQueryClient()
     const processedNoteIds = useRef<Set<string>>(new Set())
     const lastContentUpdateTime = useRef<number>(0)
@@ -596,6 +609,9 @@ export function RightSidebarContent() {
             model,
         },
         credentials: "include",
+        headers: {
+            Authorization: authToken ? `Bearer ${authToken}` : '',
+        },
         maxSteps: 5, // Enable multi-step tool calling
         onError: (error) => {
             console.error("Chat error:", error);
@@ -950,6 +966,49 @@ export function RightSidebarContent() {
             })
         }
     }, [messages, queryClient])
+
+    // Show skeleton while loading user
+    if (userLoading) {
+        return (
+            <RightSidebar collapsible="offcanvas">
+                <RightSidebarHeader className="h-16 border-b">
+                    <RightSidebarMenu>
+                        <RightSidebarMenuItem>
+                            <RightSidebarMenuButton size="lg">
+                                <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
+                                    <MessageSquare className="size-4" />
+                                </div>
+                                <div className="grid flex-1 text-left text-sm leading-tight">
+                                    <span className="truncate font-semibold">AI Chat</span>
+                                </div>
+                            </RightSidebarMenuButton>
+                        </RightSidebarMenuItem>
+                    </RightSidebarMenu>
+                </RightSidebarHeader>
+                <RightSidebarContentWrapper className="flex flex-col h-full p-6">
+                    <div className="space-y-4">
+                        {/* Message skeleton items */}
+                        <div className="flex items-start gap-3">
+                            <Skeleton className="h-8 w-8 rounded-full" />
+                            <div className="flex-1 space-y-2">
+                                <Skeleton className="h-4 w-3/4" />
+                                <Skeleton className="h-4 w-full" />
+                                <Skeleton className="h-4 w-2/3" />
+                            </div>
+                        </div>
+                        <div className="flex items-start gap-3">
+                            <Skeleton className="h-8 w-8 rounded-full" />
+                            <div className="flex-1 space-y-2">
+                                <Skeleton className="h-4 w-2/3" />
+                                <Skeleton className="h-4 w-full" />
+                            </div>
+                        </div>
+                    </div>
+                </RightSidebarContentWrapper>
+                <RightSidebarRail />
+            </RightSidebar>
+        )
+    }
 
     return (
         <RightSidebar collapsible="offcanvas">

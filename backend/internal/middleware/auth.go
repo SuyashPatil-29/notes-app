@@ -1,82 +1,87 @@
 package middleware
 
 import (
-	"backend/internal/auth"
 	"net/http"
 
+	"github.com/clerk/clerk-sdk-go/v2"
+	clerkhttp "github.com/clerk/clerk-sdk-go/v2/http"
 	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog/log"
 )
 
-// RequireAuth is middleware that checks if user is authenticated
+// RequireAuth is middleware that validates Clerk JWT tokens
 func RequireAuth() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		session, err := auth.Store.Get(c.Request, "auth-session")
-		if err != nil {
-			log.Error().Err(err).Msg("Error getting session")
+		// Extract Clerk session claims from context (set by Clerk middleware)
+		claims, ok := clerk.SessionClaimsFromContext(c.Request.Context())
+		if !ok || claims == nil {
+			log.Error().Msg("No Clerk session found in context")
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Not authenticated"})
 			c.Abort()
 			return
 		}
 
-		userID, ok := session.Values["user_id"]
-		if !ok || userID == nil {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Not authenticated"})
+		clerkUserID := claims.Subject
+
+		// Store Clerk user ID in context (no database user lookup needed)
+		c.Set("clerk_user_id", clerkUserID)
+
+		c.Next()
+	}
+}
+
+// ClerkMiddleware wraps Clerk's header authorization middleware for Gin
+func ClerkMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// Debug: Log the Authorization header
+		authHeader := c.GetHeader("Authorization")
+		log.Debug().Str("authorization", authHeader).Msg("ClerkMiddleware: Processing request")
+
+		// Create a response recorder to intercept writes
+		var handlerCalled bool
+
+		// Create a handler that uses Clerk's middleware
+		handler := clerkhttp.WithHeaderAuthorization()(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Update the request with the modified context (contains Clerk session claims)
+			c.Request = r
+			handlerCalled = true
+
+			// Debug: Check if session claims are in context
+			claims, ok := clerk.SessionClaimsFromContext(r.Context())
+			if ok && claims != nil {
+				log.Debug().Str("user_id", claims.Subject).Msg("ClerkMiddleware: Session claims found")
+			} else {
+				log.Warn().Msg("ClerkMiddleware: No session claims in context after Clerk middleware")
+			}
+		}))
+
+		// Call the Clerk middleware
+		handler.ServeHTTP(c.Writer, c.Request)
+
+		// If Clerk middleware didn't call our handler, it means auth failed
+		if !handlerCalled {
+			log.Warn().Msg("ClerkMiddleware: Handler not called - auth failed")
 			c.Abort()
 			return
-		}
-
-		// Store user info in context for use in handlers
-		c.Set("user_id", userID)
-		if email, ok := session.Values["email"]; ok {
-			c.Set("email", email)
-		}
-		if name, ok := session.Values["name"]; ok {
-			c.Set("name", name)
 		}
 
 		c.Next()
 	}
 }
 
-// GetUserID retrieves the user ID from the context
-func GetUserID(c *gin.Context) (uint, bool) {
-	userID, exists := c.Get("user_id")
-	if !exists {
-		return 0, false
-	}
-
-	// Handle different types that might be stored
-	switch v := userID.(type) {
-	case uint:
-		return v, true
-	case uint64:
-		return uint(v), true
-	case int:
-		return uint(v), true
-	case int64:
-		return uint(v), true
-	default:
-		return 0, false
-	}
-}
-
-// GetUserEmail retrieves the user email from the context
-func GetUserEmail(c *gin.Context) (string, bool) {
-	email, exists := c.Get("email")
+// GetClerkUserID retrieves the Clerk user ID from the context
+func GetClerkUserID(c *gin.Context) (string, bool) {
+	userID, exists := c.Get("clerk_user_id")
 	if !exists {
 		return "", false
 	}
-	emailStr, ok := email.(string)
-	return emailStr, ok
+
+	userIDStr, ok := userID.(string)
+	return userIDStr, ok
 }
 
-// GetUserName retrieves the user name from the context
-func GetUserName(c *gin.Context) (string, bool) {
-	name, exists := c.Get("name")
-	if !exists {
-		return "", false
-	}
-	nameStr, ok := name.(string)
-	return nameStr, ok
+// GetUserID is deprecated - use GetClerkUserID instead
+// Kept for backwards compatibility but will be removed
+func GetUserID(c *gin.Context) (string, bool) {
+	return GetClerkUserID(c)
 }

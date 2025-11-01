@@ -5,6 +5,7 @@ import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import api from "@/utils/api";
 import { initiateCalendarAuth } from "@/utils/calendar";
+import { useUser as useClerkUser } from '@clerk/clerk-react';
 
 interface OnboardingWizardProps {
   onComplete: () => void;
@@ -24,6 +25,7 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
   const [anthropicKey, setAnthropicKey] = useState<string>("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isConnectingCalendar, setIsConnectingCalendar] = useState<string | null>(null);
+  const { user: clerkUser } = useClerkUser();
 
   const completeOnboarding = async (skipApiKeys: boolean = false) => {
     if (!selectedType) {
@@ -33,7 +35,7 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
 
     setIsSubmitting(true);
     try {
-      // Complete onboarding
+      // Complete onboarding - this updates Clerk's publicMetadata
       await api.post("/onboarding", { type: selectedType });
       
       // Save API keys if provided and not skipping
@@ -73,6 +75,9 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
       } else {
         toast.success("Welcome to Notes App! You can set up API keys later in settings.");
       }
+      
+      // Reload Clerk user data to get updated publicMetadata
+      await clerkUser?.reload();
       
       setIsSubmitting(false);
       // Call onComplete after a brief delay to ensure state updates

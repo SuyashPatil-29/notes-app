@@ -30,7 +30,7 @@ func InitDB() {
 	// WARNING: This will delete all existing data! Only run once!
 	// Uncomment below lines if you need to recreate the database schema
 	// log.Info().Msg("Dropping existing tables to recreate with CUID string IDs...")
-	// err = DB.Migrator().DropTable(&models.Notes{}, &models.Chapter{}, &models.Notebook{}, &models.User{})
+	// err = DB.Migrator().DropTable(&models.Notes{}, &models.Chapter{}, &models.Notebook{})
 	// if err != nil {
 	// 	log.Warn().Err(err).Msg("Failed to drop tables (they might not exist yet)")
 	// }
@@ -38,12 +38,14 @@ func InitDB() {
 	// migrate the schema
 	log.Info().Msg("Migrating database schema...")
 	if err := DB.AutoMigrate(
-		&models.User{},
 		&models.Notebook{},
 		&models.Chapter{},
 		&models.Notes{},
 		&models.AICredential{},
 		&models.MeetingRecording{},
+		&models.Calendar{},
+		&models.CalendarEvent{},
+		&models.CalendarOAuthState{},
 	); err != nil {
 		log.Fatal().Err(err).Msg("Failed to migrate schema")
 	}
