@@ -55,91 +55,106 @@ export function Header({ user, breadcrumbs = [{ label: 'Dashboard' }], onOnboard
   };
   return (
     <header className="flex h-16 shrink-0 items-center border-b bg-background sticky top-0 z-10">
-      <div className="flex items-center gap-2 px-4 w-full">
+      <div className="flex items-center gap-1 sm:gap-2 px-2 sm:px-4 w-full overflow-hidden">
+        {/* Back Button - Hidden on mobile */}
         <Button
           variant="ghost"
           size="icon"
           onClick={() => window.history.back()}
-          className="hover:bg-accent"
+          className="hover:bg-accent hidden sm:flex shrink-0"
           title="Go back"
         >
           <ArrowLeft className="h-5 w-5" />
         </Button>
-        <LeftSidebarTrigger />
-        <Separator orientation="vertical" className="h-4" />
+        
+        <LeftSidebarTrigger className="shrink-0" />
+        <Separator orientation="vertical" className="h-4 hidden sm:block shrink-0" />
 
-        {/* Breadcrumbs */}
-        <Breadcrumb>
-          <BreadcrumbList>
-            {breadcrumbs.map((item, index) => (
-              <div key={index} className="flex items-center gap-2">
-                {index > 0 && <BreadcrumbSeparator />}
-                <BreadcrumbItem>
-                  {index === breadcrumbs.length - 1 ? (
-                    <BreadcrumbPage>{item.label}</BreadcrumbPage>
-                  ) : item.href ? (
-                    <BreadcrumbLink asChild>
-                      <Link to={item.href}>{item.label}</Link>
-                    </BreadcrumbLink>
-                  ) : (
-                    <span>{item.label}</span>
-                  )}
-                </BreadcrumbItem>
-              </div>
-            ))}
-          </BreadcrumbList>
-        </Breadcrumb>
+        {/* Breadcrumbs - Responsive with truncation */}
+        <div className="flex-1 min-w-0 overflow-hidden">
+          <Breadcrumb>
+            <BreadcrumbList className="flex-nowrap">
+              {breadcrumbs.map((item, index) => (
+                <div key={index} className="flex items-center gap-1 sm:gap-2 min-w-0">
+                  {index > 0 && <BreadcrumbSeparator className="shrink-0" />}
+                  <BreadcrumbItem className="min-w-0">
+                    {index === breadcrumbs.length - 1 ? (
+                      <BreadcrumbPage className="truncate max-w-[120px] sm:max-w-[200px] md:max-w-none">
+                        {item.label}
+                      </BreadcrumbPage>
+                    ) : item.href ? (
+                      <BreadcrumbLink asChild>
+                        <Link to={item.href} className="truncate max-w-[80px] sm:max-w-[150px] md:max-w-none block">
+                          {item.label}
+                        </Link>
+                      </BreadcrumbLink>
+                    ) : (
+                      <span className="truncate max-w-[80px] sm:max-w-[150px] md:max-w-none block">
+                        {item.label}
+                      </span>
+                    )}
+                  </BreadcrumbItem>
+                </div>
+              ))}
+            </BreadcrumbList>
+          </Breadcrumb>
+        </div>
 
-        {/* Custom Actions */}
+        {/* Custom Actions - Responsive */}
         {actions && (
-          <>
-            <div className="ml-auto flex items-center gap-2">
-              {actions}
-            </div>
-          </>
+          <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+            {actions}
+          </div>
         )}
 
-        {/* Organization Switcher */}
-        <div className={actions ? "ml-4" : "ml-auto"}>
+        {/* Organization Switcher - Responsive */}
+        <div className={`shrink-0 ${actions ? "ml-1 sm:ml-2" : ""}`}>
           <ClerkLoaded>
             <OrganizationSwitcher />
           </ClerkLoaded>
         </div>
 
-        {/* Right Side Actions */}
-        <div className="flex items-center gap-2">
-          <ModeToggle />
-          <ThemeSelector />
-          <RightSidebarTrigger />
+        {/* Right Side Actions - Responsive: Hide less critical items on mobile */}
+        <div className="flex items-center gap-0.5 sm:gap-1 md:gap-2 shrink-0 ml-auto">
+          <div className="shrink-0">
+            <ModeToggle />
+          </div>
+          {/* Hide ThemeSelector on small screens */}
+          <div className="hidden lg:block shrink-0">
+            <ThemeSelector />
+          </div>
+          <RightSidebarTrigger className="shrink-0" />
           <ClerkLoading>
-            <Skeleton className="h-9 w-9 rounded-full" />
+            <Skeleton className="h-8 w-8 sm:h-9 sm:w-9 rounded-full shrink-0" />
           </ClerkLoading>
           <ClerkLoaded>
             {user ? (
-              <UserButton
-                appearance={{
-                  elements: {
-                    avatarBox: "w-9 h-9 ring-2 ring-border"
-                  }
-                }}
-              >
-                <UserButton.MenuItems>
-                  <UserButton.Link
-                    label="Profile & Settings"
-                    labelIcon={<Settings className="w-4 h-4" />}
-                    href="/profile"
-                  />
-                  {import.meta.env.DEV && (
-                    <UserButton.Action
-                      label="Reset Onboarding (Dev)"
-                      labelIcon={<RotateCcw className="w-4 h-4" />}
-                      onClick={handleResetOnboarding}
+              <div className="shrink-0">
+                <UserButton
+                  appearance={{
+                    elements: {
+                      avatarBox: "w-8 h-8 sm:w-9 sm:h-9 ring-2 ring-border"
+                    }
+                  }}
+                >
+                  <UserButton.MenuItems>
+                    <UserButton.Link
+                      label="Profile & Settings"
+                      labelIcon={<Settings className="w-4 h-4" />}
+                      href="/profile"
                     />
-                  )}
-                </UserButton.MenuItems>
-              </UserButton>
+                    {import.meta.env.DEV && (
+                      <UserButton.Action
+                        label="Reset Onboarding (Dev)"
+                        labelIcon={<RotateCcw className="w-4 h-4" />}
+                        onClick={handleResetOnboarding}
+                      />
+                    )}
+                  </UserButton.MenuItems>
+                </UserButton>
+              </div>
             ) : (
-              <Skeleton className="h-9 w-9 rounded-full" />
+              <Skeleton className="h-8 w-8 sm:h-9 sm:w-9 rounded-full shrink-0" />
             )}
           </ClerkLoaded>
         </div>

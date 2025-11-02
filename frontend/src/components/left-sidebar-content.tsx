@@ -27,6 +27,7 @@ import {
   LeftSidebarContent as LeftSidebarContentWrapper,
   LeftSidebarGroup,
   LeftSidebarGroupContent,
+  LeftSidebarGroupLabel,
   LeftSidebarHeader,
   LeftSidebarMenu,
   LeftSidebarMenuItem,
@@ -482,10 +483,10 @@ export function LeftSidebarContent({
               {/* Personal Notebooks Section */}
               {personalNotebooks.length > 0 && (
                 <LeftSidebarGroup>
-                  <div className="px-3 py-2 text-xs font-semibold text-muted-foreground flex items-center gap-2">
+                  <LeftSidebarGroupLabel className="flex items-center gap-2">
                     <User className="h-3 w-3" />
                     Personal
-                  </div>
+                  </LeftSidebarGroupLabel>
                   <LeftSidebarGroupContent>
                     <LeftSidebarMenu>
                       {personalNotebooks.map((notebook) => (
@@ -686,10 +687,10 @@ export function LeftSidebarContent({
                 <>
                   {personalNotebooks.length > 0 && <Separator className="my-2" />}
                   <LeftSidebarGroup>
-                    <div className="px-3 py-2 text-xs font-semibold text-muted-foreground flex items-center gap-2">
+                    <LeftSidebarGroupLabel className="flex items-center gap-2">
                       <Building2 className="h-3 w-3" />
                       {activeOrg.name}
-                    </div>
+                    </LeftSidebarGroupLabel>
                     <LeftSidebarGroupContent>
                       <LeftSidebarMenu>
                         {orgNotebooks.map((notebook) => (

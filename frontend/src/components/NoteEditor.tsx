@@ -6,7 +6,7 @@ import { Header } from '@/components/Header'
 import { Skeleton } from '@/components/ui/skeleton'
 import { NoteVideoPlayer } from '@/components/NoteVideoPlayer'
 import type { AuthenticatedUser } from '@/types/backend'
-import { Loader2, Calendar, Clock, Video, VideoOff } from 'lucide-react'
+import { Loader2, Calendar, Clock, Video, VideoOff, Pause } from 'lucide-react'
 import { toast } from 'sonner'
 import { useOrganizationContext } from '@/contexts/OrganizationContext'
 import 'katex/dist/katex.min.css'
@@ -37,6 +37,9 @@ import type { Notes } from "@/types/backend";
 import { RealtimeAvatarStack } from '@/components/realtime-avatar-stack'
 import { RealtimeCursors } from '@/components/realtime-cursors'
 import { isRealtimeConfigured } from '@/utils/check-realtime'
+import { useRealtimeEditLock } from '@/hooks/use-realtime-edit-lock'
+import { useRealtimePresenceRoom } from '@/hooks/use-realtime-presence-room'
+import { Edit3, Eye } from 'lucide-react'
 
 import GenerativeMenuSwitch from "./generative/generative-menu-switch";
 // import { uploadFn } from "./image-upload";
@@ -75,15 +78,25 @@ export function NoteEditor({ user, userLoading = false }: NoteEditorProps) {
   const [openNode, setOpenNode] = useState(false);
   const [openColor, setOpenColor] = useState(false);
   const [openLink, setOpenLink] = useState(false);
+  const [isEditMode, setIsEditMode] = useState(false);
 
-  const { data: noteResponse, isLoading, error } = useQuery({
+  // Edit lock system
+  const { currentEditor, requestEdit, releaseEdit, isEditing, canEdit } = useRealtimeEditLock(
+    noteId ? `note-${noteId}` : ''
+  );
+
+  // Realtime presence for viewer count
+  const { users: realtimeUsers } = useRealtimePresenceRoom(noteId ? `note-${noteId}` : '');
+  const viewerCount = Object.keys(realtimeUsers).length;
+
+  const { data: noteResponse, isLoading, error, refetch: refetchNote } = useQuery({
     queryKey: ['note', noteId],
     queryFn: async () => {
       return await getNote(noteId!);
     },
     enabled: !!noteId && !!user, // Also require user to be loaded
-    refetchInterval: 5000, // Refetch every 5 seconds to catch AI-generated videos
-    refetchOnWindowFocus: true,
+    refetchInterval: 5000, // Refetch every 5 seconds to catch AI-generated videos and sync updates
+    refetchOnWindowFocus: false,
     retry: 1, // Retry once on failure
   })
 
@@ -198,7 +211,7 @@ export function NoteEditor({ user, userLoading = false }: NoteEditorProps) {
       const parsed = JSON.parse(note.content);
       // Validate it has proper structure
       if (parsed && parsed.type === 'doc') {
-      return parsed;
+        return parsed;
       }
       // If not proper structure, return empty doc
       return {
@@ -208,7 +221,7 @@ export function NoteEditor({ user, userLoading = false }: NoteEditorProps) {
     } catch (error) {
       // If it's not JSON, treat it as markdown and convert
       try {
-      return markdownToJSON(note.content);
+        return markdownToJSON(note.content);
       } catch (mdError) {
         // Fallback to empty document if markdown conversion fails
         console.error('Failed to convert markdown:', mdError);
@@ -247,6 +260,22 @@ export function NoteEditor({ user, userLoading = false }: NoteEditorProps) {
       }
     }
   }, [])
+
+  // Auto-release edit lock when unmounting or navigating away
+  useEffect(() => {
+    return () => {
+      if (isEditing) {
+        releaseEdit()
+      }
+    }
+  }, [isEditing, releaseEdit])
+
+  // Update editor editable state when isEditMode changes
+  useEffect(() => {
+    if (editorInstance) {
+      editorInstance.setEditable(isEditMode)
+    }
+  }, [isEditMode, editorInstance])
 
   if (userLoading || isLoading) {
     return (
@@ -303,11 +332,68 @@ export function NoteEditor({ user, userLoading = false }: NoteEditorProps) {
     return name.length > maxLength ? name.substring(0, maxLength) + '...' : name
   }
 
+  const handleStartEditing = async () => {
+    try {
+      // Request edit lock first
+      const success = await requestEdit()
+      if (!success) {
+        toast.error('Unable to start editing. Someone else may be editing.')
+        return
+      }
+
+      // Pull latest data from DB before enabling edit mode
+      await refetchNote()
+      
+      // Enable edit mode
+      setIsEditMode(true)
+      toast.success('You are now editing with latest version')
+    } catch (error) {
+      console.error('Failed to start editing:', error)
+      toast.error('Failed to start editing')
+      await releaseEdit() // Release lock if something went wrong
+    }
+  }
+
+  const handleStopEditing = async () => {
+    try {
+      // Save to DB first if there are unsaved changes
+      if (editorInstance && hasUnsavedChanges.current) {
+        setIsSaving(true)
+        const content = editorInstance.getJSON()
+        await updateNote(noteId!, {
+          content: JSON.stringify(content)
+        })
+        hasUnsavedChanges.current = false
+        setIsSaving(false)
+      }
+      
+      // Release edit lock
+      await releaseEdit()
+      
+      // Disable edit mode
+      setIsEditMode(false)
+      
+      // Invalidate queries to sync all viewers
+      await queryClient.invalidateQueries({ queryKey: ['note', noteId] })
+      
+      toast.success('Stopped editing and saved')
+    } catch (error) {
+      console.error('Failed to stop editing:', error)
+      toast.error('Failed to save changes')
+      setIsSaving(false)
+    }
+  }
+
   const handleSave = async (isAutoSave = false) => {
     if (!editorInstance || !noteId) {
       if (!isAutoSave) {
         toast.error("Editor not ready")
       }
+      return
+    }
+
+    // Don't auto-save if not in edit mode
+    if (isAutoSave && !isEditMode) {
       return
     }
 
@@ -414,7 +500,7 @@ export function NoteEditor({ user, userLoading = false }: NoteEditorProps) {
         user={user}
         breadcrumbs={breadcrumbs}
       />
-      {/* Real-time cursors overlay - only if configured */}
+      {/* Real-time cursors overlay - always visible when configured */}
       {isRealtimeConfigured() && <RealtimeCursors roomName={`note-${noteId}`} />}
       <div className="flex-1 overflow-auto">
         <div className="max-w-4xl mx-auto px-6 py-8">
@@ -423,10 +509,35 @@ export function NoteEditor({ user, userLoading = false }: NoteEditorProps) {
             <div className='flex items-center justify-between gap-2'>
               <h1 className="text-4xl font-bold tracking-tight">{note.name}</h1>
               {isRealtimeConfigured() && (
-              <div className="flex flex-col items-center gap-2">
-                <RealtimeAvatarStack roomName={`note-${noteId}`} />
-                <span className="text-sm text-muted-foreground">People on this page</span>
-              </div>
+                <div className="flex flex-col items-end gap-2">
+                  {/* Editing status badge - prominent if someone is editing */}
+                  {(isEditing || currentEditor) && (
+                    <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium ${isEditing
+                        ? 'bg-green-500/15 text-green-700 dark:text-green-400 border border-green-500/30'
+                        : 'bg-blue-500/15 text-blue-700 dark:text-blue-400 border border-blue-500/30'
+                      }`}>
+                      <Edit3 className="h-3.5 w-3.5" />
+                      <span>{isEditing ? "You're editing" : `${currentEditor?.name} is editing`}</span>
+                    </div>
+                  )}
+
+                  {/* Viewers section */}
+                  <div className="flex flex-col items-center gap-3">
+                    <RealtimeAvatarStack roomName={`note-${noteId}`} />
+                    <div className="flex flex-col items-end gap-1">
+                      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                        <Eye className="h-3.5 w-3.5" />
+                        <span>
+                          {viewerCount === 0
+                            ? 'No viewers'
+                            : viewerCount === 1
+                              ? '1 viewer currently'
+                              : `${viewerCount} viewers currently`}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               )}
             </div>
 
@@ -546,22 +657,69 @@ export function NoteEditor({ user, userLoading = false }: NoteEditorProps) {
 
           <div className="relative w-full max-w-5xl">
             <div className="flex absolute right-5 top-5 z-10 mb-5 gap-2">
+              {/* Edit control button */}
+              {isRealtimeConfigured() && (
+                <>
+                  {!isEditing && canEdit && (
+                    <Button
+                      onClick={handleStartEditing}
+                      size="sm"
+                      variant="default"
+                      className="gap-2"
+                    >
+                      <Edit3 className="h-3 w-3" />
+                      Start Editing
+                    </Button>
+                  )}
+                  {!isEditing && !canEdit && (
+                    <Button
+                      disabled
+                      size="sm"
+                      variant="outline"
+                      className="gap-2 cursor-not-allowed"
+                      title="Someone else is currently editing"
+                    >
+                      Edit (Locked)
+                    </Button>
+                  )}
+                  {isEditing && (
+                    <Button
+                      onClick={handleStopEditing}
+                      size="sm"
+                      variant="destructive"
+                      className="gap-2"
+                    >
+                      <Pause className="h-3 w-3" />
+                      Stop Editing
+                    </Button>
+                  )}
+                </>
+              )}
               {isAutoSaving && (
                 <div className="rounded-lg bg-blue-500/10 border border-blue-500/20 px-2 py-1 text-xs text-blue-600 dark:text-blue-400 flex items-center gap-1">
                   <Loader2 className="h-3 w-3 animate-spin" />
                   Auto-saving...
                 </div>
               )}
+              {!isEditMode && (
+                <div className="rounded-lg bg-orange-500/10 border border-orange-500/20 px-2 py-1 text-xs text-orange-600 dark:text-orange-400 flex items-center gap-1">
+                  Read-only
+                </div>
+              )}
               <div className={charsCount ? "rounded-lg bg-accent px-2 py-1 text-sm text-muted-foreground" : "hidden"}>
                 {charsCount} Words
               </div>
             </div>
-            <EditorRoot key={`${noteId}-${note.updatedAt}`}>
+            <EditorRoot key={`${noteId}-${note.updatedAt}-${isEditMode ? 'edit' : 'read'}`}>
               <EditorContent
                 initialContent={getInitialContent()}
                 extensions={extensions}
-                className="relative min-h-[500px] w-full max-w-5xl border border-border/40 rounded-lg transition-colors hover:border-border/60 focus-within:border-border"
+                className={`relative min-h-[500px] w-full max-w-5xl border rounded-lg transition-colors ${isEditMode
+                    ? 'border-border/40 hover:border-border/60 focus-within:border-border'
+                    : 'border-border/20 cursor-default bg-muted/20'
+                  }`}
                 editorProps={{
+                  editable: () => isEditMode,
                   handleDOMEvents: {
                     keydown: (_view, event) => handleCommandNavigation(event),
                   },
@@ -614,19 +772,21 @@ export function NoteEditor({ user, userLoading = false }: NoteEditorProps) {
                   </EditorCommandList>
                 </EditorCommand>
 
-                <GenerativeMenuSwitch open={openAI} onOpenChange={setOpenAI}>
-                  <Separator orientation="vertical" />
-                  <NodeSelector open={openNode} onOpenChange={setOpenNode} />
-                  <Separator orientation="vertical" />
+                {isEditMode && (
+                  <GenerativeMenuSwitch open={openAI} onOpenChange={setOpenAI}>
+                    <Separator orientation="vertical" />
+                    <NodeSelector open={openNode} onOpenChange={setOpenNode} />
+                    <Separator orientation="vertical" />
 
-                  <LinkSelector open={openLink} onOpenChange={setOpenLink} />
-                  <Separator orientation="vertical" />
-                  <MathSelector />
-                  <Separator orientation="vertical" />
-                  <TextButtons />
-                  <Separator orientation="vertical" />
-                  <ColorSelector open={openColor} onOpenChange={setOpenColor} />
-                </GenerativeMenuSwitch>
+                    <LinkSelector open={openLink} onOpenChange={setOpenLink} />
+                    <Separator orientation="vertical" />
+                    <MathSelector />
+                    <Separator orientation="vertical" />
+                    <TextButtons />
+                    <Separator orientation="vertical" />
+                    <ColorSelector open={openColor} onOpenChange={setOpenColor} />
+                  </GenerativeMenuSwitch>
+                )}
               </EditorContent>
             </EditorRoot>
           </div>

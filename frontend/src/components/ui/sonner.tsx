@@ -19,30 +19,30 @@ const Toaster = ({ ...props }: ToasterProps) => {
       duration={3500}
       gap={8}
       toastOptions={{
+        style: {
+          background: "hsl(var(--primary) / 0.1)",
+          border: "1px solid hsl(var(--primary) / 0.2)",
+          color: "hsl(var(--foreground))",
+        },
         classNames: {
-          toast:
-            "group toast group-[.toaster]:bg-primary/15 group-[.toaster]:text-foreground group-[.toaster]:border group-[.toaster]:border-primary/30 group-[.toaster]:shadow-xl group-[.toaster]:backdrop-blur-md group-[.toaster]:rounded-[calc(var(--radius)-2px)]",
-          description: "group-[.toast]:text-muted-foreground group-[.toast]:text-sm",
+          toast: "group toast",
+          description: "group-[.toast]:text-muted-foreground",
           actionButton:
-            "group-[.toast]:bg-primary group-[.toast]:text-primary-foreground group-[.toast]:hover:bg-primary/90 group-[.toast]:rounded-[calc(var(--radius)-6px)] group-[.toast]:font-medium",
+            "group-[.toast]:bg-primary group-[.toast]:text-primary-foreground",
           cancelButton:
-            "group-[.toast]:bg-secondary group-[.toast]:text-secondary-foreground group-[.toast]:hover:bg-secondary/80 group-[.toast]:rounded-[calc(var(--radius)-6px)]",
-          success:
-            "!group-[.toaster]:bg-primary/20 !group-[.toaster]:text-primary !group-[.toaster]:border-primary/40",
-          error:
-            "!group-[.toaster]:bg-destructive/20 !group-[.toaster]:text-destructive !group-[.toaster]:border-destructive/40",
-          warning:
-            "!group-[.toaster]:bg-accent/70 !group-[.toaster]:text-accent-foreground !group-[.toaster]:border-accent",
-          info:
-            "!group-[.toaster]:bg-muted/80 !group-[.toaster]:text-foreground !group-[.toaster]:border-border",
+            "group-[.toast]:bg-muted group-[.toast]:text-muted-foreground",
+          success: "!bg-primary/25 !text-primary !border-primary/30",
+          error: "!bg-destructive/25 !text-destructive !border-destructive/30",
+          warning: "!bg-amber-500/25 !text-amber-700 dark:!text-amber-400 !border-amber-500/30",
+          info: "!bg-blue-500/25 !text-blue-700 dark:!text-blue-400 !border-blue-500/30",
         },
       }}
       icons={{
-        success: <CircleCheckIcon className="size-[1.125rem]" strokeWidth={2.5} />,
-        info: <InfoIcon className="size-[1.125rem]" strokeWidth={2.5} />,
-        warning: <TriangleAlertIcon className="size-[1.125rem]" strokeWidth={2.5} />,
-        error: <OctagonXIcon className="size-[1.125rem]" strokeWidth={2.5} />,
-        loading: <Loader2Icon className="size-[1.125rem] animate-spin" strokeWidth={2.5} />,
+        success: <CircleCheckIcon className="h-5 w-5" strokeWidth={2.5} />,
+        info: <InfoIcon className="h-5 w-5" strokeWidth={2.5} />,
+        warning: <TriangleAlertIcon className="h-5 w-5" strokeWidth={2.5} />,
+        error: <OctagonXIcon className="h-5 w-5" strokeWidth={2.5} />,
+        loading: <Loader2Icon className="h-5 w-5 animate-spin" strokeWidth={2.5} />,
       }}
       {...props}
     />

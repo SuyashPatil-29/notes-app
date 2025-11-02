@@ -149,16 +149,16 @@ export const useRealtimeCursors = ({
           // Remove cursor when user leaves by Clerk ID
           const leftClerkId = element.clerkId
           if (leftClerkId) {
-            setCursors((prev) => {
+          setCursors((prev) => {
               // Find and remove cursor by clerkId
               const newCursors = { ...prev }
               Object.keys(newCursors).forEach((key) => {
                 if (newCursors[key].user.clerkId === leftClerkId) {
                   delete newCursors[key]
-                }
+            }
               })
               return newCursors
-            })
+          })
           }
         })
       })
