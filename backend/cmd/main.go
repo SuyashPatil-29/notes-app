@@ -36,12 +36,15 @@ func main() {
 
 	r := gin.Default()
 
+	// Performance monitoring middleware
+	r.Use(middleware.ResponseTimeMiddleware())
+
 	// CORS configuration
 	r.Use(cors.New(cors.Config{
 		AllowOrigins:     []string{"http://localhost:5173"},
 		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization"},
-		ExposeHeaders:    []string{"Content-Length"},
+		ExposeHeaders:    []string{"Content-Length", "X-Response-Time"},
 		AllowCredentials: true,
 	}))
 

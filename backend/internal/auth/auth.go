@@ -2,6 +2,7 @@ package auth
 
 import (
 	"backend/db"
+	"backend/internal/middleware"
 	"backend/internal/models"
 	"backend/pkg/utils"
 	"encoding/json"
@@ -35,8 +36,8 @@ func GetCurrentUser(c *gin.Context) {
 
 	clerkUserID := claims.Subject
 
-	// Fetch user from Clerk to get full details
-	clerkUser, err := user.Get(c.Request.Context(), clerkUserID)
+	// Fetch user from Clerk to get full details (cached)
+	clerkUser, err := middleware.GetUserCached(c.Request.Context(), clerkUserID)
 	if err != nil {
 		log.Error().Err(err).Msg("Error fetching user from Clerk")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch user"})
@@ -104,8 +105,8 @@ func GetOnboardingStatus(c *gin.Context) {
 		return
 	}
 
-	// Fetch user from Clerk to get publicMetadata
-	clerkUser, err := user.Get(c.Request.Context(), claims.Subject)
+	// Fetch user from Clerk to get publicMetadata (cached)
+	clerkUser, err := middleware.GetUserCached(c.Request.Context(), claims.Subject)
 	if err != nil {
 		log.Error().Err(err).Msg("Error fetching user from Clerk")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch user"})

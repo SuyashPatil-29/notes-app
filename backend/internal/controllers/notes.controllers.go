@@ -31,53 +31,19 @@ func GetNoteById(c *gin.Context) {
 	var note models.Notes
 	id := c.Param("id")
 
-	// Get note with chapter and notebook preloaded to verify ownership
-	if err := db.DB.Preload("Chapter.Notebook").Where("id = ?", id).First(&note).Error; err != nil {
+	// Get note without preloads
+	if err := db.DB.Where("id = ?", id).First(&note).Error; err != nil {
 		log.Print("Note not found with id: ", id, " Error: ", err)
 		c.JSON(http.StatusNotFound, gin.H{"error": "Note not found"})
 		return
 	}
 
-	// Check authorization: personal notebook or org member
-	notebook := &note.Chapter.Notebook
-
-	// DEBUG: Log all IDs for debugging
-	var orgIDStr string
-	if notebook.OrganizationID != nil {
-		orgIDStr = *notebook.OrganizationID
-	}
-	log.Info().
-		Str("note_id", id).
-		Str("notebook_id", notebook.ID).
-		Str("notebook_org_id", orgIDStr).
-		Str("notebook_owner", notebook.ClerkUserID).
-		Str("requesting_user", clerkUserID).
-		Msg("DEBUG: Note authorization check")
-
-	if notebook.OrganizationID != nil && *notebook.OrganizationID != "" {
-		// Organization note - verify membership
-		log.Info().Str("note_id", id).Str("org_id", *notebook.OrganizationID).Msg("DEBUG: Checking org membership")
-		role, isMember, err := middleware.GetOrgMemberRole(c.Request.Context(), *notebook.OrganizationID, clerkUserID)
-		if err != nil {
-			log.Error().Err(err).Str("note_id", id).Str("org_id", *notebook.OrganizationID).Str("user_id", clerkUserID).Msg("DEBUG: Error checking org membership")
-			c.JSON(http.StatusForbidden, gin.H{"error": "Unauthorized"})
-			return
-		}
-		if !isMember {
-			log.Warn().Str("note_id", id).Str("org_id", *notebook.OrganizationID).Str("user_id", clerkUserID).Msg("DEBUG: User is not a member of org")
-			c.JSON(http.StatusForbidden, gin.H{"error": "Unauthorized"})
-			return
-		}
-		log.Info().Str("note_id", id).Str("org_id", *notebook.OrganizationID).Str("user_id", clerkUserID).Str("role", role).Msg("DEBUG: User is org member - access granted")
-	} else {
-		// Personal note - verify ownership
-		log.Info().Str("note_id", id).Str("owner", notebook.ClerkUserID).Str("requesting_user", clerkUserID).Msg("DEBUG: Checking personal note ownership")
-		if notebook.ClerkUserID != clerkUserID {
-			log.Warn().Str("note_id", id).Str("owner", notebook.ClerkUserID).Str("user_id", clerkUserID).Msg("DEBUG: User does not own personal note")
-			c.JSON(http.StatusForbidden, gin.H{"error": "Unauthorized"})
-			return
-		}
-		log.Info().Str("note_id", id).Str("user_id", clerkUserID).Msg("DEBUG: Personal note ownership verified - access granted")
+	// Check authorization efficiently
+	hasAccess, err := middleware.CheckNoteAccess(c.Request.Context(), db.DB, id, clerkUserID)
+	if err != nil || !hasAccess {
+		log.Warn().Str("note_id", id).Str("user_id", clerkUserID).Msg("User not authorized to access note")
+		c.JSON(http.StatusForbidden, gin.H{"error": "Unauthorized"})
+		return
 	}
 
 	c.JSON(http.StatusOK, note)
@@ -93,42 +59,89 @@ func GetNotesByChapter(c *gin.Context) {
 
 	chapterID := c.Param("chapterId")
 
-	// Verify that the chapter exists and user has access
-	var chapter models.Chapter
-	if err := db.DB.Preload("Notebook").Where("id = ?", chapterID).First(&chapter).Error; err != nil {
+	// Parse pagination params with defaults
+	page := 1
+	pageSize := 50
+	if pageParam := c.Query("page"); pageParam != "" {
+		fmt.Sscanf(pageParam, "%d", &page)
+	}
+	if pageSizeParam := c.Query("page_size"); pageSizeParam != "" {
+		fmt.Sscanf(pageSizeParam, "%d", &pageSize)
+	}
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 {
+		pageSize = 50
+	}
+	if pageSize > 100 {
+		pageSize = 100
+	}
+
+	// Check authorization efficiently
+	hasAccess, err := middleware.CheckChapterAccess(c.Request.Context(), db.DB, chapterID, clerkUserID)
+	if err != nil {
 		log.Print("Chapter not found with id: ", chapterID, " Error: ", err)
 		c.JSON(http.StatusNotFound, gin.H{"error": "Chapter not found"})
 		return
 	}
-
-	// Check authorization
-	notebook := &chapter.Notebook
-	if notebook.OrganizationID != nil && *notebook.OrganizationID != "" {
-		// Organization chapter - verify membership
-		_, isMember, err := middleware.GetOrgMemberRole(c.Request.Context(), *notebook.OrganizationID, clerkUserID)
-		if err != nil || !isMember {
-			log.Warn().Str("chapter_id", chapterID).Str("org_id", *notebook.OrganizationID).Str("user_id", clerkUserID).Msg("User not authorized to access org chapter notes")
-			c.JSON(http.StatusForbidden, gin.H{"error": "Unauthorized"})
-			return
-		}
-	} else {
-		// Personal chapter - verify ownership
-		if notebook.ClerkUserID != clerkUserID {
-			log.Warn().Str("chapter_id", chapterID).Str("user_id", clerkUserID).Msg("User not authorized to access personal chapter notes")
-			c.JSON(http.StatusForbidden, gin.H{"error": "Unauthorized"})
-			return
-		}
+	if !hasAccess {
+		log.Warn().Str("chapter_id", chapterID).Str("user_id", clerkUserID).Msg("User not authorized to access chapter notes")
+		c.JSON(http.StatusForbidden, gin.H{"error": "Unauthorized"})
+		return
 	}
 
-	// Get all notes for this chapter
+	// Get total count
+	var total int64
+	db.DB.Model(&models.Notes{}).Where("chapter_id = ?", chapterID).Count(&total)
+
+	// Get notes without large content fields, with pagination
 	var notes []models.Notes
-	if err := db.DB.Where("chapter_id = ?", chapterID).Find(&notes).Error; err != nil {
+	offset := (page - 1) * pageSize
+	if err := db.DB.Select("id, name, chapter_id, organization_id, is_public, has_video, meeting_recording_id, created_at, updated_at").
+		Where("chapter_id = ?", chapterID).
+		Order("created_at DESC").
+		Limit(pageSize).
+		Offset(offset).
+		Find(&notes).Error; err != nil {
 		log.Print("Error fetching notes for chapter: ", chapterID, " Error: ", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	c.JSON(http.StatusOK, notes)
+	// Build response with note list items
+	response := make([]gin.H, len(notes))
+	for i, note := range notes {
+		response[i] = gin.H{
+			"id":                 note.ID,
+			"name":               note.Name,
+			"chapterId":          note.ChapterID,
+			"organizationId":     note.OrganizationID,
+			"isPublic":           note.IsPublic,
+			"hasVideo":           note.HasVideo,
+			"meetingRecordingId": note.MeetingRecordingID,
+			"createdAt":          note.CreatedAt,
+			"updatedAt":          note.UpdatedAt,
+		}
+	}
+
+	// Calculate pagination metadata
+	totalPages := int((total + int64(pageSize) - 1) / int64(pageSize))
+	if totalPages == 0 {
+		totalPages = 1
+	}
+
+	paginatedResponse := gin.H{
+		"data":       response,
+		"page":       page,
+		"pageSize":   pageSize,
+		"total":      total,
+		"totalPages": totalPages,
+		"hasNext":    page < totalPages,
+		"hasPrev":    page > 1,
+	}
+
+	c.JSON(http.StatusOK, paginatedResponse)
 }
 
 func CreateNote(c *gin.Context) {
@@ -147,31 +160,24 @@ func CreateNote(c *gin.Context) {
 		return
 	}
 
-	// Verify that the chapter exists and user has access
-	var chapter models.Chapter
-	if err := db.DB.Preload("Notebook").Where("id = ?", note.ChapterID).First(&chapter).Error; err != nil {
+	// Check authorization efficiently
+	hasAccess, err := middleware.CheckChapterAccess(c.Request.Context(), db.DB, note.ChapterID, clerkUserID)
+	if err != nil {
 		log.Print("Chapter not found with id: ", note.ChapterID, " Error: ", err)
 		c.JSON(http.StatusNotFound, gin.H{"error": "Chapter not found"})
 		return
 	}
+	if !hasAccess {
+		log.Warn().Str("chapter_id", note.ChapterID).Str("user_id", clerkUserID).Msg("User not authorized to create note in chapter")
+		c.JSON(http.StatusForbidden, gin.H{"error": "Unauthorized"})
+		return
+	}
 
-	// Check authorization
-	notebook := &chapter.Notebook
-	if notebook.OrganizationID != nil && *notebook.OrganizationID != "" {
-		// Organization chapter - verify membership
-		_, isMember, err := middleware.GetOrgMemberRole(c.Request.Context(), *notebook.OrganizationID, clerkUserID)
-		if err != nil || !isMember {
-			log.Warn().Str("chapter_id", note.ChapterID).Str("org_id", *notebook.OrganizationID).Str("user_id", clerkUserID).Msg("User not authorized to create note in org chapter")
-			c.JSON(http.StatusForbidden, gin.H{"error": "Unauthorized"})
-			return
-		}
-	} else {
-		// Personal chapter - verify ownership
-		if notebook.ClerkUserID != clerkUserID {
-			log.Warn().Str("chapter_id", note.ChapterID).Str("user_id", clerkUserID).Msg("User not authorized to create note in personal chapter")
-			c.JSON(http.StatusForbidden, gin.H{"error": "Unauthorized"})
-			return
-		}
+	// Get organization_id from parent chapter
+	var chapter models.Chapter
+	if err := db.DB.Select("organization_id").Where("id = ?", note.ChapterID).First(&chapter).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create note"})
+		return
 	}
 
 	// Inherit organization_id from parent chapter
@@ -194,36 +200,22 @@ func DeleteNote(c *gin.Context) {
 		return
 	}
 
-	var note models.Notes
 	id := c.Param("id")
 
-	// Get note with chapter and notebook preloaded to verify ownership
-	if err := db.DB.Preload("Chapter.Notebook").Where("id = ?", id).First(&note).Error; err != nil {
+	// Check authorization efficiently
+	hasAccess, err := middleware.CheckNoteAccess(c.Request.Context(), db.DB, id, clerkUserID)
+	if err != nil {
 		log.Print("Note not found with id: ", id, " Error: ", err)
 		c.JSON(http.StatusNotFound, gin.H{"error": "Note not found"})
 		return
 	}
-
-	// Check authorization
-	notebook := &note.Chapter.Notebook
-	if notebook.OrganizationID != nil && *notebook.OrganizationID != "" {
-		// Organization note - verify membership
-		_, isMember, err := middleware.GetOrgMemberRole(c.Request.Context(), *notebook.OrganizationID, clerkUserID)
-		if err != nil || !isMember {
-			log.Warn().Str("note_id", id).Str("org_id", *notebook.OrganizationID).Str("user_id", clerkUserID).Msg("User not authorized to delete org note")
-			c.JSON(http.StatusForbidden, gin.H{"error": "Unauthorized"})
-			return
-		}
-	} else {
-		// Personal note - verify ownership
-		if notebook.ClerkUserID != clerkUserID {
-			log.Warn().Str("note_id", id).Str("user_id", clerkUserID).Msg("User not authorized to delete personal note")
-			c.JSON(http.StatusForbidden, gin.H{"error": "Unauthorized"})
-			return
-		}
+	if !hasAccess {
+		log.Warn().Str("note_id", id).Str("user_id", clerkUserID).Msg("User not authorized to delete note")
+		c.JSON(http.StatusForbidden, gin.H{"error": "Unauthorized"})
+		return
 	}
 
-	if err := db.DB.Delete(&note).Error; err != nil {
+	if err := db.DB.Delete(&models.Notes{}, "id = ?", id).Error; err != nil {
 		log.Print("Error deleting Note with id: ", id, " Error: ", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -241,32 +233,18 @@ func UpdateNote(c *gin.Context) {
 	}
 
 	id := c.Param("id")
-	var note models.Notes
 
-	// Get note with chapter and notebook preloaded to verify ownership
-	if err := db.DB.Preload("Chapter.Notebook").Where("id = ?", id).First(&note).Error; err != nil {
+	// Check authorization efficiently
+	hasAccess, err := middleware.CheckNoteAccess(c.Request.Context(), db.DB, id, clerkUserID)
+	if err != nil {
 		log.Print("Note not found with id: ", id, " Error: ", err)
 		c.JSON(http.StatusNotFound, gin.H{"error": "Note not found"})
 		return
 	}
-
-	// Check authorization
-	notebook := &note.Chapter.Notebook
-	if notebook.OrganizationID != nil && *notebook.OrganizationID != "" {
-		// Organization note - verify membership
-		_, isMember, err := middleware.GetOrgMemberRole(c.Request.Context(), *notebook.OrganizationID, clerkUserID)
-		if err != nil || !isMember {
-			log.Warn().Str("note_id", id).Str("org_id", *notebook.OrganizationID).Str("user_id", clerkUserID).Msg("User not authorized to update org note")
-			c.JSON(http.StatusForbidden, gin.H{"error": "Unauthorized"})
-			return
-		}
-	} else {
-		// Personal note - verify ownership
-		if notebook.ClerkUserID != clerkUserID {
-			log.Warn().Str("note_id", id).Str("user_id", clerkUserID).Msg("User not authorized to update personal note")
-			c.JSON(http.StatusForbidden, gin.H{"error": "Unauthorized"})
-			return
-		}
+	if !hasAccess {
+		log.Warn().Str("note_id", id).Str("user_id", clerkUserID).Msg("User not authorized to update note")
+		c.JSON(http.StatusForbidden, gin.H{"error": "Unauthorized"})
+		return
 	}
 
 	// Bind the update data from request body
@@ -274,6 +252,13 @@ func UpdateNote(c *gin.Context) {
 	if err := c.ShouldBindJSON(&updateData); err != nil {
 		log.Print("Invalid update data for note: ", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Get current note to preserve protected fields
+	var note models.Notes
+	if err := db.DB.Where("id = ?", id).First(&note).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update note"})
 		return
 	}
 
@@ -300,28 +285,15 @@ func MoveNote(c *gin.Context) {
 	}
 
 	id := c.Param("id")
-	var note models.Notes
 
-	// Get note with chapter and notebook preloaded to verify ownership
-	if err := db.DB.Preload("Chapter.Notebook").Where("id = ?", id).First(&note).Error; err != nil {
+	// Check authorization for source note efficiently
+	hasAccess, err := middleware.CheckNoteAccess(c.Request.Context(), db.DB, id, clerkUserID)
+	if err != nil {
 		log.Print("Note not found with id: ", id, " Error: ", err)
 		c.JSON(http.StatusNotFound, gin.H{"error": "Note not found"})
 		return
 	}
-
-	// Check authorization for source note
-	notebook := &note.Chapter.Notebook
-	authorized := false
-	if notebook.OrganizationID != nil && *notebook.OrganizationID != "" {
-		// Organization note - verify membership
-		_, isMember, err := middleware.GetOrgMemberRole(c.Request.Context(), *notebook.OrganizationID, clerkUserID)
-		authorized = (err == nil && isMember)
-	} else {
-		// Personal note - verify ownership
-		authorized = (notebook.ClerkUserID == clerkUserID)
-	}
-
-	if !authorized {
+	if !hasAccess {
 		log.Warn().Str("note_id", id).Str("user_id", clerkUserID).Msg("User not authorized to move note")
 		c.JSON(http.StatusForbidden, gin.H{"error": "Unauthorized"})
 		return
@@ -343,35 +315,28 @@ func MoveNote(c *gin.Context) {
 		log.Printf("DEBUG: Move note request with organization ID: %s", *moveData.OrganizationID)
 	}
 
-	// Verify that the target chapter exists and user has access
-	var targetChapter models.Chapter
-	if err := db.DB.Preload("Notebook").Where("id = ?", moveData.ChapterID).First(&targetChapter).Error; err != nil {
+	// Check authorization for target chapter efficiently
+	targetHasAccess, err := middleware.CheckChapterAccess(c.Request.Context(), db.DB, moveData.ChapterID, clerkUserID)
+	if err != nil {
 		log.Print("Target chapter not found with id: ", moveData.ChapterID, " Error: ", err)
 		c.JSON(http.StatusNotFound, gin.H{"error": "Target chapter not found"})
 		return
 	}
-
-	// Check authorization for target chapter
-	targetNotebook := &targetChapter.Notebook
-	targetAuthorized := false
-	if targetNotebook.OrganizationID != nil && *targetNotebook.OrganizationID != "" {
-		// Organization chapter - verify membership
-		_, isMember, err := middleware.GetOrgMemberRole(c.Request.Context(), *targetNotebook.OrganizationID, clerkUserID)
-		targetAuthorized = (err == nil && isMember)
-	} else {
-		// Personal chapter - verify ownership
-		targetAuthorized = (targetNotebook.ClerkUserID == clerkUserID)
-	}
-
-	if !targetAuthorized {
+	if !targetHasAccess {
 		log.Warn().Str("chapter_id", moveData.ChapterID).Str("user_id", clerkUserID).Msg("User not authorized to move note to target chapter")
 		c.JSON(http.StatusForbidden, gin.H{"error": "Unauthorized: Target chapter does not belong to user"})
 		return
 	}
 
+	// Get target chapter's organization_id
+	var targetChapter models.Chapter
+	if err := db.DB.Select("organization_id").Where("id = ?", moveData.ChapterID).First(&targetChapter).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to move note"})
+		return
+	}
+
 	// Log before update
-	log.Printf("DEBUG: Before update - Note ID: %s, Current Chapter ID: %s, Target Chapter ID: %s",
-		note.ID, note.ChapterID, moveData.ChapterID)
+	log.Printf("DEBUG: Before update - Note ID: %s, Target Chapter ID: %s", id, moveData.ChapterID)
 
 	// Determine which organization ID to use
 	var orgIDToUse *string
@@ -409,9 +374,9 @@ func MoveNote(c *gin.Context) {
 		log.Printf("WARNING: Update returned 0 rows affected for note ID: %s", id)
 	}
 
-	// Reload the note from scratch to verify the update
+	// Reload the note without preloads
 	var updatedNote models.Notes
-	if err := db.DB.Preload("Chapter.Notebook").Where("id = ?", id).First(&updatedNote).Error; err != nil {
+	if err := db.DB.Where("id = ?", id).First(&updatedNote).Error; err != nil {
 		log.Printf("ERROR: Failed to reload note after move: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to reload note"})
 		return
@@ -433,32 +398,25 @@ func GenerateNoteVideo(c *gin.Context) {
 	}
 
 	id := c.Param("id")
-	var note models.Notes
 
-	// Get note with chapter and notebook preloaded to verify ownership
-	if err := db.DB.Preload("Chapter.Notebook").Where("id = ?", id).First(&note).Error; err != nil {
+	// Check authorization efficiently
+	hasAccess, err := middleware.CheckNoteAccess(c.Request.Context(), db.DB, id, clerkUserID)
+	if err != nil {
 		log.Print("Note not found with id: ", id, " Error: ", err)
 		c.JSON(http.StatusNotFound, gin.H{"error": "Note not found"})
 		return
 	}
+	if !hasAccess {
+		log.Warn().Str("note_id", id).Str("user_id", clerkUserID).Msg("User not authorized to generate video for note")
+		c.JSON(http.StatusForbidden, gin.H{"error": "Unauthorized"})
+		return
+	}
 
-	// Check authorization: personal notebook or org member
-	notebook := &note.Chapter.Notebook
-	if notebook.OrganizationID != nil && *notebook.OrganizationID != "" {
-		// Organization note - verify membership
-		_, isMember, err := middleware.GetOrgMemberRole(c.Request.Context(), *notebook.OrganizationID, clerkUserID)
-		if err != nil || !isMember {
-			log.Warn().Str("note_id", id).Str("org_id", *notebook.OrganizationID).Str("user_id", clerkUserID).Msg("User not authorized to generate video for org note")
-			c.JSON(http.StatusForbidden, gin.H{"error": "Unauthorized"})
-			return
-		}
-	} else {
-		// Personal note - verify ownership
-		if notebook.ClerkUserID != clerkUserID {
-			log.Warn().Str("note_id", id).Str("user_id", clerkUserID).Msg("User not authorized to generate video for personal note")
-			c.JSON(http.StatusForbidden, gin.H{"error": "Unauthorized"})
-			return
-		}
+	// Get note for video generation
+	var note models.Notes
+	if err := db.DB.Where("id = ?", id).First(&note).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate video"})
+		return
 	}
 
 	// Generate video data with AI based on note content
@@ -491,8 +449,8 @@ func GenerateNoteVideo(c *gin.Context) {
 		return
 	}
 
-	// Reload the note to get updated data
-	if err := db.DB.Preload("Chapter.Notebook").Where("id = ?", id).First(&note).Error; err != nil {
+	// Reload the note without preloads
+	if err := db.DB.Where("id = ?", id).First(&note).Error; err != nil {
 		log.Print("Error reloading note after video generation: ", err)
 	}
 
@@ -510,34 +468,21 @@ func DeleteNoteVideo(c *gin.Context) {
 	id := c.Param("id")
 	var note models.Notes
 
-	// Get note with chapter and notebook preloaded to verify ownership
-	if err := db.DB.Preload("Chapter.Notebook").Where("id = ?", id).First(&note).Error; err != nil {
+	// Check authorization efficiently
+	hasAccess, err := middleware.CheckNoteAccess(c.Request.Context(), db.DB, id, clerkUserID)
+	if err != nil {
 		log.Print("Note not found with id: ", id, " Error: ", err)
 		c.JSON(http.StatusNotFound, gin.H{"error": "Note not found"})
 		return
 	}
-
-	// Check authorization: personal notebook or org member
-	notebook := &note.Chapter.Notebook
-	if notebook.OrganizationID != nil && *notebook.OrganizationID != "" {
-		// Organization note - verify membership
-		_, isMember, err := middleware.GetOrgMemberRole(c.Request.Context(), *notebook.OrganizationID, clerkUserID)
-		if err != nil || !isMember {
-			log.Warn().Str("note_id", id).Str("org_id", *notebook.OrganizationID).Str("user_id", clerkUserID).Msg("User not authorized to delete video for org note")
-			c.JSON(http.StatusForbidden, gin.H{"error": "Unauthorized"})
-			return
-		}
-	} else {
-		// Personal note - verify ownership
-		if notebook.ClerkUserID != clerkUserID {
-			log.Warn().Str("note_id", id).Str("user_id", clerkUserID).Msg("User not authorized to delete video for personal note")
-			c.JSON(http.StatusForbidden, gin.H{"error": "Unauthorized"})
-			return
-		}
+	if !hasAccess {
+		log.Warn().Str("note_id", id).Str("user_id", clerkUserID).Msg("User not authorized to delete video for note")
+		c.JSON(http.StatusForbidden, gin.H{"error": "Unauthorized"})
+		return
 	}
 
 	// Remove video data from note - use Select to force update empty strings
-	if err := db.DB.Model(&note).Select("VideoData", "HasVideo").Updates(map[string]interface{}{
+	if err := db.DB.Model(&models.Notes{}).Where("id = ?", id).Select("VideoData", "HasVideo").Updates(map[string]interface{}{
 		"video_data": "",
 		"has_video":  false,
 	}).Error; err != nil {
@@ -546,8 +491,8 @@ func DeleteNoteVideo(c *gin.Context) {
 		return
 	}
 
-	// Reload the note to get updated data
-	if err := db.DB.Preload("Chapter.Notebook").Where("id = ?", id).First(&note).Error; err != nil {
+	// Reload the note without preloads
+	if err := db.DB.Where("id = ?", id).First(&note).Error; err != nil {
 		log.Print("Error reloading note after video deletion: ", err)
 	}
 

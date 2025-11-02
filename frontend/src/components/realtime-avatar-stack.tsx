@@ -1,10 +1,10 @@
 import { AvatarStack } from '@/components/avatar-stack'
 import { useRealtimePresenceRoom } from '@/hooks/use-realtime-presence-room'
-import { useUser } from '@clerk/clerk-react'
+import { useClerkUserCached } from '@/hooks/use-clerk-user-cached'
 import { useMemo } from 'react'
 
 export const RealtimeAvatarStack = ({ roomName }: { roomName: string }) => {
-  const { isSignedIn, isLoaded } = useUser()
+  const { isSignedIn, isLoaded } = useClerkUserCached()
   const { users: usersMap } = useRealtimePresenceRoom(roomName)
 
   const avatars = useMemo(() => {

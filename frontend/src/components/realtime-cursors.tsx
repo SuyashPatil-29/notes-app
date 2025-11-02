@@ -2,7 +2,7 @@ import { Cursor } from '@/components/cursor'
 import { useRealtimeCursors } from '@/hooks/use-realtime-cursors'
 import { useCurrentUserName } from '@/hooks/use-current-user-name'
 import { useCurrentUserId } from '@/hooks/use-current-user-id'
-import { useUser } from '@clerk/clerk-react'
+import { useClerkUserCached } from '@/hooks/use-clerk-user-cached'
 
 const THROTTLE_MS = 50
 
@@ -13,8 +13,8 @@ export const RealtimeCursors = ({
   roomName: string
   username?: string
 }) => {
-  // Get user data from Clerk
-  const { isSignedIn, isLoaded } = useUser()
+  // Get user data from Clerk (cached version for better performance)
+  const { isSignedIn, isLoaded } = useClerkUserCached()
   const clerkUserId = useCurrentUserId()
   const defaultUsername = useCurrentUserName()
 

@@ -1,11 +1,12 @@
-import { useUser } from '@clerk/clerk-react'
+import { useClerkUserCached } from '@/hooks/use-clerk-user-cached'
 
 /**
  * Hook to get the current user's unique ID from Clerk
  * Returns a consistent user ID for use in realtime features
+ * Uses cached version for better performance
  */
 export const useCurrentUserId = () => {
-  const { user, isLoaded } = useUser()
+  const { user, isLoaded } = useClerkUserCached()
 
   if (!isLoaded || !user) {
     return null

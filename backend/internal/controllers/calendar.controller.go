@@ -9,6 +9,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"time"
@@ -178,7 +179,7 @@ func DisconnectCalendar(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Calendar disconnected successfully"})
 }
 
-// GetCalendarEvents returns all events for a specific calendar
+// GetCalendarEvents returns all events for a specific calendar with pagination
 func GetCalendarEvents(c *gin.Context) {
 	clerkUserID, exists := middleware.GetClerkUserID(c)
 	if !exists {
@@ -188,6 +189,25 @@ func GetCalendarEvents(c *gin.Context) {
 
 	calendarID := c.Param("id")
 
+	// Parse pagination params with defaults
+	page := 1
+	pageSize := 100
+	if pageParam := c.Query("page"); pageParam != "" {
+		fmt.Sscanf(pageParam, "%d", &page)
+	}
+	if pageSizeParam := c.Query("page_size"); pageSizeParam != "" {
+		fmt.Sscanf(pageSizeParam, "%d", &pageSize)
+	}
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 {
+		pageSize = 100
+	}
+	if pageSize > 100 {
+		pageSize = 100
+	}
+
 	// Verify calendar belongs to user
 	var calendar models.Calendar
 	if err := db.DB.Where("id = ? AND clerk_user_id = ?", calendarID, clerkUserID).First(&calendar).Error; err != nil {
@@ -195,8 +215,7 @@ func GetCalendarEvents(c *gin.Context) {
 		return
 	}
 
-	// Get events from database
-	var events []models.CalendarEvent
+	// Build query for events
 	query := db.DB.Where("calendar_id = ? AND is_deleted = ?", calendarID, false)
 
 	// Optional: filter upcoming events only
@@ -213,7 +232,14 @@ func GetCalendarEvents(c *gin.Context) {
 			Msg("Filtering for upcoming and ongoing events")
 	}
 
-	if err := query.Order("start_time ASC").Find(&events).Error; err != nil {
+	// Get total count
+	var total int64
+	query.Model(&models.CalendarEvent{}).Count(&total)
+
+	// Get events with pagination
+	var events []models.CalendarEvent
+	offset := (page - 1) * pageSize
+	if err := query.Order("start_time ASC").Limit(pageSize).Offset(offset).Find(&events).Error; err != nil {
 		log.Error().Err(err).Msg("Error fetching calendar events")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch events"})
 		return
@@ -225,7 +251,23 @@ func GetCalendarEvents(c *gin.Context) {
 		Bool("upcoming_filter", c.Query("upcoming") == "true").
 		Msg("Fetched calendar events from database")
 
-	c.JSON(http.StatusOK, gin.H{"events": events})
+	// Calculate pagination metadata
+	totalPages := int((total + int64(pageSize) - 1) / int64(pageSize))
+	if totalPages == 0 {
+		totalPages = 1
+	}
+
+	paginatedResponse := gin.H{
+		"events":     events,
+		"page":       page,
+		"pageSize":   pageSize,
+		"total":      total,
+		"totalPages": totalPages,
+		"hasNext":    page < totalPages,
+		"hasPrev":    page > 1,
+	}
+
+	c.JSON(http.StatusOK, paginatedResponse)
 }
 
 // SyncCalendarEvents syncs events from Recall.ai to local database

@@ -89,8 +89,8 @@ func RequireOrgMembership() gin.HandlerFunc {
 			return
 		}
 
-		// Check membership using Clerk API
-		role, isMember, err := GetOrgMemberRole(c.Request.Context(), orgID, clerkUserID)
+		// Check membership using Clerk API (cached)
+		role, isMember, err := GetOrgMemberRoleCached(c.Request.Context(), orgID, clerkUserID)
 		if err != nil {
 			log.Error().Err(err).Str("org_id", orgID).Str("user_id", clerkUserID).Msg("Failed to check org membership")
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to verify organization membership"})
@@ -139,8 +139,8 @@ func RequireOrgAdmin() gin.HandlerFunc {
 			return
 		}
 
-		// Check membership and role using Clerk API
-		role, isMember, err := GetOrgMemberRole(c.Request.Context(), orgID, clerkUserID)
+		// Check membership and role using Clerk API (cached)
+		role, isMember, err := GetOrgMemberRoleCached(c.Request.Context(), orgID, clerkUserID)
 		if err != nil {
 			log.Error().Err(err).Str("org_id", orgID).Str("user_id", clerkUserID).Msg("Failed to check org membership")
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to verify organization membership"})

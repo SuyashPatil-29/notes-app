@@ -9,6 +9,7 @@ import (
 	"github.com/rs/zerolog/log"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 var DB *gorm.DB
@@ -21,27 +22,28 @@ func InitDB() {
 
 	dsn := os.Getenv("DB_URL")
 
-	// Open connection with Supabase-optimized settings
+	// Open connection with local PostgreSQL optimized settings
 	DB, err = gorm.Open(postgres.New(postgres.Config{
 		DSN:                  dsn,
-		PreferSimpleProtocol: true, // Disables implicit prepared statement usage
+		PreferSimpleProtocol: false, // Enable prepared statements for local DB (faster)
 	}), &gorm.Config{
-		PrepareStmt:            false, // Disable prepared statements for Supabase pooler
-		SkipDefaultTransaction: true,  // Improves performance for Supabase
+		PrepareStmt:            true,                                // Enable prepared statements for local DB performance
+		SkipDefaultTransaction: true,                                // Improves performance
+		Logger:                 logger.Default.LogMode(logger.Info), // Enable SQL query logging to debug slow queries
 	})
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to connect to database")
 	}
 
-	// Configure connection pool for Supabase
+	// Configure connection pool for local PostgreSQL
 	sqlDB, err := DB.DB()
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to get database instance")
 	}
-	sqlDB.SetMaxOpenConns(10)                 // Maximum open connections
-	sqlDB.SetMaxIdleConns(5)                  // Maximum idle connections
-	sqlDB.SetConnMaxLifetime(5 * time.Minute) // 5 minutes connection lifetime
-	sqlDB.SetConnMaxIdleTime(1 * time.Minute) // Close idle connections after 1 minute
+	sqlDB.SetMaxOpenConns(25)                  // Higher for local DB
+	sqlDB.SetMaxIdleConns(10)                  // More idle connections for local
+	sqlDB.SetConnMaxLifetime(30 * time.Minute) // Longer lifetime for local
+	sqlDB.SetConnMaxIdleTime(5 * time.Minute)  // Longer idle time for local
 
 	log.Info().Msg("Database connected successfully")
 

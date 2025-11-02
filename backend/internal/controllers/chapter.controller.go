@@ -37,17 +37,23 @@ func CreateChapter(c *gin.Context) {
 		return
 	}
 
-	// Verify that the notebook exists and user has access
-	var notebook models.Notebook
-	if err := db.DB.Where("id = ?", chapter.NotebookID).First(&notebook).Error; err != nil {
+	// Check authorization efficiently
+	hasAccess, err := middleware.CheckNotebookAccess(c.Request.Context(), db.DB, chapter.NotebookID, clerkUserID)
+	if err != nil {
 		log.Print("Notebook not found: ", chapter.NotebookID, " Error: ", err)
 		c.JSON(http.StatusNotFound, gin.H{"error": "Notebook not found"})
 		return
 	}
-
-	if !userCanAccessNotebook(c, &notebook, clerkUserID) {
+	if !hasAccess {
 		log.Warn().Str("notebook_id", chapter.NotebookID).Str("user_id", clerkUserID).Msg("User not authorized to create chapter in notebook")
 		c.JSON(http.StatusForbidden, gin.H{"error": "Unauthorized: You cannot create chapters in this notebook"})
+		return
+	}
+
+	// Get organization_id from parent notebook
+	var notebook models.Notebook
+	if err := db.DB.Select("organization_id").Where("id = ?", chapter.NotebookID).First(&notebook).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create chapter"})
 		return
 	}
 
@@ -73,21 +79,20 @@ func GetChaptersByNotebook(c *gin.Context) {
 
 	notebookID := c.Param("notebookId")
 
-	// Verify that the notebook exists and user has access
-	var notebook models.Notebook
-	if err := db.DB.Where("id = ?", notebookID).First(&notebook).Error; err != nil {
+	// Check authorization efficiently
+	hasAccess, err := middleware.CheckNotebookAccess(c.Request.Context(), db.DB, notebookID, clerkUserID)
+	if err != nil {
 		log.Print("Notebook not found: ", notebookID, " Error: ", err)
 		c.JSON(http.StatusNotFound, gin.H{"error": "Notebook not found"})
 		return
 	}
-
-	if !userCanAccessNotebook(c, &notebook, clerkUserID) {
+	if !hasAccess {
 		log.Warn().Str("notebook_id", notebookID).Str("user_id", clerkUserID).Msg("User not authorized to access notebook chapters")
 		c.JSON(http.StatusForbidden, gin.H{"error": "Unauthorized"})
 		return
 	}
 
-	// Get all chapters for this notebook
+	// Get chapters without preloading notes (optimized)
 	var chapters []models.Chapter
 	if err := db.DB.Where("notebook_id = ?", notebookID).Find(&chapters).Error; err != nil {
 		log.Print("Error fetching chapters for notebook: ", notebookID, " Error: ", err)
@@ -109,15 +114,16 @@ func GetChapterById(c *gin.Context) {
 	id := c.Param("id")
 	var chapter models.Chapter
 
-	// Get chapter with notebook preloaded to verify ownership
-	if err := db.DB.Preload("Notebook").Where("id = ?", id).First(&chapter).Error; err != nil {
+	// Get chapter without preloading notebook
+	if err := db.DB.Where("id = ?", id).First(&chapter).Error; err != nil {
 		log.Print("Chapter not found with id: ", id, " Error: ", err)
 		c.JSON(http.StatusNotFound, gin.H{"error": "Chapter not found"})
 		return
 	}
 
-	// Verify user has access to the parent notebook
-	if !userCanAccessNotebook(c, &chapter.Notebook, clerkUserID) {
+	// Check authorization efficiently
+	hasAccess, err := middleware.CheckChapterAccess(c.Request.Context(), db.DB, id, clerkUserID)
+	if err != nil || !hasAccess {
 		log.Warn().Str("chapter_id", id).Str("user_id", clerkUserID).Msg("User not authorized to access chapter")
 		c.JSON(http.StatusForbidden, gin.H{"error": "Unauthorized"})
 		return
@@ -135,24 +141,22 @@ func DeleteChapter(c *gin.Context) {
 	}
 
 	id := c.Param("id")
-	var chapter models.Chapter
 
-	// Get chapter with notebook preloaded to verify ownership
-	if err := db.DB.Preload("Notebook").Where("id = ?", id).First(&chapter).Error; err != nil {
+	// Check authorization efficiently
+	hasAccess, err := middleware.CheckChapterAccess(c.Request.Context(), db.DB, id, clerkUserID)
+	if err != nil {
 		log.Print("Chapter not found with id: ", id, " Error: ", err)
 		c.JSON(http.StatusNotFound, gin.H{"error": "Chapter not found"})
 		return
 	}
-
-	// Verify user has access to the parent notebook
-	if !userCanAccessNotebook(c, &chapter.Notebook, clerkUserID) {
+	if !hasAccess {
 		log.Warn().Str("chapter_id", id).Str("user_id", clerkUserID).Msg("User not authorized to delete chapter")
 		c.JSON(http.StatusForbidden, gin.H{"error": "Unauthorized"})
 		return
 	}
 
 	// Delete the chapter
-	if err := db.DB.Delete(&chapter).Error; err != nil {
+	if err := db.DB.Delete(&models.Chapter{}, "id = ?", id).Error; err != nil {
 		log.Print("Error deleting chapter with id: ", id, " Error: ", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -170,17 +174,15 @@ func UpdateChapter(c *gin.Context) {
 	}
 
 	id := c.Param("id")
-	var chapter models.Chapter
 
-	// Get chapter with notebook preloaded to verify ownership
-	if err := db.DB.Preload("Notebook").Where("id = ?", id).First(&chapter).Error; err != nil {
+	// Check authorization efficiently
+	hasAccess, err := middleware.CheckChapterAccess(c.Request.Context(), db.DB, id, clerkUserID)
+	if err != nil {
 		log.Print("Chapter not found with id: ", id, " Error: ", err)
 		c.JSON(http.StatusNotFound, gin.H{"error": "Chapter not found"})
 		return
 	}
-
-	// Verify user has access to the parent notebook
-	if !userCanAccessNotebook(c, &chapter.Notebook, clerkUserID) {
+	if !hasAccess {
 		log.Warn().Str("chapter_id", id).Str("user_id", clerkUserID).Msg("User not authorized to update chapter")
 		c.JSON(http.StatusForbidden, gin.H{"error": "Unauthorized"})
 		return
@@ -191,6 +193,13 @@ func UpdateChapter(c *gin.Context) {
 	if err := c.ShouldBindJSON(&updateData); err != nil {
 		log.Print("Invalid update data for chapter: ", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Get current chapter to preserve protected fields
+	var chapter models.Chapter
+	if err := db.DB.Where("id = ?", id).First(&chapter).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update chapter"})
 		return
 	}
 
@@ -217,17 +226,15 @@ func MoveChapter(c *gin.Context) {
 	}
 
 	id := c.Param("id")
-	var chapter models.Chapter
 
-	// Get chapter with notebook preloaded to verify ownership
-	if err := db.DB.Preload("Notebook").Where("id = ?", id).First(&chapter).Error; err != nil {
+	// Check authorization for source chapter efficiently
+	hasAccess, err := middleware.CheckChapterAccess(c.Request.Context(), db.DB, id, clerkUserID)
+	if err != nil {
 		log.Print("Chapter not found with id: ", id, " Error: ", err)
 		c.JSON(http.StatusNotFound, gin.H{"error": "Chapter not found"})
 		return
 	}
-
-	// Verify user has access to the source notebook
-	if !userCanAccessNotebook(c, &chapter.Notebook, clerkUserID) {
+	if !hasAccess {
 		log.Warn().Str("chapter_id", id).Str("user_id", clerkUserID).Msg("User not authorized to move chapter")
 		c.JSON(http.StatusForbidden, gin.H{"error": "Unauthorized"})
 		return
@@ -249,23 +256,28 @@ func MoveChapter(c *gin.Context) {
 		log.Printf("DEBUG: Move chapter request with organization ID: %s", *moveData.OrganizationID)
 	}
 
-	// Verify that the target notebook exists and user has access
-	var targetNotebook models.Notebook
-	if err := db.DB.Where("id = ?", moveData.NotebookID).First(&targetNotebook).Error; err != nil {
+	// Check authorization for target notebook efficiently
+	targetHasAccess, err := middleware.CheckNotebookAccess(c.Request.Context(), db.DB, moveData.NotebookID, clerkUserID)
+	if err != nil {
 		log.Print("Target notebook not found: ", moveData.NotebookID, " Error: ", err)
 		c.JSON(http.StatusNotFound, gin.H{"error": "Target notebook not found"})
 		return
 	}
-
-	if !userCanAccessNotebook(c, &targetNotebook, clerkUserID) {
+	if !targetHasAccess {
 		log.Warn().Str("notebook_id", moveData.NotebookID).Str("user_id", clerkUserID).Msg("User not authorized to move chapter to target notebook")
 		c.JSON(http.StatusForbidden, gin.H{"error": "Unauthorized: Cannot move to target notebook"})
 		return
 	}
 
+	// Get target notebook's organization_id
+	var targetNotebook models.Notebook
+	if err := db.DB.Select("organization_id").Where("id = ?", moveData.NotebookID).First(&targetNotebook).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to move chapter"})
+		return
+	}
+
 	// Log before update
-	log.Printf("DEBUG: Before update - Chapter ID: %s, Current Notebook ID: %s, Target Notebook ID: %s",
-		chapter.ID, chapter.NotebookID, moveData.NotebookID)
+	log.Printf("DEBUG: Before update - Chapter ID: %s, Target Notebook ID: %s", id, moveData.NotebookID)
 
 	// Determine which organization ID to use
 	var orgIDToUse *string

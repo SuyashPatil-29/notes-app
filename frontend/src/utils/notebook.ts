@@ -11,8 +11,9 @@ export const createNotebook = async (data: Notebook) => {
     return await api.post("/notebook", data);
 };
 
-export const getNotebook = async (id: string) => {
-    return await api.get(`/notebook/${id}`);
+export const getNotebook = async (id: string): Promise<Notebook> => {
+    const response = await api.get(`/notebook/${id}`);
+    return response.data;
 };
 
 export const updateNotebook = async (id: string, data: Partial<Notebook>) => {

@@ -68,8 +68,8 @@ func GetUserMeetings(ctx *gin.Context) {
 		Msg("Retrieving user meetings")
 
 	var meetings []models.MeetingRecording
+	// Remove Preload to avoid loading full note with chapter and notebook
 	err := db.DB.Where("clerk_user_id = ?", clerkUserID).
-		Preload("GeneratedNote.Chapter.Notebook").
 		Order("created_at DESC").
 		Find(&meetings).Error
 
@@ -82,12 +82,31 @@ func GetUserMeetings(ctx *gin.Context) {
 		return
 	}
 
+	// Build response with meeting list items
+	response := make([]gin.H, len(meetings))
+	for i, meeting := range meetings {
+		response[i] = gin.H{
+			"id":                    meeting.ID,
+			"clerkUserId":           meeting.ClerkUserID,
+			"botId":                 meeting.BotID,
+			"meetingUrl":            meeting.MeetingURL,
+			"status":                meeting.Status,
+			"recallRecordingId":     meeting.RecallRecordingID,
+			"transcriptDownloadUrl": meeting.TranscriptDownloadURL,
+			"videoDownloadUrl":      meeting.VideoDownloadURL,
+			"generatedNoteId":       meeting.GeneratedNoteID,
+			"createdAt":             meeting.CreatedAt,
+			"updatedAt":             meeting.UpdatedAt,
+			"completedAt":           meeting.CompletedAt,
+		}
+	}
+
 	log.Debug().
 		Str("clerk_user_id", clerkUserID).
 		Int("meetings_count", len(meetings)).
 		Msg("Successfully retrieved user meetings")
 
-	ctx.JSON(http.StatusOK, gin.H{"data": meetings})
+	ctx.JSON(http.StatusOK, gin.H{"data": response})
 }
 
 // StartMeetingRecording is the package-level function for starting meeting recordings

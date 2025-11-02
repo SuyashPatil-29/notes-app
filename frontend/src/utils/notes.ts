@@ -1,4 +1,5 @@
-import type { Notes } from "@/types/backend";
+import type { Notes, NoteListItem } from "@/types/backend";
+import type { PaginatedResponse, PaginationParams } from "@/types/pagination";
 import api from "@/utils/api";
 
 export const createNote = async (data: Notes) => {
@@ -9,8 +10,16 @@ export const getNote = async (id: string) => {
     return await api.get(`/note/${id}`);
 };
 
-export const getNotesByChapter = async (chapterId: string) => {
-    return await api.get(`/chapters/${chapterId}/notes`);
+export const getNotesByChapter = async (
+    chapterId: string,
+    pagination?: PaginationParams
+): Promise<PaginatedResponse<NoteListItem>> => {
+    const params = {
+        page: pagination?.page || 1,
+        page_size: pagination?.pageSize || 50
+    };
+    const response = await api.get(`/chapters/${chapterId}/notes`, { params });
+    return response.data;
 };
 
 export const updateNote = async (id: string, data: Partial<Notes>) => {

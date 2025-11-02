@@ -19,6 +19,18 @@ export type Notebook = {
   updatedAt: string;
 };
 
+// Lightweight notebook for list views
+export type NotebookListItem = {
+  id: string;
+  name: string;
+  clerkUserId: string;
+  organizationId?: string | null;
+  isPublic: boolean;
+  createdAt: string;
+  updatedAt: string;
+  chapterCount: number;
+};
+
 export type Chapter = {
   id: string;
   name: string;
@@ -29,6 +41,18 @@ export type Chapter = {
   isPublic: boolean;
   createdAt: string;
   updatedAt: string;
+};
+
+// Lightweight chapter for list views
+export type ChapterListItem = {
+  id: string;
+  name: string;
+  notebookId: string;
+  organizationId?: string | null;
+  isPublic: boolean;
+  createdAt: string;
+  updatedAt: string;
+  noteCount: number;
 };
 
 export type Notes = {
@@ -44,6 +68,19 @@ export type Notes = {
   meetingRecordingId?: string;
   aiSummary?: string;
   transcriptRaw?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+// Lightweight note for list views (without content)
+export type NoteListItem = {
+  id: string;
+  name: string;
+  chapterId: string;
+  organizationId?: string | null;
+  isPublic: boolean;
+  hasVideo?: boolean;
+  meetingRecordingId?: string;
   createdAt: string;
   updatedAt: string;
 };
@@ -75,6 +112,22 @@ export type MeetingRecording = {
   completedAt?: string;
 };
 
+// Lightweight meeting for list views (without generated note details)
+export type MeetingListItem = {
+  id: string;
+  clerkUserId: string;
+  botId: string;
+  meetingUrl: string;
+  status: 'pending' | 'recording' | 'processing' | 'completed' | 'failed';
+  recallRecordingId?: string;
+  transcriptDownloadUrl?: string;
+  videoDownloadUrl?: string;
+  generatedNoteId?: string;
+  createdAt: string;
+  updatedAt: string;
+  completedAt?: string;
+};
+
 export type StartMeetingRecordingRequest = {
   meeting_url: string;
 };
@@ -85,7 +138,7 @@ export type StartMeetingRecordingResponse = {
 };
 
 export type GetMeetingsResponse = {
-  data: MeetingRecording[];
+  data: MeetingListItem[];
 };
 
 // Calendar Integration Types
