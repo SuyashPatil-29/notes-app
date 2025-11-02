@@ -235,12 +235,18 @@ func MoveChapter(c *gin.Context) {
 
 	// Bind the move data from request body
 	var moveData struct {
-		NotebookID string `json:"notebook_id" binding:"required"`
+		NotebookID     string  `json:"notebook_id" binding:"required"`
+		OrganizationID *string `json:"organization_id"`
 	}
 	if err := c.ShouldBindJSON(&moveData); err != nil {
 		log.Print("Invalid move data for chapter: ", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
+	}
+
+	// Log the received organization ID
+	if moveData.OrganizationID != nil {
+		log.Printf("DEBUG: Move chapter request with organization ID: %s", *moveData.OrganizationID)
 	}
 
 	// Verify that the target notebook exists and user has access
@@ -257,23 +263,57 @@ func MoveChapter(c *gin.Context) {
 		return
 	}
 
-	// Update the chapter's notebook_id and inherit target notebook's organization_id
-	result := db.DB.Model(&chapter).Updates(map[string]interface{}{
+	// Log before update
+	log.Printf("DEBUG: Before update - Chapter ID: %s, Current Notebook ID: %s, Target Notebook ID: %s",
+		chapter.ID, chapter.NotebookID, moveData.NotebookID)
+
+	// Determine which organization ID to use
+	var orgIDToUse *string
+	if moveData.OrganizationID != nil && *moveData.OrganizationID != "" {
+		// Use the provided organization ID from request
+		orgIDToUse = moveData.OrganizationID
+		log.Printf("DEBUG: Using organization ID from request: %s", *orgIDToUse)
+	} else {
+		// Fall back to target notebook's organization ID
+		orgIDToUse = targetNotebook.OrganizationID
+		if orgIDToUse != nil {
+			log.Printf("DEBUG: Using organization ID from target notebook: %s", *orgIDToUse)
+		}
+	}
+
+	// Update the chapter's notebook_id and organization_id using Updates with Select
+	updateData := map[string]interface{}{
 		"notebook_id":     moveData.NotebookID,
-		"organization_id": targetNotebook.OrganizationID,
-	})
+		"organization_id": orgIDToUse,
+	}
+
+	log.Printf("DEBUG: About to update with data: %+v", updateData)
+
+	// Use Model().Select().Updates() for explicit column updates
+	result := db.DB.Model(&models.Chapter{}).Where("id = ?", id).Select("notebook_id", "organization_id").Updates(updateData)
 	if result.Error != nil {
-		log.Print("Error moving chapter with id: ", id, " Error: ", result.Error)
+		log.Printf("ERROR: Failed to update chapter - Error: %v", result.Error)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": result.Error.Error()})
 		return
 	}
 
-	log.Printf("Chapter moved successfully. Chapter ID: %s, New Notebook ID: %s", chapter.ID, moveData.NotebookID)
+	log.Printf("DEBUG: GORM Update Result - Rows Affected: %d, Error: %v", result.RowsAffected, result.Error)
 
-	// Reload the chapter to get the updated data
-	if err := db.DB.Preload("Notebook").Where("id = ?", id).First(&chapter).Error; err != nil {
-		log.Print("Error reloading chapter after move: ", err)
+	if result.RowsAffected == 0 {
+		log.Printf("WARNING: Update returned 0 rows affected for chapter ID: %s", id)
 	}
 
-	c.JSON(http.StatusOK, chapter)
+	// Reload the chapter from scratch to verify the update
+	var updatedChapter models.Chapter
+	if err := db.DB.Preload("Notebook").Where("id = ?", id).First(&updatedChapter).Error; err != nil {
+		log.Printf("ERROR: Failed to reload chapter after move: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to reload chapter"})
+		return
+	}
+
+	log.Printf("DEBUG: After reload - Chapter ID: %s, Notebook ID: %s (expected: %s)",
+		updatedChapter.ID, updatedChapter.NotebookID, moveData.NotebookID)
+	log.Printf("Chapter moved successfully. Chapter ID: %s, New Notebook ID: %s", updatedChapter.ID, moveData.NotebookID)
+
+	c.JSON(http.StatusOK, updatedChapter)
 }

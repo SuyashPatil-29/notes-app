@@ -329,12 +329,18 @@ func MoveNote(c *gin.Context) {
 
 	// Bind the move data from request body
 	var moveData struct {
-		ChapterID string `json:"chapter_id" binding:"required"`
+		ChapterID      string  `json:"chapter_id" binding:"required"`
+		OrganizationID *string `json:"organization_id"`
 	}
 	if err := c.ShouldBindJSON(&moveData); err != nil {
 		log.Print("Invalid move data for note: ", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
+	}
+
+	// Log the received organization ID
+	if moveData.OrganizationID != nil {
+		log.Printf("DEBUG: Move note request with organization ID: %s", *moveData.OrganizationID)
 	}
 
 	// Verify that the target chapter exists and user has access
@@ -363,25 +369,59 @@ func MoveNote(c *gin.Context) {
 		return
 	}
 
-	// Update the note's chapter_id and inherit target chapter's organization_id
-	result := db.DB.Model(&note).Updates(map[string]interface{}{
+	// Log before update
+	log.Printf("DEBUG: Before update - Note ID: %s, Current Chapter ID: %s, Target Chapter ID: %s",
+		note.ID, note.ChapterID, moveData.ChapterID)
+
+	// Determine which organization ID to use
+	var orgIDToUse *string
+	if moveData.OrganizationID != nil && *moveData.OrganizationID != "" {
+		// Use the provided organization ID from request
+		orgIDToUse = moveData.OrganizationID
+		log.Printf("DEBUG: Using organization ID from request: %s", *orgIDToUse)
+	} else {
+		// Fall back to target chapter's organization ID
+		orgIDToUse = targetChapter.OrganizationID
+		if orgIDToUse != nil {
+			log.Printf("DEBUG: Using organization ID from target chapter: %s", *orgIDToUse)
+		}
+	}
+
+	// Update the note's chapter_id and organization_id using Updates with Select
+	updateData := map[string]interface{}{
 		"chapter_id":      moveData.ChapterID,
-		"organization_id": targetChapter.OrganizationID,
-	})
+		"organization_id": orgIDToUse,
+	}
+
+	log.Printf("DEBUG: About to update with data: %+v", updateData)
+
+	// Use Model().Select().Updates() for explicit column updates
+	result := db.DB.Model(&models.Notes{}).Where("id = ?", id).Select("chapter_id", "organization_id").Updates(updateData)
 	if result.Error != nil {
-		log.Print("Error moving note with id: ", id, " Error: ", result.Error)
+		log.Printf("ERROR: Failed to update note - Error: %v", result.Error)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": result.Error.Error()})
 		return
 	}
 
-	log.Printf("Note moved successfully. Note ID: %s, New Chapter ID: %s", note.ID, moveData.ChapterID)
+	log.Printf("DEBUG: GORM Update Result - Rows Affected: %d, Error: %v", result.RowsAffected, result.Error)
 
-	// Reload the note to get the updated data
-	if err := db.DB.Preload("Chapter.Notebook").Where("id = ?", id).First(&note).Error; err != nil {
-		log.Print("Error reloading note after move: ", err)
+	if result.RowsAffected == 0 {
+		log.Printf("WARNING: Update returned 0 rows affected for note ID: %s", id)
 	}
 
-	c.JSON(http.StatusOK, note)
+	// Reload the note from scratch to verify the update
+	var updatedNote models.Notes
+	if err := db.DB.Preload("Chapter.Notebook").Where("id = ?", id).First(&updatedNote).Error; err != nil {
+		log.Printf("ERROR: Failed to reload note after move: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to reload note"})
+		return
+	}
+
+	log.Printf("DEBUG: After reload - Note ID: %s, Chapter ID: %s (expected: %s)",
+		updatedNote.ID, updatedNote.ChapterID, moveData.ChapterID)
+	log.Printf("Note moved successfully. Note ID: %s, New Chapter ID: %s", updatedNote.ID, moveData.ChapterID)
+
+	c.JSON(http.StatusOK, updatedNote)
 }
 
 func GenerateNoteVideo(c *gin.Context) {

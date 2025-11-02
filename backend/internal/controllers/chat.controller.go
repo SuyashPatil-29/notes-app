@@ -26,9 +26,10 @@ import (
 // ChatRequest wraps the aisdk.Chat with optional extra fields
 type ChatRequest struct {
 	aisdk.Chat
-	Provider string `json:"provider"`
-	Model    string `json:"model"`
-	Thinking bool   `json:"thinking"`
+	Provider       string  `json:"provider"`
+	Model          string  `json:"model"`
+	Thinking       bool    `json:"thinking"`
+	OrganizationID *string `json:"organizationId,omitempty"` // Optional organization context
 }
 
 var (
@@ -88,7 +89,7 @@ func getUserAPIKey(clerkUserID string, provider string) (string, error) {
 }
 
 // handleNotesToolCall handles tool calls for notes-related operations
-func handleNotesToolCall(toolCall aisdk.ToolCall, clerkUserID string) any {
+func handleNotesToolCall(toolCall aisdk.ToolCall, clerkUserID string, organizationID *string) any {
 	log.Info().Str("tool", toolCall.Name).Interface("args", toolCall.Args).Msg("Tool called")
 
 	switch toolCall.Name {
@@ -97,10 +98,10 @@ func handleNotesToolCall(toolCall aisdk.ToolCall, clerkUserID string) any {
 		if !ok {
 			return map[string]string{"error": "Invalid query parameter"}
 		}
-		return searchNotes(clerkUserID, query)
+		return searchNotes(clerkUserID, organizationID, query)
 
 	case "listNotebooks":
-		return listNotebooks(clerkUserID)
+		return listNotebooks(clerkUserID, organizationID)
 
 	case "listChapters":
 		notebookID, ok := toolCall.Args["notebookId"].(string)
@@ -128,7 +129,7 @@ func handleNotesToolCall(toolCall aisdk.ToolCall, clerkUserID string) any {
 		if !ok {
 			return map[string]string{"error": "Invalid name parameter"}
 		}
-		return createNotebook(clerkUserID, name)
+		return createNotebook(clerkUserID, organizationID, name)
 
 	case "createChapter":
 		notebookID, ok := toolCall.Args["notebookId"].(string)
@@ -254,27 +255,40 @@ func handleNotesToolCall(toolCall aisdk.ToolCall, clerkUserID string) any {
 }
 
 // searchNotes searches for notes by query in title and content
-func searchNotes(clerkUserID string, query string) any {
+func searchNotes(clerkUserID string, organizationID *string, query string) any {
 	var allNotes []models.Notes
 
-	// Search in personal notebooks (organization_id IS NULL)
 	searchQuery := "%" + strings.ToLower(query) + "%"
-	err := db.DB.Preload("Chapter.Notebook").
-		Joins("JOIN chapters ON notes.chapter_id = chapters.id").
-		Joins("JOIN notebooks ON chapters.notebook_id = notebooks.id").
-		Where("notebooks.clerk_user_id = ? AND notebooks.organization_id IS NULL AND (LOWER(notes.name) LIKE ? OR LOWER(notes.content) LIKE ?)",
-			clerkUserID, searchQuery, searchQuery).
-		Limit(10).
-		Find(&allNotes).Error
 
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to search personal notes")
-		return map[string]string{"error": "Failed to search notes"}
+	if organizationID != nil && *organizationID != "" {
+		// Search in organization notebooks
+		err := db.DB.Preload("Chapter.Notebook").
+			Joins("JOIN chapters ON notes.chapter_id = chapters.id").
+			Joins("JOIN notebooks ON chapters.notebook_id = notebooks.id").
+			Where("notebooks.organization_id = ? AND (LOWER(notes.name) LIKE ? OR LOWER(notes.content) LIKE ?)",
+				*organizationID, searchQuery, searchQuery).
+			Limit(10).
+			Find(&allNotes).Error
+
+		if err != nil {
+			log.Error().Err(err).Msg("Failed to search organization notes")
+			return map[string]string{"error": "Failed to search notes"}
+		}
+	} else {
+		// Search in personal notebooks (organization_id IS NULL)
+		err := db.DB.Preload("Chapter.Notebook").
+			Joins("JOIN chapters ON notes.chapter_id = chapters.id").
+			Joins("JOIN notebooks ON chapters.notebook_id = notebooks.id").
+			Where("notebooks.clerk_user_id = ? AND notebooks.organization_id IS NULL AND (LOWER(notes.name) LIKE ? OR LOWER(notes.content) LIKE ?)",
+				clerkUserID, searchQuery, searchQuery).
+			Limit(10).
+			Find(&allNotes).Error
+
+		if err != nil {
+			log.Error().Err(err).Msg("Failed to search personal notes")
+			return map[string]string{"error": "Failed to search notes"}
+		}
 	}
-
-	// Note: For now, only search personal notebooks. Organization notebook search would require
-	// fetching user's organization memberships from Clerk and filtering accordingly.
-	// This keeps the implementation performant and straightforward.
 
 	if len(allNotes) == 0 {
 		return map[string]any{
@@ -311,26 +325,46 @@ func searchNotes(clerkUserID string, query string) any {
 }
 
 // listNotebooks lists all notebooks for a user
-func listNotebooks(clerkUserID string) any {
+func listNotebooks(clerkUserID string, organizationID *string) any {
 	var notebooks []models.Notebook
 
-	// Only list personal notebooks (organization_id IS NULL)
-	// Organization notebooks would require fetching memberships from Clerk
-	err := db.DB.Preload("Chapters").
-		Where("clerk_user_id = ? AND organization_id IS NULL", clerkUserID).
-		Order("updated_at DESC").
-		Find(&notebooks).Error
+	if organizationID != nil && *organizationID != "" {
+		// List organization notebooks
+		err := db.DB.Preload("Chapters").
+			Where("organization_id = ?", *organizationID).
+			Order("updated_at DESC").
+			Find(&notebooks).Error
 
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to list notebooks")
-		return map[string]string{"error": "Failed to list notebooks"}
-	}
+		if err != nil {
+			log.Error().Err(err).Msg("Failed to list organization notebooks")
+			return map[string]string{"error": "Failed to list notebooks"}
+		}
 
-	if len(notebooks) == 0 {
-		return map[string]any{
-			"message":   "No personal notebooks found. Create one to get started!",
-			"count":     0,
-			"notebooks": []any{},
+		if len(notebooks) == 0 {
+			return map[string]any{
+				"message":   "No organization notebooks found. Create one to get started!",
+				"count":     0,
+				"notebooks": []any{},
+			}
+		}
+	} else {
+		// List personal notebooks (organization_id IS NULL)
+		err := db.DB.Preload("Chapters").
+			Where("clerk_user_id = ? AND organization_id IS NULL", clerkUserID).
+			Order("updated_at DESC").
+			Find(&notebooks).Error
+
+		if err != nil {
+			log.Error().Err(err).Msg("Failed to list personal notebooks")
+			return map[string]string{"error": "Failed to list notebooks"}
+		}
+
+		if len(notebooks) == 0 {
+			return map[string]any{
+				"message":   "No personal notebooks found. Create one to get started!",
+				"count":     0,
+				"notebooks": []any{},
+			}
 		}
 	}
 
@@ -585,17 +619,23 @@ func moveChapter(clerkUserID string, chapterID string, targetNotebookID string) 
 	var noteCount int64
 	db.DB.Model(&models.Notes{}).Where("chapter_id = ?", chapterID).Count(&noteCount)
 
-	// Update chapter's notebook and inherit target notebook's organization_id
-	result := db.DB.Model(&chapter).Updates(map[string]interface{}{
+	// Update chapter's notebook and inherit target notebook's organization_id using explicit Updates
+	updateData := map[string]interface{}{
 		"notebook_id":     targetNotebookID,
 		"organization_id": targetNotebook.OrganizationID,
-	})
+	}
+
+	result := db.DB.Model(&models.Chapter{}).Where("id = ?", chapterID).Select("notebook_id", "organization_id").Updates(updateData)
 	if result.Error != nil {
 		log.Error().Err(result.Error).Msg("Failed to move chapter")
 		return map[string]string{"error": "Failed to move chapter"}
 	}
 
-	log.Info().Str("chapterId", chapter.ID).Str("newNotebookId", targetNotebookID).Int64("noteCount", noteCount).Msg("Chapter moved successfully via AI tool")
+	if result.RowsAffected == 0 {
+		log.Warn().Str("chapterId", chapterID).Msg("Move chapter: 0 rows affected")
+	}
+
+	log.Info().Str("chapterId", chapterID).Str("newNotebookId", targetNotebookID).Int64("noteCount", noteCount).Int64("rowsAffected", result.RowsAffected).Msg("Chapter moved successfully via AI tool")
 
 	return map[string]any{
 		"success":      true,
@@ -640,17 +680,23 @@ func moveNote(clerkUserID string, noteID string, targetChapterID string) any {
 	oldChapterName := note.Chapter.Name
 	oldNotebookName := note.Chapter.Notebook.Name
 
-	// Update note's chapter and inherit target chapter's organization_id
-	result := db.DB.Model(&note).Updates(map[string]interface{}{
+	// Update note's chapter and inherit target chapter's organization_id using explicit Updates
+	updateData := map[string]interface{}{
 		"chapter_id":      targetChapterID,
 		"organization_id": targetChapter.OrganizationID,
-	})
+	}
+
+	result := db.DB.Model(&models.Notes{}).Where("id = ?", noteID).Select("chapter_id", "organization_id").Updates(updateData)
 	if result.Error != nil {
 		log.Error().Err(result.Error).Msg("Failed to move note")
 		return map[string]string{"error": "Failed to move note"}
 	}
 
-	log.Info().Str("noteId", note.ID).Str("newChapterId", targetChapterID).Msg("Note moved successfully via AI tool")
+	if result.RowsAffected == 0 {
+		log.Warn().Str("noteId", noteID).Msg("Move note: 0 rows affected")
+	}
+
+	log.Info().Str("noteId", noteID).Str("newChapterId", targetChapterID).Int64("rowsAffected", result.RowsAffected).Msg("Note moved successfully via AI tool")
 
 	return map[string]any{
 		"success":      true,
@@ -921,12 +967,12 @@ func deleteNoteVideo(clerkUserID string, noteID string) any {
 }
 
 // createNotebook creates a new notebook
-func createNotebook(clerkUserID string, name string) any {
-	// Create the notebook (personal notebook with NULL organization_id)
+func createNotebook(clerkUserID string, organizationID *string, name string) any {
+	// Create the notebook with appropriate organization context
 	notebook := models.Notebook{
 		Name:           name,
 		ClerkUserID:    clerkUserID,
-		OrganizationID: nil, // Explicitly set to nil for personal notebooks
+		OrganizationID: organizationID,
 	}
 
 	err := db.DB.Create(&notebook).Error
@@ -935,7 +981,11 @@ func createNotebook(clerkUserID string, name string) any {
 		return map[string]string{"error": "Failed to create notebook"}
 	}
 
-	log.Info().Str("notebookId", notebook.ID).Str("name", name).Msg("Personal notebook created successfully via AI tool")
+	notebookType := "Personal"
+	if organizationID != nil && *organizationID != "" {
+		notebookType = "Organization"
+	}
+	log.Info().Str("notebookId", notebook.ID).Str("name", name).Str("type", notebookType).Msg("Notebook created successfully via AI tool")
 
 	return map[string]any{
 		"success":    true,
@@ -1526,7 +1576,7 @@ func ChatHandler(c *gin.Context) {
 	// Tool handler
 	handleToolCall := func(toolCall aisdk.ToolCall) any {
 		log.Info().Str("toolName", toolCall.Name).Str("toolCallId", toolCall.ID).Msg("handleToolCall invoked")
-		result := handleNotesToolCall(toolCall, clerkUserID)
+		result := handleNotesToolCall(toolCall, clerkUserID, req.OrganizationID)
 		log.Info().Str("toolName", toolCall.Name).Interface("result", result).Msg("handleToolCall completed")
 		return result
 	}
@@ -1536,9 +1586,14 @@ func ChatHandler(c *gin.Context) {
 
 	// Add system message if not present
 	if len(req.Messages) == 0 || req.Messages[0].Role != "system" {
+		contextInfo := "personal workspace"
+		if req.OrganizationID != nil && *req.OrganizationID != "" {
+			contextInfo = "organization workspace"
+		}
+
 		req.Messages = append([]aisdk.Message{{
 			Role:    "system",
-			Content: "You are a helpful AI assistant integrated into a notes application. You have access to tools that can search, list, retrieve, create, update, move, rename, delete notes, chapters, and notebooks, and manage videos.\n\nAvailable tools:\n- searchNotes: Search through all notes by content or title\n- listNotebooks: List all notebooks\n- listChapters: List chapters in a notebook\n- listNotesInChapter: List notes in a chapter\n- getNoteContent: Get the full content of a specific note\n- createNotebook: Create a new notebook\n- createChapter: Create a new chapter in a notebook\n- createNote: Create a new note with markdown content in a chapter\n- moveNote: Move a note to a different chapter\n- moveChapter: Move an entire chapter (with all its notes) to a different notebook\n- renameNotebook: Rename a notebook\n- renameChapter: Rename a chapter\n- renameNote: Rename a note\n- updateNoteContent: Update the content of an existing note\n- deleteNote: Delete a note permanently\n- generateNoteVideo: Generate a short explanatory video for a note based on its content\n- deleteNoteVideo: Remove a video from a note\n\nWhen managing notes and chapters:\n1. For create/move operations: If the user doesn't specify which chapter/notebook, list available options first\n2. For moving chapters: Use moveChapter to move entire chapters between notebooks in one operation\n3. For delete operations: Confirm the user really wants to delete before executing\n4. For rename operations: Keep the name concise and descriptive\n5. When creating/updating content: Generate high-quality markdown with proper formatting, then IMMEDIATELY call the appropriate tool (createNote or updateNoteContent) to save it\n6. IMPORTANT: If user asks to update/modify/edit note content, you MUST call getNoteContent first to read current content, then call updateNoteContent with the new content to save it. Never just describe what to write - always actually save it using the tool.\n7. For videos: Use generateNoteVideo when users want to create explanatory videos for their notes. Videos are generated automatically from note title and content.\n\nREORGANIZATION CAPABILITY:\nYou have the ability to intelligently reorganize the entire notes structure. When asked to reorganize:\n1. Use listNotebooks to see all notebooks\n2. For each notebook, use listChapters to see chapters\n3. For each chapter, use listNotesInChapter and getNoteContent to understand the content\n4. Analyze the content and determine better organizational structure\n5. Create new notebooks/chapters as needed using createNotebook and createChapter\n6. Move notes and chapters to their optimal locations using moveNote and moveChapter\n7. Rename notebooks, chapters, and notes for better clarity using renameNotebook, renameChapter, and renameNote\n8. Provide a summary of all changes made\n\nWhen reorganizing, think about:\n- Thematic grouping (similar topics together)\n- Logical hierarchy (general to specific)\n- Clear, descriptive names\n- Reducing clutter and improving discoverability\n\nAlways provide a clear, helpful text response after using tools. Be conversational and helpful.",
+			Content: fmt.Sprintf("You are a helpful AI assistant integrated into a notes application. You are currently operating in the user's %s. You have access to tools that can search, list, retrieve, create, update, move, rename, delete notes, chapters, and notebooks, and manage videos within this context.\n\nIMPORTANT: All operations will be scoped to the current workspace context (%s). You will only see and interact with notes, chapters, and notebooks that belong to this workspace.\n\nAvailable tools:\n- searchNotes: Search through all notes by content or title in the current workspace\n- listNotebooks: List all notebooks in the current workspace\n- listChapters: List chapters in a notebook\n- listNotesInChapter: List notes in a chapter\n- getNoteContent: Get the full content of a specific note\n- createNotebook: Create a new notebook in the current workspace\n- createChapter: Create a new chapter in a notebook\n- createNote: Create a new note with markdown content in a chapter\n- moveNote: Move a note to a different chapter\n- moveChapter: Move an entire chapter (with all its notes) to a different notebook\n- renameNotebook: Rename a notebook\n- renameChapter: Rename a chapter\n- renameNote: Rename a note\n- updateNoteContent: Update the content of an existing note\n- deleteNote: Delete a note permanently\n- generateNoteVideo: Generate a short explanatory video for a note based on its content\n- deleteNoteVideo: Remove a video from a note\n\nWhen managing notes and chapters:\n1. For create/move operations: If the user doesn't specify which chapter/notebook, list available options first\n2. For moving chapters: Use moveChapter to move entire chapters between notebooks in one operation\n3. For delete operations: Confirm the user really wants to delete before executing\n4. For rename operations: Keep the name concise and descriptive\n5. When creating/updating content: Generate high-quality markdown with proper formatting, then IMMEDIATELY call the appropriate tool (createNote or updateNoteContent) to save it\n6. IMPORTANT: If user asks to update/modify/edit note content, you MUST call getNoteContent first to read current content, then call updateNoteContent with the new content to save it. Never just describe what to write - always actually save it using the tool.\n7. For videos: Use generateNoteVideo when users want to create explanatory videos for their notes. Videos are generated automatically from note title and content.\n\nREORGANIZATION CAPABILITY:\nYou have the ability to intelligently reorganize the entire notes structure within the current workspace. When asked to reorganize:\n1. Use listNotebooks to see all notebooks in the current workspace\n2. For each notebook, use listChapters to see chapters\n3. For each chapter, use listNotesInChapter and getNoteContent to understand the content\n4. Analyze the content and determine better organizational structure\n5. Create new notebooks/chapters as needed using createNotebook and createChapter\n6. Move notes and chapters to their optimal locations using moveNote and moveChapter\n7. Rename notebooks, chapters, and notes for better clarity using renameNotebook, renameChapter, and renameNote\n8. Provide a summary of all changes made\n\nWhen reorganizing, think about:\n- Thematic grouping (similar topics together)\n- Logical hierarchy (general to specific)\n- Clear, descriptive names\n- Reducing clutter and improving discoverability\n\nAlways provide a clear, helpful text response after using tools. Be conversational and helpful.", contextInfo, contextInfo),
 		}}, req.Messages...)
 	}
 

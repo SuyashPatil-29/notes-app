@@ -726,6 +726,12 @@ html[data-theme='gruvbox'].dark {
   * {
     @apply border-border;
   }
+  
+  html,
+  body {
+    @apply overflow-x-hidden;
+  }
+  
   body {
     @apply bg-background text-foreground;
     letter-spacing: var(--tracking-normal);

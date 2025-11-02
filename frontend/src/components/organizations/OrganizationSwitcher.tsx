@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useOrganizationList } from "@clerk/clerk-react";
+import { useNavigate } from "react-router-dom";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -17,6 +18,7 @@ import { CreateOrganizationDialog } from "./CreateOrganizationDialog";
 export function OrganizationSwitcher() {
   const { activeOrg, setActiveOrg } = useOrganizationContext();
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const navigate = useNavigate();
 
   const { isLoaded, userMemberships, setActive } = useOrganizationList({
     userMemberships: {
@@ -41,6 +43,8 @@ export function OrganizationSwitcher() {
         };
         await setActive({ organization: orgId });
         setActiveOrg(orgData);
+        // Navigate to Dashboard after switching organizations
+        navigate("/");
       }
     } catch (error) {
       console.error("Failed to switch organization:", error);
@@ -52,6 +56,8 @@ export function OrganizationSwitcher() {
     try {
       await setActive({ organization: null });
       setActiveOrg(null);
+      // Navigate to Dashboard after switching to personal
+      navigate("/");
     } catch (error) {
       console.error("Failed to switch to personal:", error);
     }

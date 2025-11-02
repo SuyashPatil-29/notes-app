@@ -127,17 +127,18 @@ export function LeftSidebarContent({
 
   // Optimistic chapter move mutation
   const moveChapterMutation = useMutation({
-    mutationFn: ({ chapterId, targetNotebookId }: { chapterId: string, targetNotebookId: string }) =>
-      moveChapter(chapterId, targetNotebookId),
+    mutationFn: async ({ chapterId, targetNotebookId }: { chapterId: string, targetNotebookId: string }) => {
+      return await moveChapter(chapterId, targetNotebookId, activeOrg?.id)
+    },
     onMutate: async ({ chapterId, targetNotebookId }) => {
       // Cancel outgoing refetches
-      await queryClient.cancelQueries({ queryKey: ['userNotebooks'] })
+      await queryClient.cancelQueries({ queryKey: ['userNotebooks', activeOrg?.id] })
 
       // Snapshot the previous value
-      const previousNotebooks = queryClient.getQueryData<Notebook[]>(['userNotebooks'])
+      const previousNotebooks = queryClient.getQueryData<Notebook[]>(['userNotebooks', activeOrg?.id])
 
       // Optimistically update
-      queryClient.setQueryData<Notebook[]>(['userNotebooks'], (old) => {
+      queryClient.setQueryData<Notebook[]>(['userNotebooks', activeOrg?.id], (old) => {
         if (!old) return old
 
         const newNotebooks = JSON.parse(JSON.stringify(old)) as Notebook[]
@@ -173,33 +174,33 @@ export function LeftSidebarContent({
 
       return { previousNotebooks }
     },
-    onError: (err, _variables, context) => {
+    onError: (_err, _variables, context) => {
       // Rollback on error
       if (context?.previousNotebooks) {
-        queryClient.setQueryData(['userNotebooks'], context.previousNotebooks)
+        queryClient.setQueryData(['userNotebooks', activeOrg?.id], context.previousNotebooks)
       }
       toast.error('Failed to move chapter')
-      console.error('Error moving chapter:', err)
     },
     onSuccess: () => {
       toast.success('Chapter moved successfully')
     },
     onSettled: () => {
       // Refetch to ensure consistency
-      queryClient.invalidateQueries({ queryKey: ['userNotebooks'] })
+      queryClient.invalidateQueries({ queryKey: ['userNotebooks', activeOrg?.id] })
     }
   })
 
   // Optimistic note move mutation
   const moveNoteMutation = useMutation({
-    mutationFn: ({ noteId, targetChapterId }: { noteId: string, targetChapterId: string }) =>
-      moveNote(noteId, targetChapterId),
+    mutationFn: async ({ noteId, targetChapterId }: { noteId: string, targetChapterId: string }) => {
+      return await moveNote(noteId, targetChapterId, activeOrg?.id)
+    },
     onMutate: async ({ noteId, targetChapterId }) => {
       // Cancel outgoing refetches
-      await queryClient.cancelQueries({ queryKey: ['userNotebooks'] })
+      await queryClient.cancelQueries({ queryKey: ['userNotebooks', activeOrg?.id] })
 
       // Snapshot the previous value
-      const previousNotebooks = queryClient.getQueryData<Notebook[]>(['userNotebooks'])
+      const previousNotebooks = queryClient.getQueryData<Notebook[]>(['userNotebooks', activeOrg?.id])
 
       // Find the target notebook ID for navigation
       let targetNotebookId: string | null = null
@@ -215,7 +216,7 @@ export function LeftSidebarContent({
       }
 
       // Optimistically update
-      queryClient.setQueryData<Notebook[]>(['userNotebooks'], (old) => {
+      queryClient.setQueryData<Notebook[]>(['userNotebooks', activeOrg?.id], (old) => {
         if (!old) return old
 
         const newNotebooks = JSON.parse(JSON.stringify(old)) as Notebook[]
@@ -259,20 +260,19 @@ export function LeftSidebarContent({
 
       return { previousNotebooks }
     },
-    onError: (err, _variables, context) => {
+    onError: (_err, _variables, context) => {
       // Rollback on error
       if (context?.previousNotebooks) {
-        queryClient.setQueryData(['userNotebooks'], context.previousNotebooks)
+        queryClient.setQueryData(['userNotebooks', activeOrg?.id], context.previousNotebooks)
       }
       toast.error('Failed to move note')
-      console.error('Error moving note:', err)
     },
     onSuccess: () => {
       toast.success('Note moved successfully')
     },
     onSettled: () => {
       // Refetch to ensure consistency
-      queryClient.invalidateQueries({ queryKey: ['userNotebooks'] })
+      queryClient.invalidateQueries({ queryKey: ['userNotebooks', activeOrg?.id] })
     }
   })
 

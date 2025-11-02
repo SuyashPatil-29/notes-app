@@ -701,11 +701,6 @@ export function NoteEditor({ user, userLoading = false }: NoteEditorProps) {
                   Auto-saving...
                 </div>
               )}
-              {!isEditMode && (
-                <div className="rounded-lg bg-orange-500/10 border border-orange-500/20 px-2 py-1 text-xs text-orange-600 dark:text-orange-400 flex items-center gap-1">
-                  Read-only
-                </div>
-              )}
               <div className={charsCount ? "rounded-lg bg-accent px-2 py-1 text-sm text-muted-foreground" : "hidden"}>
                 {charsCount} Words
               </div>

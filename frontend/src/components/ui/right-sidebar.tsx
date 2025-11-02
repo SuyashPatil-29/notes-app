@@ -139,7 +139,7 @@ function RightSidebarProvider({
             } as React.CSSProperties
           }
           className={cn(
-            "group/right-sidebar-wrapper has-data-[variant=inset]:bg-sidebar flex min-h-svh w-full",
+            "group/right-sidebar-wrapper has-data-[variant=inset]:bg-sidebar flex min-h-svh w-full max-w-full overflow-x-hidden",
             className
           )}
           {...props}
@@ -303,7 +303,7 @@ function RightSidebarInset({ className, ...props }: React.ComponentProps<"div">)
     <div
       data-slot="right-sidebar-inset"
       className={cn(
-        "bg-background relative flex w-full flex-1 flex-col",
+        "bg-background relative flex w-full max-w-full flex-1 flex-col overflow-x-hidden",
         "md:peer-right-data-[variant=inset]:m-2 md:peer-right-data-[variant=inset]:mr-0 md:peer-right-data-[variant=inset]:rounded-xl md:peer-right-data-[variant=inset]:shadow-sm md:peer-right-data-[variant=inset]:peer-right-data-[state=collapsed]:mr-2",
         className
       )}

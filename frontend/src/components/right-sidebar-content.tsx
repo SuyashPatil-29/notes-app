@@ -1,4 +1,4 @@
-import { FileText, MessageSquare } from "lucide-react"
+import { FileText, MessageSquare, Copy, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 import { useNavigate } from "react-router-dom"
 import {
@@ -37,11 +37,13 @@ import { Response } from "@/components/ai/response"
 import { Reasoning, ReasoningTrigger, ReasoningContent } from "@/components/ai/reasoning"
 import { Tool, ToolHeader, ToolContent, ToolInput, ToolOutput } from "@/components/ai/tool"
 import { Input } from "@/components/ui/input"
+import { Button } from "@/components/ui/button"
 import { useUser } from "@/hooks/auth"
 import { useAuth } from "@clerk/clerk-react"
 import api from "@/utils/api"
 import { SelectGroup, SelectLabel, SelectSeparator } from "@/components/ui/select"
 import { MentionNotesPopover, MentionedNotesBadges } from "@/components/ai/mention-notes"
+import { Suggestions, Suggestion } from "@/components/ai/suggestion"
 import { getUserNotebooks } from "@/utils/notebook"
 import type { Notebook } from "@/types/backend"
 import { useOrganizationContext } from "@/contexts/OrganizationContext"
@@ -542,7 +544,7 @@ export function RightSidebarContent() {
     const [authToken, setAuthToken] = useState<string | null>(null)
     const { open } = useRightSidebar()
     const inputRef = useRef<HTMLTextAreaElement>(null)
-    
+
     // Fetch auth token when component mounts or user changes
     useEffect(() => {
         const fetchToken = async () => {
@@ -604,12 +606,13 @@ export function RightSidebarContent() {
     const selectedProvider = modelToProvider[model];
     const hasSelectedApiKey = apiKeyStatus[selectedProvider as keyof ApiKeyStatus] || false;
 
-    const { messages, input, handleInputChange, handleSubmit, status, setInput, append } = useChat({
+    const { messages, input, handleInputChange, handleSubmit, status, setInput, append, setMessages } = useChat({
         key: authToken || 'no-token', // Force re-initialization when token changes
         api: "http://localhost:8080/api/chat",
         body: {
             provider: modelToProvider[model],
             model,
+            organizationId: activeOrg?.id || null,
         },
         credentials: "include",
         headers: {
@@ -684,6 +687,30 @@ export function RightSidebarContent() {
     const handleNavigateToNote = (notebookId: string, chapterId: string, noteId: string) => {
         navigate(`/${notebookId}/${chapterId}/${noteId}`)
         toast.success("Navigating to note...", { duration: 2000 })
+    }
+
+    // Clear chat history
+    const handleClearChat = () => {
+        setMessages([])
+        toast.success("Chat cleared", { duration: 2000 })
+    }
+
+    // Copy response text to clipboard
+    const handleCopyResponse = (text: string) => {
+        navigator.clipboard.writeText(text).then(() => {
+            toast.success("Copied to clipboard", { duration: 2000 })
+        }).catch(() => {
+            toast.error("Failed to copy", { duration: 2000 })
+        })
+    }
+
+    // Handle suggestion click
+    const handleSuggestionClick = (suggestion: string) => {
+        setInput(suggestion)
+        // Auto-focus the input after setting the suggestion
+        setTimeout(() => {
+            inputRef.current?.focus()
+        }, 50)
     }
 
     const handleSubmitWithFiles = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -1025,6 +1052,17 @@ export function RightSidebarContent() {
                             <div className="grid flex-1 text-left text-sm leading-tight">
                                 <span className="truncate font-semibold">AI Chat</span>
                             </div>
+                            {messages.length > 0 && (
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={handleClearChat}
+                                    className="h-8 w-8 p-0 hover:bg-destructive/10 hover:text-destructive"
+                                    title="Clear chat"
+                                >
+                                    <Trash2 className="h-4 w-4" />
+                                </Button>
+                            )}
                         </RightSidebarMenuButton>
                     </RightSidebarMenuItem>
                 </RightSidebarMenu>
@@ -1033,27 +1071,62 @@ export function RightSidebarContent() {
                 <Conversation className="flex-1">
                     <ConversationContent className="px-6">
                         {messages.length === 0 && (
-                            <div className="flex flex-col items-center justify-center h-full text-center space-y-3">
+                            <div className="flex flex-col items-center justify-center h-full text-center space-y-4 px-4">
                                 <div className="rounded-full bg-muted p-4">
                                     <MessageSquare className="size-8 text-muted-foreground" />
                                 </div>
-                                <div>
+                                <div className="space-y-2">
                                     <h3 className="font-semibold text-lg">
                                         {hasSelectedApiKey ? "Start a conversation" : "Set up your API keys"}
                                     </h3>
-                                    <p className="text-sm text-muted-foreground mt-1">
+                                    <p className="text-sm text-muted-foreground">
                                         {hasSelectedApiKey
                                             ? "Ask me about your notes, notebooks, or anything else!"
                                             : "Configure your API keys in settings to start chatting"
                                         }
                                     </p>
-                                    {hasSelectedApiKey && (
-                                        <div className="text-xs text-muted-foreground mt-2 space-y-1">
-                                            <p>Try: "What notes do I have?" or "Search for notes about..."</p>
-                                            <p className="text-primary/70">💡 I can also reorganize your entire note structure!</p>
-                                        </div>
-                                    )}
                                 </div>
+                                {hasSelectedApiKey && (
+                                    <div className="w-full space-y-3 mt-2">
+                                        <p className="text-xs text-muted-foreground">Try these suggestions:</p>
+                                        <Suggestions className="justify-center w-full">
+                                            <Suggestion
+                                                suggestion="What notes do I have?"
+                                                onClick={handleSuggestionClick}
+                                            />
+                                        </Suggestions>
+                                        <Suggestions className="justify-center w-full">
+                                            <Suggestion
+                                                suggestion="Search for notes about..."
+                                                onClick={handleSuggestionClick}
+                                            />
+                                        </Suggestions>
+                                        <Suggestions className="justify-center w-full">
+                                        <Suggestion
+                                            suggestion="List all my notebooks"
+                                            onClick={handleSuggestionClick}
+                                        />
+                                        </Suggestions>
+                                        <Suggestions className="justify-center w-full">
+                                            <Suggestion
+                                                suggestion="Create a new note"
+                                                onClick={handleSuggestionClick}
+                                            />
+                                        </Suggestions>
+                                        <Suggestions className="justify-center w-full">
+                                            <Suggestion
+                                                suggestion="Help me organize my notes"
+                                                onClick={handleSuggestionClick}
+                                            />
+                                        </Suggestions>
+                                        <Suggestions className="justify-center w-full">
+                                            <Suggestion
+                                                suggestion="Show me my recent notes"
+                                                onClick={handleSuggestionClick}
+                                            />
+                                        </Suggestions>
+                                    </div>
+                                )}
                             </div>
                         )}
                         {messages.map((m) => {
@@ -1107,9 +1180,22 @@ export function RightSidebarContent() {
                                                 switch (part.type) {
                                                     case "text":
                                                         return (
-                                                            <Response key={index}>
-                                                                {part.text}
-                                                            </Response>
+                                                            <div key={index} className="relative group">
+                                                                <Response>
+                                                                    {part.text}
+                                                                </Response>
+                                                                {part.text && (
+                                                                    <Button
+                                                                        variant="ghost"
+                                                                        size="sm"
+                                                                        onClick={() => handleCopyResponse(part.text)}
+                                                                        className="absolute top-0 right-0 h-7 w-7 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                                                                        title="Copy response"
+                                                                    >
+                                                                        <Copy className="h-3.5 w-3.5" />
+                                                                    </Button>
+                                                                )}
+                                                            </div>
                                                         )
 
                                                     case "tool-invocation":

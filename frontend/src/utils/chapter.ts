@@ -21,6 +21,9 @@ export const deleteChapter = async (id: string) => {
     return await api.delete(`/chapter/${id}`);
 };
 
-export const moveChapter = async (id: string, notebookId: string) => {
-    return await api.patch(`/chapter/${id}/move`, { notebook_id: notebookId });
+export const moveChapter = async (id: string, notebookId: string, organizationId?: string) => {
+    return await api.patch(`/chapter/${id}/move`, { 
+        notebook_id: notebookId,
+        organization_id: organizationId 
+    });
 };
