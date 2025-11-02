@@ -3,6 +3,7 @@ package db
 import (
 	"backend/internal/models"
 	"os"
+	"time"
 
 	"github.com/joho/godotenv"
 	"github.com/rs/zerolog/log"
@@ -19,10 +20,28 @@ func InitDB() {
 	}
 
 	dsn := os.Getenv("DB_URL")
-	DB, err = gorm.Open(postgres.Open(dsn), &gorm.Config{})
+
+	// Open connection with Supabase-optimized settings
+	DB, err = gorm.Open(postgres.New(postgres.Config{
+		DSN:                  dsn,
+		PreferSimpleProtocol: true, // Disables implicit prepared statement usage
+	}), &gorm.Config{
+		PrepareStmt:            false, // Disable prepared statements for Supabase pooler
+		SkipDefaultTransaction: true,  // Improves performance for Supabase
+	})
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to connect to database")
 	}
+
+	// Configure connection pool for Supabase
+	sqlDB, err := DB.DB()
+	if err != nil {
+		log.Fatal().Err(err).Msg("Failed to get database instance")
+	}
+	sqlDB.SetMaxOpenConns(10)                 // Maximum open connections
+	sqlDB.SetMaxIdleConns(5)                  // Maximum idle connections
+	sqlDB.SetConnMaxLifetime(5 * time.Minute) // 5 minutes connection lifetime
+	sqlDB.SetConnMaxIdleTime(1 * time.Minute) // Close idle connections after 1 minute
 
 	log.Info().Msg("Database connected successfully")
 

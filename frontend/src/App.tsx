@@ -6,7 +6,8 @@ import { createNote, updateNote, deleteNote } from '@/utils/notes'
 import { useUser } from '@/hooks/auth'
 import { useAuth, SignedIn, ClerkLoading } from '@clerk/clerk-react'
 import { setAuthTokenGetter } from '@/utils/api'
-import { toast, Toaster } from 'sonner'
+import { toast } from 'sonner'
+import { Toaster } from '@/components/ui/sonner'
 import { LeftSidebarContent } from '@/components/left-sidebar-content'
 import { RightSidebarContent } from '@/components/right-sidebar-content'
 import { Dashboard } from '@/components/Dashboard'
@@ -36,6 +37,7 @@ import { SignUpPage } from '@/pages/sign-up-page'
 import { SSOCallback } from '@/components/auth/sso-callback'
 import { LandingPage } from '@/pages/landing-page'
 import { PublicOnlyRoute } from '@/components/auth/protected-route'
+import Page from '@/pages/realtime-cursor'
 
 function App() {
   const { user, loading: userLoading, refetch: refetchUser } = useUser()
@@ -516,6 +518,7 @@ function App() {
         <Route path="/public/:notebookId/:chapterId" element={<PublicChapterView />} />
         <Route path="/public/:notebookId/:chapterId/:noteId" element={<PublicNoteView />} />
         <Route path="/public/user/:email" element={<PublicUserProfile />} />
+        <Route path="/public/realtime-cursor" element={<Page />} />
 
         {/* Protected routes */}
         <Route path="/*" element={

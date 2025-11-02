@@ -33,6 +33,8 @@ import { MathSelector } from "./selectors/math-selector";
 import { NodeSelector } from "./selectors/node-selector";
 import { Separator } from "./ui/separator";
 import type { Notes } from "@/types/backend";
+import { RealtimeAvatarStack } from '@/components/realtime-avatar-stack'
+import { RealtimeCursors } from '@/components/realtime-cursors'
 
 import GenerativeMenuSwitch from "./generative/generative-menu-switch";
 // import { uploadFn } from "./image-upload";
@@ -301,7 +303,6 @@ export function NoteEditor({ user, userLoading = false }: NoteEditorProps) {
       hasUnsavedChanges.current = false
 
       if (isAutoSave) {
-        toast.success("Auto-saved", { duration: 2000 })
       } else {
         toast.success("Note saved successfully!")
       }
@@ -386,12 +387,18 @@ export function NoteEditor({ user, userLoading = false }: NoteEditorProps) {
         user={user}
         breadcrumbs={breadcrumbs}
       />
+      {/* Real-time cursors overlay */}
+      <RealtimeCursors roomName={`note-${noteId}`} />
       <div className="flex-1 overflow-auto">
         <div className="max-w-4xl mx-auto px-6 py-8">
           {/* Note Metadata Section */}
           <div className="mb-6 space-y-4">
-            <div>
+            <div className='flex items-center justify-between gap-2'>
               <h1 className="text-4xl font-bold tracking-tight">{note.name}</h1>
+              <div className="flex flex-col items-center gap-2">
+                <RealtimeAvatarStack roomName={`note-${noteId}`} />
+                <span className="text-sm text-muted-foreground">People on this page</span>
+              </div>
             </div>
 
             <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
