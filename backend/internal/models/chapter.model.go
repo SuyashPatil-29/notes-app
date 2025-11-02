@@ -8,14 +8,15 @@ import (
 )
 
 type Chapter struct {
-	ID         string    `json:"id" gorm:"primaryKey;type:varchar(255)"`
-	Name       string    `json:"name"`
-	NotebookID string    `json:"notebookId" gorm:"type:varchar(255);index"`
-	Notebook   Notebook  `json:"notebook" gorm:"foreignKey:NotebookID"`
-	Files      []Notes   `json:"notes" gorm:"foreignKey:ChapterID"`
-	IsPublic   bool      `json:"isPublic" gorm:"default:false"`
-	CreatedAt  time.Time `json:"createdAt"`
-	UpdatedAt  time.Time `json:"updatedAt"`
+	ID             string    `json:"id" gorm:"primaryKey;type:varchar(255)"`
+	Name           string    `json:"name"`
+	NotebookID     string    `json:"notebookId" gorm:"type:varchar(255);index"`
+	OrganizationID *string   `json:"organizationId,omitempty" gorm:"type:varchar(255);index"`
+	Notebook       Notebook  `json:"notebook" gorm:"foreignKey:NotebookID"`
+	Files          []Notes   `json:"notes" gorm:"foreignKey:ChapterID"`
+	IsPublic       bool      `json:"isPublic" gorm:"default:false"`
+	CreatedAt      time.Time `json:"createdAt"`
+	UpdatedAt      time.Time `json:"updatedAt"`
 }
 
 // BeforeCreate hook to generate CUID before creating a chapter

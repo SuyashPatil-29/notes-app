@@ -8,6 +8,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog/log"
+	"gorm.io/gorm"
 )
 
 func GetUserNotebooks(c *gin.Context) {
@@ -20,8 +21,30 @@ func GetUserNotebooks(c *gin.Context) {
 
 	var notebooks []models.Notebook
 
-	// Get all notebooks for the authenticated user with chapters and notes preloaded
-	if err := db.DB.Where("clerk_user_id = ?", clerkUserID).Preload("Chapters.Files").Preload("Chapters").Find(&notebooks).Error; err != nil {
+	// Get organization ID from query param (optional)
+	orgID := c.Query("organizationId")
+
+	var query *gorm.DB
+
+	if orgID != "" {
+		// Get organization notebooks - verify membership first
+		role, isMember, err := middleware.GetOrgMemberRole(c.Request.Context(), orgID, clerkUserID)
+		if err != nil || !isMember {
+			log.Warn().Str("org_id", orgID).Str("user_id", clerkUserID).Msg("User not authorized for org notebooks")
+			c.JSON(http.StatusForbidden, gin.H{"error": "You are not a member of this organization"})
+			return
+		}
+		log.Debug().Str("org_id", orgID).Str("user_id", clerkUserID).Str("role", role).Msg("Fetching org notebooks")
+
+		// For org notebooks, fetch ALL notebooks in the org (not just user's own)
+		query = db.DB.Where("organization_id = ?", orgID)
+	} else {
+		// Get personal notebooks only (null organization_id, owned by this user)
+		query = db.DB.Where("clerk_user_id = ? AND organization_id IS NULL", clerkUserID)
+	}
+
+	// Get all notebooks with chapters and notes preloaded
+	if err := query.Preload("Chapters.Files").Preload("Chapters").Find(&notebooks).Error; err != nil {
 		log.Print("Error fetching notebooks for user: ", clerkUserID, " Error: ", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -41,11 +64,29 @@ func GetNotebookById(c *gin.Context) {
 	var notebook models.Notebook
 	id := c.Param("id")
 
-	// Find notebook and verify ownership
-	if err := db.DB.Where("id = ? AND clerk_user_id = ?", id, clerkUserID).First(&notebook).Error; err != nil {
-		log.Print("Notebook not found with id: ", id, " for user: ", clerkUserID, " Error: ", err)
+	// Find notebook first
+	if err := db.DB.Where("id = ?", id).First(&notebook).Error; err != nil {
+		log.Print("Notebook not found with id: ", id, " Error: ", err)
 		c.JSON(http.StatusNotFound, gin.H{"error": "Notebook not found"})
 		return
+	}
+
+	// Check authorization: personal notebook or org member
+	if notebook.OrganizationID != nil && *notebook.OrganizationID != "" {
+		// Organization notebook - verify membership
+		_, isMember, err := middleware.GetOrgMemberRole(c.Request.Context(), *notebook.OrganizationID, clerkUserID)
+		if err != nil || !isMember {
+			log.Warn().Str("notebook_id", id).Str("org_id", *notebook.OrganizationID).Str("user_id", clerkUserID).Msg("User not authorized for org notebook")
+			c.JSON(http.StatusForbidden, gin.H{"error": "You are not authorized to access this notebook"})
+			return
+		}
+	} else {
+		// Personal notebook - verify ownership
+		if notebook.ClerkUserID != clerkUserID {
+			log.Warn().Str("notebook_id", id).Str("user_id", clerkUserID).Msg("User not authorized for personal notebook")
+			c.JSON(http.StatusForbidden, gin.H{"error": "You are not authorized to access this notebook"})
+			return
+		}
 	}
 
 	c.JSON(http.StatusOK, notebook)
@@ -70,6 +111,17 @@ func CreateNotebook(c *gin.Context) {
 	// Set the Clerk user ID from authenticated session (security)
 	notebook.ClerkUserID = clerkUserID
 
+	// If organizationId is provided, verify membership
+	if notebook.OrganizationID != nil && *notebook.OrganizationID != "" {
+		_, isMember, err := middleware.GetOrgMemberRole(c.Request.Context(), *notebook.OrganizationID, clerkUserID)
+		if err != nil || !isMember {
+			log.Warn().Str("org_id", *notebook.OrganizationID).Str("user_id", clerkUserID).Msg("User not authorized to create notebook in org")
+			c.JSON(http.StatusForbidden, gin.H{"error": "You are not a member of this organization"})
+			return
+		}
+		log.Info().Str("org_id", *notebook.OrganizationID).Str("user_id", clerkUserID).Msg("Creating org notebook")
+	}
+
 	if err := db.DB.Create(&notebook).Error; err != nil {
 		log.Print("Error creating Notebook in db: ", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -90,15 +142,33 @@ func DeleteNotebook(c *gin.Context) {
 	var notebook models.Notebook
 	id := c.Param("id")
 
-	// Find notebook and verify ownership
-	if err := db.DB.Where("id = ? AND clerk_user_id = ?", id, clerkUserID).First(&notebook).Error; err != nil {
-		log.Print("Notebook not found with id: ", id, " for user: ", clerkUserID, " Error: ", err)
+	// Find notebook first
+	if err := db.DB.Where("id = ?", id).First(&notebook).Error; err != nil {
+		log.Print("Notebook not found with id: ", id, " Error: ", err)
 		c.JSON(http.StatusNotFound, gin.H{"error": "Notebook not found"})
 		return
 	}
 
-	if err := db.DB.Delete(&notebook, id).Error; err != nil {
-		log.Print("Error deleting Notebook with id: ", id, "Error: ", err)
+	// Check authorization
+	if notebook.OrganizationID != nil && *notebook.OrganizationID != "" {
+		// Organization notebook - any member can delete (for now - could restrict to admins)
+		_, isMember, err := middleware.GetOrgMemberRole(c.Request.Context(), *notebook.OrganizationID, clerkUserID)
+		if err != nil || !isMember {
+			log.Warn().Str("notebook_id", id).Str("org_id", *notebook.OrganizationID).Str("user_id", clerkUserID).Msg("User not authorized to delete org notebook")
+			c.JSON(http.StatusForbidden, gin.H{"error": "You are not authorized to delete this notebook"})
+			return
+		}
+	} else {
+		// Personal notebook - verify ownership
+		if notebook.ClerkUserID != clerkUserID {
+			log.Warn().Str("notebook_id", id).Str("user_id", clerkUserID).Msg("User not authorized to delete personal notebook")
+			c.JSON(http.StatusForbidden, gin.H{"error": "You are not authorized to delete this notebook"})
+			return
+		}
+	}
+
+	if err := db.DB.Delete(&notebook).Error; err != nil {
+		log.Print("Error deleting Notebook with id: ", id, " Error: ", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -117,11 +187,29 @@ func UpdateNotebook(c *gin.Context) {
 	id := c.Param("id")
 	var notebook models.Notebook
 
-	// Check if notebook exists and verify ownership
-	if err := db.DB.Where("id = ? AND clerk_user_id = ?", id, clerkUserID).First(&notebook).Error; err != nil {
-		log.Print("Notebook not found with id: ", id, " for user: ", clerkUserID, " Error: ", err)
+	// Find notebook first
+	if err := db.DB.Where("id = ?", id).First(&notebook).Error; err != nil {
+		log.Print("Notebook not found with id: ", id, " Error: ", err)
 		c.JSON(http.StatusNotFound, gin.H{"error": "Notebook not found"})
 		return
+	}
+
+	// Check authorization
+	if notebook.OrganizationID != nil && *notebook.OrganizationID != "" {
+		// Organization notebook - any member can edit
+		_, isMember, err := middleware.GetOrgMemberRole(c.Request.Context(), *notebook.OrganizationID, clerkUserID)
+		if err != nil || !isMember {
+			log.Warn().Str("notebook_id", id).Str("org_id", *notebook.OrganizationID).Str("user_id", clerkUserID).Msg("User not authorized to update org notebook")
+			c.JSON(http.StatusForbidden, gin.H{"error": "You are not authorized to update this notebook"})
+			return
+		}
+	} else {
+		// Personal notebook - verify ownership
+		if notebook.ClerkUserID != clerkUserID {
+			log.Warn().Str("notebook_id", id).Str("user_id", clerkUserID).Msg("User not authorized to update personal notebook")
+			c.JSON(http.StatusForbidden, gin.H{"error": "You are not authorized to update this notebook"})
+			return
+		}
 	}
 
 	// Bind the update data from request body
@@ -132,8 +220,9 @@ func UpdateNotebook(c *gin.Context) {
 		return
 	}
 
-	// Prevent changing clerk_user_id through update
+	// Prevent changing clerk_user_id and organization_id through update
 	updateData.ClerkUserID = notebook.ClerkUserID
+	updateData.OrganizationID = notebook.OrganizationID
 
 	// Update the notebook
 	if err := db.DB.Model(&notebook).Updates(updateData).Error; err != nil {

@@ -12,6 +12,7 @@ export type Notebook = {
   id: string;
   name: string;
   userId: number;
+  organizationId?: string | null;
   chapters: Chapter[];
   isPublic: boolean;
   createdAt: string;
@@ -22,6 +23,7 @@ export type Chapter = {
   id: string;
   name: string;
   notebookId: string;
+  organizationId?: string | null;
   notebook: Notebook;
   notes: Notes[];
   isPublic: boolean;
@@ -34,6 +36,7 @@ export type Notes = {
   name: string;
   content: string;
   chapterId: string;
+  organizationId?: string | null;
   chapter: Chapter;
   isPublic: boolean;
   videoData?: string;
@@ -131,4 +134,79 @@ export type SyncCalendarResponse = {
   message: string;
   syncedCount: number;
   lastSyncedAt: string;
+};
+
+// Organization Types
+export type Organization = {
+  id: string;
+  name: string;
+  slug: string;
+  imageUrl?: string;
+  createdAt: string;
+  membersCount?: number;
+  role?: 'admin' | 'member'; // Current user's role in this org
+};
+
+export type OrganizationMember = {
+  id: string;
+  userId: string;
+  organizationId: string;
+  role: 'org:admin' | 'org:member';
+  createdAt: string;
+  isCurrentUser?: boolean;
+  publicUserData: {
+    identifier: string;
+    firstName?: string;
+    lastName?: string;
+    imageUrl?: string;
+  };
+};
+
+export type OrganizationInvitation = {
+  id: string;
+  emailAddress: string;
+  organizationId: string;
+  role: 'org:admin' | 'org:member';
+  status: 'pending' | 'accepted' | 'revoked';
+  createdAt: string;
+  organization?: {
+    id: string;
+    name: string;
+    slug: string;
+    imageUrl?: string;
+  };
+};
+
+export type CreateOrganizationRequest = {
+  name: string;
+  slug?: string;
+};
+
+export type InviteMemberRequest = {
+  emailAddress: string;
+  role: 'org:admin' | 'org:member';
+};
+
+export type UpdateMemberRoleRequest = {
+  role: 'org:admin' | 'org:member';
+};
+
+export type ListOrganizationsResponse = {
+  organizations: Organization[];
+  total: number;
+};
+
+export type ListOrganizationMembersResponse = {
+  members: OrganizationMember[];
+  total: number;
+};
+
+export type ListOrganizationInvitationsResponse = {
+  invitations: OrganizationInvitation[];
+  total: number;
+};
+
+export type ListUserInvitationsResponse = {
+  invitations: OrganizationInvitation[];
+  total: number;
 };

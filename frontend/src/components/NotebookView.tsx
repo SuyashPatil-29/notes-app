@@ -9,6 +9,7 @@ import { BookOpen, Plus, Globe, Lock } from 'lucide-react'
 import { useState } from 'react'
 import { isNotebookPublished, getPublishedNoteCount } from '@/utils/publish'
 import type { AuthenticatedUser } from '@/types/backend'
+import { useOrganizationContext } from '@/contexts/OrganizationContext'
 
 interface NotebookViewProps {
   user: AuthenticatedUser | null
@@ -19,11 +20,12 @@ interface NotebookViewProps {
 export function NotebookView({ user, userLoading = false, onCreateChapter }: NotebookViewProps) {
   const { notebookId } = useParams<{ notebookId: string }>()
   const navigate = useNavigate()
+  const { activeOrg } = useOrganizationContext()
   const [publishDialogOpen, setPublishDialogOpen] = useState(false)
 
   const { data: notebooks, isLoading: notebooksLoading } = useQuery({
-    queryKey: ['userNotebooks'],
-    queryFn: getUserNotebooks,
+    queryKey: ['userNotebooks', activeOrg?.id],
+    queryFn: () => getUserNotebooks(activeOrg?.id),
     enabled: !!user,
   })
 

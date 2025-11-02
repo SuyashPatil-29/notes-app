@@ -35,6 +35,17 @@ var (
 	lastMessages []aisdk.Message
 )
 
+// Helper function to check if user has access to a notebook (personal or org) - chat version
+func userCanAccessNotebookChat(ctx context.Context, notebook *models.Notebook, clerkUserID string) bool {
+	if notebook.OrganizationID != nil && *notebook.OrganizationID != "" {
+		// Organization notebook - verify membership
+		_, isMember, err := middleware.GetOrgMemberRole(ctx, *notebook.OrganizationID, clerkUserID)
+		return err == nil && isMember
+	}
+	// Personal notebook - verify ownership
+	return notebook.ClerkUserID == clerkUserID
+}
+
 func getOpenAIClient(apiKey string) *openai.Client {
 	client := openai.NewClient(openaioption.WithAPIKey(apiKey))
 	return &client
@@ -244,24 +255,28 @@ func handleNotesToolCall(toolCall aisdk.ToolCall, clerkUserID string) any {
 
 // searchNotes searches for notes by query in title and content
 func searchNotes(clerkUserID string, query string) any {
-	var notes []models.Notes
+	var allNotes []models.Notes
 
-	// Search in both title and content
+	// Search in personal notebooks (organization_id IS NULL)
 	searchQuery := "%" + strings.ToLower(query) + "%"
 	err := db.DB.Preload("Chapter.Notebook").
 		Joins("JOIN chapters ON notes.chapter_id = chapters.id").
 		Joins("JOIN notebooks ON chapters.notebook_id = notebooks.id").
-		Where("notebooks.clerk_user_id = ? AND (LOWER(notes.name) LIKE ? OR LOWER(notes.content) LIKE ?)",
+		Where("notebooks.clerk_user_id = ? AND notebooks.organization_id IS NULL AND (LOWER(notes.name) LIKE ? OR LOWER(notes.content) LIKE ?)",
 			clerkUserID, searchQuery, searchQuery).
 		Limit(10).
-		Find(&notes).Error
+		Find(&allNotes).Error
 
 	if err != nil {
-		log.Error().Err(err).Msg("Failed to search notes")
+		log.Error().Err(err).Msg("Failed to search personal notes")
 		return map[string]string{"error": "Failed to search notes"}
 	}
 
-	if len(notes) == 0 {
+	// Note: For now, only search personal notebooks. Organization notebook search would require
+	// fetching user's organization memberships from Clerk and filtering accordingly.
+	// This keeps the implementation performant and straightforward.
+
+	if len(allNotes) == 0 {
 		return map[string]any{
 			"message": "No notes found matching the query",
 			"query":   query,
@@ -270,8 +285,8 @@ func searchNotes(clerkUserID string, query string) any {
 	}
 
 	// Format results
-	results := make([]map[string]any, len(notes))
-	for i, note := range notes {
+	results := make([]map[string]any, len(allNotes))
+	for i, note := range allNotes {
 		// Truncate content for preview
 		preview := note.Content
 		if len(preview) > 200 {
@@ -290,7 +305,7 @@ func searchNotes(clerkUserID string, query string) any {
 
 	return map[string]any{
 		"query":   query,
-		"count":   len(notes),
+		"count":   len(allNotes),
 		"results": results,
 	}
 }
@@ -299,8 +314,10 @@ func searchNotes(clerkUserID string, query string) any {
 func listNotebooks(clerkUserID string) any {
 	var notebooks []models.Notebook
 
+	// Only list personal notebooks (organization_id IS NULL)
+	// Organization notebooks would require fetching memberships from Clerk
 	err := db.DB.Preload("Chapters").
-		Where("clerk_user_id = ?", clerkUserID).
+		Where("clerk_user_id = ? AND organization_id IS NULL", clerkUserID).
 		Order("updated_at DESC").
 		Find(&notebooks).Error
 
@@ -311,7 +328,7 @@ func listNotebooks(clerkUserID string) any {
 
 	if len(notebooks) == 0 {
 		return map[string]any{
-			"message":   "No notebooks found. Create one to get started!",
+			"message":   "No personal notebooks found. Create one to get started!",
 			"count":     0,
 			"notebooks": []any{},
 		}
@@ -337,11 +354,17 @@ func listNotebooks(clerkUserID string) any {
 
 // listChapters lists all chapters in a notebook
 func listChapters(clerkUserID string, notebookID string) any {
-	// Verify notebook belongs to user
+	// Find notebook first
 	var notebook models.Notebook
-	err := db.DB.Where("id = ? AND clerk_user_id = ?", notebookID, clerkUserID).First(&notebook).Error
+	err := db.DB.Where("id = ?", notebookID).First(&notebook).Error
 	if err != nil {
 		log.Error().Err(err).Msg("Notebook not found")
+		return map[string]string{"error": "Notebook not found"}
+	}
+
+	// Check authorization
+	if !userCanAccessNotebookChat(context.Background(), &notebook, clerkUserID) {
+		log.Warn().Str("notebook_id", notebookID).Str("user_id", clerkUserID).Msg("User not authorized to access notebook")
 		return map[string]string{"error": "Notebook not found or access denied"}
 	}
 
@@ -389,14 +412,16 @@ func listChapters(clerkUserID string, notebookID string) any {
 func getNoteContent(clerkUserID string, noteID string) any {
 	var note models.Notes
 
-	err := db.DB.Preload("Chapter.Notebook").
-		Joins("JOIN chapters ON notes.chapter_id = chapters.id").
-		Joins("JOIN notebooks ON chapters.notebook_id = notebooks.id").
-		Where("notes.id = ? AND notebooks.clerk_user_id = ?", noteID, clerkUserID).
-		First(&note).Error
-
+	// Get note with relationships
+	err := db.DB.Preload("Chapter.Notebook").Where("id = ?", noteID).First(&note).Error
 	if err != nil {
 		log.Error().Err(err).Msg("Note not found")
+		return map[string]string{"error": "Note not found"}
+	}
+
+	// Check authorization
+	if !userCanAccessNotebookChat(context.Background(), &note.Chapter.Notebook, clerkUserID) {
+		log.Warn().Str("note_id", noteID).Str("user_id", clerkUserID).Msg("User not authorized to access note")
 		return map[string]string{"error": "Note not found or access denied"}
 	}
 
@@ -413,15 +438,17 @@ func getNoteContent(clerkUserID string, noteID string) any {
 
 // listNotesInChapter lists all notes in a chapter
 func listNotesInChapter(clerkUserID string, chapterID string) any {
-	// Verify chapter belongs to user's notebook
+	// Get chapter with notebook
 	var chapter models.Chapter
-	err := db.DB.Preload("Notebook").
-		Joins("JOIN notebooks ON chapters.notebook_id = notebooks.id").
-		Where("chapters.id = ? AND notebooks.clerk_user_id = ?", chapterID, clerkUserID).
-		First(&chapter).Error
-
+	err := db.DB.Preload("Notebook").Where("id = ?", chapterID).First(&chapter).Error
 	if err != nil {
 		log.Error().Err(err).Msg("Chapter not found")
+		return map[string]string{"error": "Chapter not found"}
+	}
+
+	// Check authorization
+	if !userCanAccessNotebookChat(context.Background(), &chapter.Notebook, clerkUserID) {
+		log.Warn().Str("chapter_id", chapterID).Str("user_id", clerkUserID).Msg("User not authorized to access chapter")
 		return map[string]string{"error": "Chapter not found or access denied"}
 	}
 
@@ -474,23 +501,26 @@ func listNotesInChapter(clerkUserID string, chapterID string) any {
 
 // createNote creates a new note in a chapter
 func createNote(clerkUserID string, chapterID string, title string, content string) any {
-	// Verify chapter belongs to user's notebook
+	// Get chapter with notebook
 	var chapter models.Chapter
-	err := db.DB.Preload("Notebook").
-		Joins("JOIN notebooks ON chapters.notebook_id = notebooks.id").
-		Where("chapters.id = ? AND notebooks.clerk_user_id = ?", chapterID, clerkUserID).
-		First(&chapter).Error
-
+	err := db.DB.Preload("Notebook").Where("id = ?", chapterID).First(&chapter).Error
 	if err != nil {
 		log.Error().Err(err).Msg("Chapter not found")
+		return map[string]string{"error": "Chapter not found"}
+	}
+
+	// Check authorization
+	if !userCanAccessNotebookChat(context.Background(), &chapter.Notebook, clerkUserID) {
+		log.Warn().Str("chapter_id", chapterID).Str("user_id", clerkUserID).Msg("User not authorized to create note in chapter")
 		return map[string]string{"error": "Chapter not found or access denied"}
 	}
 
-	// Create the note
+	// Create the note with inherited organization_id
 	note := models.Notes{
-		Name:      title,
-		Content:   content,
-		ChapterID: chapterID,
+		Name:           title,
+		Content:        content,
+		ChapterID:      chapterID,
+		OrganizationID: chapter.OrganizationID,
 	}
 
 	err = db.DB.Create(&note).Error
@@ -522,23 +552,30 @@ func createNote(clerkUserID string, chapterID string, title string, content stri
 
 // moveChapter moves a chapter to a different notebook
 func moveChapter(clerkUserID string, chapterID string, targetNotebookID string) any {
-	// Verify chapter belongs to user's notebook
+	// Get chapter with notebook
 	var chapter models.Chapter
-	err := db.DB.Preload("Notebook").
-		Joins("JOIN notebooks ON chapters.notebook_id = notebooks.id").
-		Where("chapters.id = ? AND notebooks.clerk_user_id = ?", chapterID, clerkUserID).
-		First(&chapter).Error
-
+	err := db.DB.Preload("Notebook").Where("id = ?", chapterID).First(&chapter).Error
 	if err != nil {
 		log.Error().Err(err).Msg("Chapter not found")
+		return map[string]string{"error": "Chapter not found"}
+	}
+
+	// Check authorization for source notebook
+	if !userCanAccessNotebookChat(context.Background(), &chapter.Notebook, clerkUserID) {
+		log.Warn().Str("chapter_id", chapterID).Str("user_id", clerkUserID).Msg("User not authorized to move chapter")
 		return map[string]string{"error": "Chapter not found or access denied"}
 	}
 
-	// Verify target notebook belongs to user
+	// Get target notebook and check authorization
 	var targetNotebook models.Notebook
-	err = db.DB.Where("id = ? AND clerk_user_id = ?", targetNotebookID, clerkUserID).First(&targetNotebook).Error
+	err = db.DB.Where("id = ?", targetNotebookID).First(&targetNotebook).Error
 	if err != nil {
 		log.Error().Err(err).Msg("Target notebook not found")
+		return map[string]string{"error": "Target notebook not found"}
+	}
+
+	if !userCanAccessNotebookChat(context.Background(), &targetNotebook, clerkUserID) {
+		log.Warn().Str("notebook_id", targetNotebookID).Str("user_id", clerkUserID).Msg("User not authorized to access target notebook")
 		return map[string]string{"error": "Target notebook not found or access denied"}
 	}
 
@@ -548,8 +585,11 @@ func moveChapter(clerkUserID string, chapterID string, targetNotebookID string) 
 	var noteCount int64
 	db.DB.Model(&models.Notes{}).Where("chapter_id = ?", chapterID).Count(&noteCount)
 
-	// Update chapter's notebook using Select to force update (same as REST API)
-	result := db.DB.Model(&chapter).Select("NotebookID").Updates(models.Chapter{NotebookID: targetNotebookID})
+	// Update chapter's notebook and inherit target notebook's organization_id
+	result := db.DB.Model(&chapter).Updates(map[string]interface{}{
+		"notebook_id":     targetNotebookID,
+		"organization_id": targetNotebook.OrganizationID,
+	})
 	if result.Error != nil {
 		log.Error().Err(result.Error).Msg("Failed to move chapter")
 		return map[string]string{"error": "Failed to move chapter"}
@@ -570,36 +610,41 @@ func moveChapter(clerkUserID string, chapterID string, targetNotebookID string) 
 
 // moveNote moves a note to a different chapter
 func moveNote(clerkUserID string, noteID string, targetChapterID string) any {
-	// Verify note belongs to user
+	// Get note with relationships
 	var note models.Notes
-	err := db.DB.Preload("Chapter.Notebook").
-		Joins("JOIN chapters ON notes.chapter_id = chapters.id").
-		Joins("JOIN notebooks ON chapters.notebook_id = notebooks.id").
-		Where("notes.id = ? AND notebooks.clerk_user_id = ?", noteID, clerkUserID).
-		First(&note).Error
-
+	err := db.DB.Preload("Chapter.Notebook").Where("id = ?", noteID).First(&note).Error
 	if err != nil {
 		log.Error().Err(err).Msg("Note not found")
+		return map[string]string{"error": "Note not found"}
+	}
+
+	// Check authorization for source notebook
+	if !userCanAccessNotebookChat(context.Background(), &note.Chapter.Notebook, clerkUserID) {
+		log.Warn().Str("note_id", noteID).Str("user_id", clerkUserID).Msg("User not authorized to move note")
 		return map[string]string{"error": "Note not found or access denied"}
 	}
 
-	// Verify target chapter belongs to user
+	// Get target chapter and check authorization
 	var targetChapter models.Chapter
-	err = db.DB.Preload("Notebook").
-		Joins("JOIN notebooks ON chapters.notebook_id = notebooks.id").
-		Where("chapters.id = ? AND notebooks.clerk_user_id = ?", targetChapterID, clerkUserID).
-		First(&targetChapter).Error
-
+	err = db.DB.Preload("Notebook").Where("id = ?", targetChapterID).First(&targetChapter).Error
 	if err != nil {
 		log.Error().Err(err).Msg("Target chapter not found")
+		return map[string]string{"error": "Target chapter not found"}
+	}
+
+	if !userCanAccessNotebookChat(context.Background(), &targetChapter.Notebook, clerkUserID) {
+		log.Warn().Str("chapter_id", targetChapterID).Str("user_id", clerkUserID).Msg("User not authorized to access target chapter")
 		return map[string]string{"error": "Target chapter not found or access denied"}
 	}
 
 	oldChapterName := note.Chapter.Name
 	oldNotebookName := note.Chapter.Notebook.Name
 
-	// Update note's chapter using Select to force update (same as REST API)
-	result := db.DB.Model(&note).Select("ChapterID").Updates(models.Notes{ChapterID: targetChapterID})
+	// Update note's chapter and inherit target chapter's organization_id
+	result := db.DB.Model(&note).Updates(map[string]interface{}{
+		"chapter_id":      targetChapterID,
+		"organization_id": targetChapter.OrganizationID,
+	})
 	if result.Error != nil {
 		log.Error().Err(result.Error).Msg("Failed to move note")
 		return map[string]string{"error": "Failed to move note"}
@@ -621,16 +666,17 @@ func moveNote(clerkUserID string, noteID string, targetChapterID string) any {
 
 // renameNote renames a note
 func renameNote(clerkUserID string, noteID string, newName string) any {
-	// Verify note belongs to user
+	// Get note with relationships
 	var note models.Notes
-	err := db.DB.Preload("Chapter.Notebook").
-		Joins("JOIN chapters ON notes.chapter_id = chapters.id").
-		Joins("JOIN notebooks ON chapters.notebook_id = notebooks.id").
-		Where("notes.id = ? AND notebooks.clerk_user_id = ?", noteID, clerkUserID).
-		First(&note).Error
-
+	err := db.DB.Preload("Chapter.Notebook").Where("id = ?", noteID).First(&note).Error
 	if err != nil {
 		log.Error().Err(err).Msg("Note not found")
+		return map[string]string{"error": "Note not found"}
+	}
+
+	// Check authorization
+	if !userCanAccessNotebookChat(context.Background(), &note.Chapter.Notebook, clerkUserID) {
+		log.Warn().Str("note_id", noteID).Str("user_id", clerkUserID).Msg("User not authorized to rename note")
 		return map[string]string{"error": "Note not found or access denied"}
 	}
 
@@ -658,16 +704,17 @@ func renameNote(clerkUserID string, noteID string, newName string) any {
 
 // deleteNote deletes a note
 func deleteNote(clerkUserID string, noteID string) any {
-	// Verify note belongs to user
+	// Get note with relationships
 	var note models.Notes
-	err := db.DB.Preload("Chapter.Notebook").
-		Joins("JOIN chapters ON notes.chapter_id = chapters.id").
-		Joins("JOIN notebooks ON chapters.notebook_id = notebooks.id").
-		Where("notes.id = ? AND notebooks.clerk_user_id = ?", noteID, clerkUserID).
-		First(&note).Error
-
+	err := db.DB.Preload("Chapter.Notebook").Where("id = ?", noteID).First(&note).Error
 	if err != nil {
 		log.Error().Err(err).Msg("Note not found")
+		return map[string]string{"error": "Note not found"}
+	}
+
+	// Check authorization
+	if !userCanAccessNotebookChat(context.Background(), &note.Chapter.Notebook, clerkUserID) {
+		log.Warn().Str("note_id", noteID).Str("user_id", clerkUserID).Msg("User not authorized to delete note")
 		return map[string]string{"error": "Note not found or access denied"}
 	}
 
@@ -708,16 +755,17 @@ func updateNoteContent(clerkUserID string, noteID string, content string) any {
 		}()).
 		Msg("updateNoteContent called")
 
-	// Verify note belongs to user
+	// Get note with relationships
 	var note models.Notes
-	err := db.DB.Preload("Chapter.Notebook").
-		Joins("JOIN chapters ON notes.chapter_id = chapters.id").
-		Joins("JOIN notebooks ON chapters.notebook_id = notebooks.id").
-		Where("notes.id = ? AND notebooks.clerk_user_id = ?", noteID, clerkUserID).
-		First(&note).Error
-
+	err := db.DB.Preload("Chapter.Notebook").Where("id = ?", noteID).First(&note).Error
 	if err != nil {
 		log.Error().Err(err).Str("noteID", noteID).Msg("Note not found")
+		return map[string]string{"error": "Note not found"}
+	}
+
+	// Check authorization
+	if !userCanAccessNotebookChat(context.Background(), &note.Chapter.Notebook, clerkUserID) {
+		log.Warn().Str("note_id", noteID).Str("user_id", clerkUserID).Msg("User not authorized to update note")
 		return map[string]string{"error": "Note not found or access denied"}
 	}
 
@@ -756,16 +804,17 @@ func updateNoteContent(clerkUserID string, noteID string, content string) any {
 
 // generateNoteVideo creates video data for a note using AI
 func generateNoteVideo(clerkUserID string, noteID string) any {
-	// Verify note belongs to user
+	// Get note with relationships
 	var note models.Notes
-	err := db.DB.Preload("Chapter.Notebook").
-		Joins("JOIN chapters ON notes.chapter_id = chapters.id").
-		Joins("JOIN notebooks ON chapters.notebook_id = notebooks.id").
-		Where("notes.id = ? AND notebooks.clerk_user_id = ?", noteID, clerkUserID).
-		First(&note).Error
-
+	err := db.DB.Preload("Chapter.Notebook").Where("id = ?", noteID).First(&note).Error
 	if err != nil {
 		log.Error().Err(err).Str("noteID", noteID).Msg("Note not found")
+		return map[string]string{"error": "Note not found"}
+	}
+
+	// Check authorization
+	if !userCanAccessNotebookChat(context.Background(), &note.Chapter.Notebook, clerkUserID) {
+		log.Warn().Str("note_id", noteID).Str("user_id", clerkUserID).Msg("User not authorized to generate video for note")
 		return map[string]string{"error": "Note not found or access denied"}
 	}
 
@@ -831,16 +880,17 @@ func generateNoteVideo(clerkUserID string, noteID string) any {
 
 // deleteNoteVideo removes video data from a note
 func deleteNoteVideo(clerkUserID string, noteID string) any {
-	// Verify note belongs to user
+	// Get note with relationships
 	var note models.Notes
-	err := db.DB.Preload("Chapter.Notebook").
-		Joins("JOIN chapters ON notes.chapter_id = chapters.id").
-		Joins("JOIN notebooks ON chapters.notebook_id = notebooks.id").
-		Where("notes.id = ? AND notebooks.clerk_user_id = ?", noteID, clerkUserID).
-		First(&note).Error
-
+	err := db.DB.Preload("Chapter.Notebook").Where("id = ?", noteID).First(&note).Error
 	if err != nil {
 		log.Error().Err(err).Str("noteID", noteID).Msg("Note not found")
+		return map[string]string{"error": "Note not found"}
+	}
+
+	// Check authorization
+	if !userCanAccessNotebookChat(context.Background(), &note.Chapter.Notebook, clerkUserID) {
+		log.Warn().Str("note_id", noteID).Str("user_id", clerkUserID).Msg("User not authorized to delete video for note")
 		return map[string]string{"error": "Note not found or access denied"}
 	}
 
@@ -872,10 +922,11 @@ func deleteNoteVideo(clerkUserID string, noteID string) any {
 
 // createNotebook creates a new notebook
 func createNotebook(clerkUserID string, name string) any {
-	// Create the notebook
+	// Create the notebook (personal notebook with NULL organization_id)
 	notebook := models.Notebook{
-		Name:        name,
-		ClerkUserID: clerkUserID,
+		Name:           name,
+		ClerkUserID:    clerkUserID,
+		OrganizationID: nil, // Explicitly set to nil for personal notebooks
 	}
 
 	err := db.DB.Create(&notebook).Error
@@ -884,7 +935,7 @@ func createNotebook(clerkUserID string, name string) any {
 		return map[string]string{"error": "Failed to create notebook"}
 	}
 
-	log.Info().Str("notebookId", notebook.ID).Str("name", name).Msg("Notebook created successfully via AI tool")
+	log.Info().Str("notebookId", notebook.ID).Str("name", name).Msg("Personal notebook created successfully via AI tool")
 
 	return map[string]any{
 		"success":    true,
@@ -897,18 +948,25 @@ func createNotebook(clerkUserID string, name string) any {
 
 // createChapter creates a new chapter in a notebook
 func createChapter(clerkUserID string, notebookID string, name string) any {
-	// Verify notebook belongs to user
+	// Get notebook
 	var notebook models.Notebook
-	err := db.DB.Where("id = ? AND clerk_user_id = ?", notebookID, clerkUserID).First(&notebook).Error
+	err := db.DB.Where("id = ?", notebookID).First(&notebook).Error
 	if err != nil {
 		log.Error().Err(err).Msg("Notebook not found")
+		return map[string]string{"error": "Notebook not found"}
+	}
+
+	// Check authorization
+	if !userCanAccessNotebookChat(context.Background(), &notebook, clerkUserID) {
+		log.Warn().Str("notebook_id", notebookID).Str("user_id", clerkUserID).Msg("User not authorized to create chapter in notebook")
 		return map[string]string{"error": "Notebook not found or access denied"}
 	}
 
-	// Create the chapter
+	// Create the chapter with inherited organization_id
 	chapter := models.Chapter{
-		Name:       name,
-		NotebookID: notebookID,
+		Name:           name,
+		NotebookID:     notebookID,
+		OrganizationID: notebook.OrganizationID,
 	}
 
 	err = db.DB.Create(&chapter).Error
@@ -932,11 +990,17 @@ func createChapter(clerkUserID string, notebookID string, name string) any {
 
 // renameNotebook renames a notebook
 func renameNotebook(clerkUserID string, notebookID string, newName string) any {
-	// Verify notebook belongs to user
+	// Get notebook
 	var notebook models.Notebook
-	err := db.DB.Where("id = ? AND clerk_user_id = ?", notebookID, clerkUserID).First(&notebook).Error
+	err := db.DB.Where("id = ?", notebookID).First(&notebook).Error
 	if err != nil {
 		log.Error().Err(err).Msg("Notebook not found")
+		return map[string]string{"error": "Notebook not found"}
+	}
+
+	// Check authorization
+	if !userCanAccessNotebookChat(context.Background(), &notebook, clerkUserID) {
+		log.Warn().Str("notebook_id", notebookID).Str("user_id", clerkUserID).Msg("User not authorized to rename notebook")
 		return map[string]string{"error": "Notebook not found or access denied"}
 	}
 
@@ -962,15 +1026,17 @@ func renameNotebook(clerkUserID string, notebookID string, newName string) any {
 
 // renameChapter renames a chapter
 func renameChapter(clerkUserID string, chapterID string, newName string) any {
-	// Verify chapter belongs to user's notebook
+	// Get chapter with notebook
 	var chapter models.Chapter
-	err := db.DB.Preload("Notebook").
-		Joins("JOIN notebooks ON chapters.notebook_id = notebooks.id").
-		Where("chapters.id = ? AND notebooks.clerk_user_id = ?", chapterID, clerkUserID).
-		First(&chapter).Error
-
+	err := db.DB.Preload("Notebook").Where("id = ?", chapterID).First(&chapter).Error
 	if err != nil {
 		log.Error().Err(err).Msg("Chapter not found")
+		return map[string]string{"error": "Chapter not found"}
+	}
+
+	// Check authorization
+	if !userCanAccessNotebookChat(context.Background(), &chapter.Notebook, clerkUserID) {
+		log.Warn().Str("chapter_id", chapterID).Str("user_id", clerkUserID).Msg("User not authorized to rename chapter")
 		return map[string]string{"error": "Chapter not found or access denied"}
 	}
 

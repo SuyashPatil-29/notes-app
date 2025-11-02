@@ -1,8 +1,9 @@
 import type { Notebook } from "@/types/backend";
 import api from "@/utils/api";
 
-export const getUserNotebooks = async (): Promise<Notebook[]> => {
-    const response = await api.get("/notebooks");
+export const getUserNotebooks = async (organizationId?: string | null): Promise<Notebook[]> => {
+    const params = organizationId ? { organizationId } : {};
+    const response = await api.get("/notebooks", { params });
     return response.data;
 };
 

@@ -77,6 +77,26 @@ func main() {
 		protected.POST("/settings/ai-credentials", auth.SetAICredential)
 		protected.DELETE("/settings/ai-credentials", auth.DeleteAICredential)
 
+		// Organization management routes
+		protected.POST("/organizations", controllers.CreateOrganization)
+		protected.GET("/organizations", controllers.ListUserOrganizations)
+		protected.GET("/organizations/:orgId", middleware.RequireOrgMembership(), controllers.GetOrganization)
+		protected.PUT("/organizations/:orgId", middleware.RequireOrgAdmin(), controllers.UpdateOrganization)
+		protected.DELETE("/organizations/:orgId", middleware.RequireOrgAdmin(), controllers.DeleteOrganization)
+
+		// Organization member management routes
+		protected.POST("/organizations/:orgId/invitations", middleware.RequireOrgAdmin(), controllers.InviteMember)
+		protected.GET("/organizations/:orgId/invitations", middleware.RequireOrgMembership(), controllers.ListInvitations)
+		protected.DELETE("/organizations/:orgId/invitations/:invitationId", middleware.RequireOrgAdmin(), controllers.RevokeInvitation)
+		protected.GET("/organizations/:orgId/members", middleware.RequireOrgMembership(), controllers.ListMembers)
+		protected.PUT("/organizations/:orgId/members/:userId", middleware.RequireOrgAdmin(), controllers.UpdateMemberRole)
+		protected.DELETE("/organizations/:orgId/members/:userId", middleware.RequireOrgAdmin(), controllers.RemoveMember)
+
+		// User invitations routes
+		protected.GET("/user/invitations", controllers.ListUserInvitations)
+		protected.POST("/user/invitations/:invitationId/accept", controllers.AcceptInvitation)
+		protected.POST("/user/invitations/:invitationId/decline", controllers.DeclineInvitation)
+
 		// Chat/AI routes
 		protected.POST("/api/chat", controllers.ChatHandler)
 		protected.POST("/api/generate", controllers.GenerateHandler)

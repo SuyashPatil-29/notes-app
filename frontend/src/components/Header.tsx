@@ -19,6 +19,7 @@ import type { AuthenticatedUser } from '@/types/backend'
 import api from '@/utils/api'
 import { toast } from 'sonner'
 import { ModeToggle } from './ModeToggle'
+import { OrganizationSwitcher } from './organizations/OrganizationSwitcher'
 
 export interface HeaderBreadcrumbItem {
   label: string
@@ -95,12 +96,18 @@ export function Header({ user, breadcrumbs = [{ label: 'Dashboard' }], onOnboard
             <div className="ml-auto flex items-center gap-2">
               {actions}
             </div>
-            <Separator orientation="vertical" className="h-4" />
           </>
         )}
 
+        {/* Organization Switcher */}
+        <div className={actions ? "ml-4" : "ml-auto"}>
+          <ClerkLoaded>
+            <OrganizationSwitcher />
+          </ClerkLoaded>
+        </div>
+
         {/* Right Side Actions */}
-        <div className={`${!actions ? 'ml-auto' : ''} flex items-center gap-2`}>
+        <div className="flex items-center gap-2">
           <ModeToggle />
           <ThemeSelector />
           <RightSidebarTrigger />

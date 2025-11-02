@@ -7,6 +7,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { FileText, Plus } from 'lucide-react'
 import type { AuthenticatedUser } from '@/types/backend'
 import { getPreviewText } from '@/utils/markdown'
+import { useOrganizationContext } from '@/contexts/OrganizationContext'
 
 interface ChapterViewProps {
   user: AuthenticatedUser | null
@@ -17,10 +18,11 @@ interface ChapterViewProps {
 export function ChapterView({ user, userLoading = false, onCreateNote }: ChapterViewProps) {
   const { notebookId, chapterId } = useParams<{ notebookId: string; chapterId: string }>()
   const navigate = useNavigate()
+  const { activeOrg } = useOrganizationContext()
 
   const { data: notebooks, isLoading: notebooksLoading } = useQuery({
-    queryKey: ['userNotebooks'],
-    queryFn: getUserNotebooks,
+    queryKey: ['userNotebooks', activeOrg?.id],
+    queryFn: () => getUserNotebooks(activeOrg?.id),
     enabled: !!user,
   })
 

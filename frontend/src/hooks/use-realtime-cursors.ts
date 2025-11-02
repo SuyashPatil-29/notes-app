@@ -128,19 +128,38 @@ export const useRealtimeCursors = ({
   const handleMouseMove = useThrottleCallback(callback, throttleMs)
 
   useEffect(() => {
-    const channel = supabase.channel(roomName)
+    // Don't proceed if we don't have required user info
+    if (!username || !clerkUserId) {
+      return
+    }
+
+    // Use a unique channel name to avoid conflicts with presence channel
+    const cursorChannelName = `${roomName}-cursors`
+    const channel = supabase.channel(cursorChannelName, {
+      config: {
+        presence: {
+          key: clerkUserId, // Use Clerk user ID as the presence key
+        },
+      },
+    })
 
     channel
       .on('presence', { event: 'leave' }, ({ leftPresences }) => {
         leftPresences.forEach(function (element) {
-          // Remove cursor when user leaves
-          setCursors((prev) => {
-            if (prev[element.key]) {
-              delete prev[element.key]
-            }
-
-            return { ...prev }
-          })
+          // Remove cursor when user leaves by Clerk ID
+          const leftClerkId = element.clerkId
+          if (leftClerkId) {
+            setCursors((prev) => {
+              // Find and remove cursor by clerkId
+              const newCursors = { ...prev }
+              Object.keys(newCursors).forEach((key) => {
+                if (newCursors[key].user.clerkId === leftClerkId) {
+                  delete newCursors[key]
+                }
+              })
+              return newCursors
+            })
+          }
         })
       })
       .on('presence', { event: 'join' }, () => {
@@ -155,25 +174,39 @@ export const useRealtimeCursors = ({
       })
       .on('broadcast', { event: EVENT_NAME }, (data: { payload: CursorEventPayload }) => {
         const { user } = data.payload
-        // Don't render your own cursor
-        if (user.id === userId) return
+        
+        // Don't render your own cursor (check by Clerk ID)
+        if (user.clerkId === clerkUserId) {
+          return
+        }
 
         setCursors((prev) => {
-          if (prev[userId]) {
-            delete prev[userId]
+          // Remove own cursor if it exists
+          const newCursors = { ...prev }
+          if (newCursors[userId]) {
+            delete newCursors[userId]
           }
 
-          return {
-            ...prev,
-            [user.id]: data.payload,
-          }
+          newCursors[user.id] = data.payload
+          return newCursors
         })
       })
       .subscribe(async (status) => {
         if (status === REALTIME_SUBSCRIBE_STATES.SUBSCRIBED) {
-          await channel.track({ key: userId })
+          // Track presence with Clerk user ID and additional metadata
+          await channel.track({
+            clerkId: clerkUserId,
+            name: username,
+            userId: userId,
+          })
           channelRef.current = channel
-        } else {
+        } else if (status === REALTIME_SUBSCRIBE_STATES.CHANNEL_ERROR) {
+          setCursors({})
+          channelRef.current = null
+        } else if (status === REALTIME_SUBSCRIBE_STATES.TIMED_OUT) {
+          setCursors({})
+          channelRef.current = null
+        } else if (status === REALTIME_SUBSCRIBE_STATES.CLOSED) {
           setCursors({})
           channelRef.current = null
         }
@@ -182,8 +215,9 @@ export const useRealtimeCursors = ({
     return () => {
       channel.unsubscribe()
       channelRef.current = null
+      setCursors({})
     }
-  }, [])
+  }, [roomName, username, clerkUserId, userId, color])
 
   useEffect(() => {
     // Add event listener for mousemove

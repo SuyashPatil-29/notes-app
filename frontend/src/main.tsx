@@ -10,6 +10,7 @@ import { queryClient } from '@/lib/query-client'
 import { BrowserRouter } from 'react-router-dom'
 import { ClerkProvider } from '@clerk/clerk-react'
 import { dark } from '@clerk/themes'
+import { OrganizationProvider } from '@/contexts/OrganizationContext'
 
 // Import your Clerk publishable key
 const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY
@@ -30,6 +31,7 @@ createRoot(document.getElementById('root')!).render(
         }
       }}
     >
+      <OrganizationProvider>
       <BrowserRouter>
         <QueryClientProvider client={queryClient}>
           <ThemeProvider defaultTheme='notebook' defaultColorScheme='dark'>
@@ -40,6 +42,7 @@ createRoot(document.getElementById('root')!).render(
           <ReactQueryDevtools initialIsOpen={false} />
         </QueryClientProvider>
       </BrowserRouter>
+      </OrganizationProvider>
     </ClerkProvider>
   </StrictMode>,
 )

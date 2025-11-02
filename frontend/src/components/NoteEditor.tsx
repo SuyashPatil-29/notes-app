@@ -8,6 +8,7 @@ import { NoteVideoPlayer } from '@/components/NoteVideoPlayer'
 import type { AuthenticatedUser } from '@/types/backend'
 import { Loader2, Calendar, Clock, Video, VideoOff } from 'lucide-react'
 import { toast } from 'sonner'
+import { useOrganizationContext } from '@/contexts/OrganizationContext'
 import 'katex/dist/katex.min.css'
 import '@/prosemirror.css'
 
@@ -35,6 +36,7 @@ import { Separator } from "./ui/separator";
 import type { Notes } from "@/types/backend";
 import { RealtimeAvatarStack } from '@/components/realtime-avatar-stack'
 import { RealtimeCursors } from '@/components/realtime-cursors'
+import { isRealtimeConfigured } from '@/utils/check-realtime'
 
 import GenerativeMenuSwitch from "./generative/generative-menu-switch";
 // import { uploadFn } from "./image-upload";
@@ -59,6 +61,7 @@ export function NoteEditor({ user, userLoading = false }: NoteEditorProps) {
   }>()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const { activeOrg } = useOrganizationContext()
   const [charsCount, setCharsCount] = useState();
   const [editorInstance, setEditorInstance] = useState<EditorInstance | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -75,15 +78,18 @@ export function NoteEditor({ user, userLoading = false }: NoteEditorProps) {
 
   const { data: noteResponse, isLoading, error } = useQuery({
     queryKey: ['note', noteId],
-    queryFn: () => getNote(noteId!),
-    enabled: !!noteId,
+    queryFn: async () => {
+      return await getNote(noteId!);
+    },
+    enabled: !!noteId && !!user, // Also require user to be loaded
     refetchInterval: 5000, // Refetch every 5 seconds to catch AI-generated videos
     refetchOnWindowFocus: true,
+    retry: 1, // Retry once on failure
   })
 
   const { data: notebooks } = useQuery({
-    queryKey: ['userNotebooks'],
-    queryFn: getUserNotebooks,
+    queryKey: ['userNotebooks', activeOrg?.id],
+    queryFn: () => getUserNotebooks(activeOrg?.id),
     enabled: !!user,
   })
 
@@ -179,17 +185,38 @@ export function NoteEditor({ user, userLoading = false }: NoteEditorProps) {
 
   // Parse note content safely - handle both JSON and plain text/markdown
   const getInitialContent = () => {
-    if (!note?.content) {
-      return undefined;
+    if (!note?.content || note.content.trim() === '') {
+      // Return empty document with a single paragraph
+      return {
+        type: 'doc',
+        content: [{ type: 'paragraph' }]
+      };
     }
 
     // Try to parse as JSON first (new format)
     try {
       const parsed = JSON.parse(note.content);
+      // Validate it has proper structure
+      if (parsed && parsed.type === 'doc') {
       return parsed;
+      }
+      // If not proper structure, return empty doc
+      return {
+        type: 'doc',
+        content: [{ type: 'paragraph' }]
+      };
     } catch (error) {
       // If it's not JSON, treat it as markdown and convert
+      try {
       return markdownToJSON(note.content);
+      } catch (mdError) {
+        // Fallback to empty document if markdown conversion fails
+        console.error('Failed to convert markdown:', mdError);
+        return {
+          type: 'doc',
+          content: [{ type: 'paragraph' }]
+        };
+      }
     }
   }
 
@@ -387,18 +414,20 @@ export function NoteEditor({ user, userLoading = false }: NoteEditorProps) {
         user={user}
         breadcrumbs={breadcrumbs}
       />
-      {/* Real-time cursors overlay */}
-      <RealtimeCursors roomName={`note-${noteId}`} />
+      {/* Real-time cursors overlay - only if configured */}
+      {isRealtimeConfigured() && <RealtimeCursors roomName={`note-${noteId}`} />}
       <div className="flex-1 overflow-auto">
         <div className="max-w-4xl mx-auto px-6 py-8">
           {/* Note Metadata Section */}
           <div className="mb-6 space-y-4">
             <div className='flex items-center justify-between gap-2'>
               <h1 className="text-4xl font-bold tracking-tight">{note.name}</h1>
+              {isRealtimeConfigured() && (
               <div className="flex flex-col items-center gap-2">
                 <RealtimeAvatarStack roomName={`note-${noteId}`} />
                 <span className="text-sm text-muted-foreground">People on this page</span>
               </div>
+              )}
             </div>
 
             <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">

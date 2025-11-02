@@ -12,6 +12,7 @@ type Notes struct {
 	Name               string    `json:"name"`
 	Content            string    `json:"content" gorm:"type:text"`
 	ChapterID          string    `json:"chapterId" gorm:"type:varchar(255);index"`
+	OrganizationID     *string   `json:"organizationId,omitempty" gorm:"type:varchar(255);index"`
 	Chapter            Chapter   `json:"chapter" gorm:"foreignKey:ChapterID"`
 	IsPublic           bool      `json:"isPublic" gorm:"default:false"`
 	VideoData          string    `json:"videoData" gorm:"type:text"`

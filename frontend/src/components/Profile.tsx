@@ -6,12 +6,16 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Key, Trash2, User as UserIcon, Mail, Save, Calendar, Video, Sparkles, Check, X } from "lucide-react";
+import { Key, Trash2, User as UserIcon, Mail, Save, Calendar, Video, Sparkles, Check, X, Building2, UserPlus } from "lucide-react";
 import { toast } from "sonner";
 import api from "@/utils/api";
 import { useQueryClient } from "@tanstack/react-query";
 import { CalendarSettings } from "@/components/CalendarSettings";
 import { CalendarEventsList } from "@/components/CalendarEventsList";
+import { useOrganizationContext } from "@/contexts/OrganizationContext";
+import { OrganizationSettings } from "@/components/organizations/OrganizationSettings";
+import { JoinOrganizationDialog } from "@/components/organizations/JoinOrganizationDialog";
+import { useOrganization } from "@clerk/clerk-react";
 
 interface ApiKeyStatus {
   openai: boolean;
@@ -43,7 +47,10 @@ const AI_PROVIDERS = [
 export function Profile() {
   const { user, loading: userLoading, refetch: refetchUser } = useUser();
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState<'profile' | 'ai-keys' | 'calendar' | 'meetings'>('profile');
+  const { organizations, isLoadingOrgs, activeOrg } = useOrganizationContext();
+  const { membership } = useOrganization();
+  const [activeTab, setActiveTab] = useState<'profile' | 'ai-keys' | 'calendar' | 'meetings' | 'organizations'>('profile');
+  const [isJoinDialogOpen, setIsJoinDialogOpen] = useState(false);
   const [apiKeys, setApiKeys] = useState<Record<string, string>>({
     openai: "",
     anthropic: "",
@@ -58,6 +65,10 @@ export function Profile() {
   });
   const [calendarSyncTrigger, setCalendarSyncTrigger] = useState(0);
   const [hasCalendar, setHasCalendar] = useState(false);
+
+  console.log(activeOrg?.role);
+
+  const isAdmin = membership?.role === 'org:admin';
 
   // Fetch API key status and calendar status on mount
   useEffect(() => {
@@ -262,53 +273,78 @@ export function Profile() {
                 <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-t-lg" />
               )}
             </button>
-            <button
-              onClick={() => setActiveTab('ai-keys')}
-              className={`flex items-center gap-2 px-4 py-3 font-medium transition-colors relative ${
-                activeTab === 'ai-keys'
-                  ? 'text-primary'
-                  : 'text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              <Sparkles className="h-4 w-4" />
-              AI Keys
-              {configuredKeysCount > 0 && (
-                <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-xs">
-                  {configuredKeysCount}
-                </Badge>
-              )}
-              {activeTab === 'ai-keys' && (
-                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-t-lg" />
-              )}
-            </button>
-            <button
-              onClick={() => setActiveTab('calendar')}
-              className={`flex items-center gap-2 px-4 py-3 font-medium transition-colors relative ${
-                activeTab === 'calendar'
-                  ? 'text-primary'
-                  : 'text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              <Calendar className="h-4 w-4" />
-              Calendar
-              {activeTab === 'calendar' && (
-                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-t-lg" />
-              )}
-            </button>
-            <button
-              onClick={() => setActiveTab('meetings')}
-              className={`flex items-center gap-2 px-4 py-3 font-medium transition-colors relative ${
-                activeTab === 'meetings'
-                  ? 'text-primary'
-                  : 'text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              <Video className="h-4 w-4" />
-              Meetings
-              {activeTab === 'meetings' && (
-                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-t-lg" />
-              )}
-            </button>
+            
+            {/* Show these tabs only if: in personal account OR in org as admin */}
+            {(!activeOrg || isAdmin) && (
+              <>
+                <button
+                  onClick={() => setActiveTab('ai-keys')}
+                  className={`flex items-center gap-2 px-4 py-3 font-medium transition-colors relative ${
+                    activeTab === 'ai-keys'
+                      ? 'text-primary'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  <Sparkles className="h-4 w-4" />
+                  AI Keys
+                  {configuredKeysCount > 0 && (
+                    <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-xs">
+                      {configuredKeysCount}
+                    </Badge>
+                  )}
+                  {activeTab === 'ai-keys' && (
+                    <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-t-lg" />
+                  )}
+                </button>
+                <button
+                  onClick={() => setActiveTab('calendar')}
+                  className={`flex items-center gap-2 px-4 py-3 font-medium transition-colors relative ${
+                    activeTab === 'calendar'
+                      ? 'text-primary'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  <Calendar className="h-4 w-4" />
+                  Calendar
+                  {activeTab === 'calendar' && (
+                    <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-t-lg" />
+                  )}
+                </button>
+                <button
+                  onClick={() => setActiveTab('meetings')}
+                  className={`flex items-center gap-2 px-4 py-3 font-medium transition-colors relative ${
+                    activeTab === 'meetings'
+                      ? 'text-primary'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  <Video className="h-4 w-4" />
+                  Meetings
+                  {activeTab === 'meetings' && (
+                    <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-t-lg" />
+                  )}
+                </button>
+                <button
+                  onClick={() => setActiveTab('organizations')}
+                  className={`flex items-center gap-2 px-4 py-3 font-medium transition-colors relative ${
+                    activeTab === 'organizations'
+                      ? 'text-primary'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  <Building2 className="h-4 w-4" />
+                  Organizations
+                  {!isLoadingOrgs && organizations.length > 0 && (
+                    <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-xs">
+                      {organizations.length}
+                    </Badge>
+                  )}
+                  {activeTab === 'organizations' && (
+                    <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-t-lg" />
+                  )}
+                </button>
+              </>
+            )}
           </div>
 
           {/* Profile Tab */}
@@ -370,63 +406,81 @@ export function Profile() {
                 </div>
               </div>
 
-              {/* Quick Actions */}
-              <div>
-                <h3 className="text-lg font-semibold mb-4">Quick Actions</h3>
-                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                  <Button
-                    variant="outline"
-                    className="h-auto py-6 justify-start"
-                    onClick={() => setActiveTab('ai-keys')}
-                  >
-                    <div className="flex items-start gap-3 text-left">
-                      <Sparkles className="w-5 h-5 mt-0.5 text-primary" />
-                      <div>
-                        <div className="font-medium">Configure AI Keys</div>
-                        <div className="text-xs text-muted-foreground mt-1">Set up OpenAI, Anthropic, or Google AI</div>
-                      </div>
+              {/* Organization Member Notice */}
+              {activeOrg && !isAdmin && (
+                <div className="bg-muted/30 border border-border rounded-lg p-6">
+                  <div className="flex items-start gap-3">
+                    <Building2 className="h-5 w-5 text-muted-foreground mt-0.5" />
+                    <div>
+                      <h4 className="font-medium mb-1">Organization Member</h4>
+                      <p className="text-sm text-muted-foreground">
+                        You're currently viewing <strong className="text-foreground">{activeOrg.name}</strong> as a member. 
+                        Additional settings are only available to organization administrators.
+                      </p>
                     </div>
-                  </Button>
-                  
-                  <Button
-                    variant="outline"
-                    className="h-auto py-6 justify-start"
-                    onClick={() => setActiveTab('calendar')}
-                  >
-                    <div className="flex items-start gap-3 text-left">
-                      <Calendar className={`w-5 h-5 mt-0.5 ${hasCalendar ? 'text-green-500' : 'text-primary'}`} />
-                      <div>
-                        <div className="font-medium flex items-center gap-2">
-                          {hasCalendar ? 'Calendar Connected' : 'Connect Calendar'}
-                          {hasCalendar && <Check className="w-4 h-4 text-green-500" />}
-                        </div>
-                        <div className="text-xs text-muted-foreground mt-1">
-                          {hasCalendar ? 'Manage calendar integration' : 'Enable automatic meeting recording'}
-                        </div>
-                      </div>
-                    </div>
-                  </Button>
-                  
-                  <Button
-                    variant="outline"
-                    className="h-auto py-6 justify-start"
-                    onClick={() => setActiveTab('meetings')}
-                  >
-                    <div className="flex items-start gap-3 text-left">
-                      <Video className="w-5 h-5 mt-0.5 text-primary" />
-                      <div>
-                        <div className="font-medium">View Meetings</div>
-                        <div className="text-xs text-muted-foreground mt-1">Upcoming virtual meetings</div>
-                      </div>
-                    </div>
-                  </Button>
+                  </div>
                 </div>
-              </div>
+              )}
+
+              {/* Quick Actions - Only show if in personal account or org admin */}
+              {(!activeOrg || isAdmin) && (
+                <div>
+                  <h3 className="text-lg font-semibold mb-4">Quick Actions</h3>
+                  <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                    <Button
+                      variant="outline"
+                      className="h-auto py-6 justify-start"
+                      onClick={() => setActiveTab('ai-keys')}
+                    >
+                      <div className="flex items-start gap-3 text-left">
+                        <Sparkles className="w-5 h-5 mt-0.5 text-primary" />
+                        <div>
+                          <div className="font-medium">Configure AI Keys</div>
+                          <div className="text-xs text-muted-foreground mt-1">Set up OpenAI, Anthropic, or Google AI</div>
+                        </div>
+                      </div>
+                    </Button>
+                    
+                    <Button
+                      variant="outline"
+                      className="h-auto py-6 justify-start"
+                      onClick={() => setActiveTab('calendar')}
+                    >
+                      <div className="flex items-start gap-3 text-left">
+                        <Calendar className={`w-5 h-5 mt-0.5 ${hasCalendar ? 'text-green-500' : 'text-primary'}`} />
+                        <div>
+                          <div className="font-medium flex items-center gap-2">
+                            {hasCalendar ? 'Calendar Connected' : 'Connect Calendar'}
+                            {hasCalendar && <Check className="w-4 h-4 text-green-500" />}
+                          </div>
+                          <div className="text-xs text-muted-foreground mt-1">
+                            {hasCalendar ? 'Manage calendar integration' : 'Enable automatic meeting recording'}
+                          </div>
+                        </div>
+                      </div>
+                    </Button>
+                    
+                    <Button
+                      variant="outline"
+                      className="h-auto py-6 justify-start"
+                      onClick={() => setActiveTab('meetings')}
+                    >
+                      <div className="flex items-start gap-3 text-left">
+                        <Video className="w-5 h-5 mt-0.5 text-primary" />
+                        <div>
+                          <div className="font-medium">View Meetings</div>
+                          <div className="text-xs text-muted-foreground mt-1">Upcoming virtual meetings</div>
+                        </div>
+                      </div>
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
-          {/* AI Keys Tab */}
-          {activeTab === 'ai-keys' && (
+          {/* AI Keys Tab - Only accessible in personal account or as org admin */}
+          {activeTab === 'ai-keys' && (!activeOrg || isAdmin) && (
             <div className="space-y-6">
               <div className="p-4 rounded-lg bg-muted/30 border border-border">
                 <p className="text-sm text-muted-foreground">
@@ -521,21 +575,108 @@ export function Profile() {
             </div>
           )}
 
-          {/* Calendar Tab */}
-          {activeTab === 'calendar' && (
+          {/* Calendar Tab - Only accessible in personal account or as org admin */}
+          {activeTab === 'calendar' && (!activeOrg || isAdmin) && (
             <div className="space-y-6">
               <CalendarSettings onSyncComplete={() => setCalendarSyncTrigger(prev => prev + 1)} />
             </div>
           )}
 
-          {/* Meetings Tab */}
-          {activeTab === 'meetings' && (
+          {/* Meetings Tab - Only accessible in personal account or as org admin */}
+          {activeTab === 'meetings' && (!activeOrg || isAdmin) && (
             <div className="space-y-6">
               <CalendarEventsList key={calendarSyncTrigger} />
             </div>
           )}
+
+          {/* Organizations Tab - Only accessible in personal account or as org admin */}
+          {activeTab === 'organizations' && (!activeOrg || isAdmin) && (
+            <div className="space-y-6">
+              {activeOrg ? (
+                <OrganizationSettings
+                  organization={activeOrg}
+                  userRole={isAdmin ? 'admin' : 'member'}
+                />
+              ) : (
+                <div className="space-y-6">
+                  {/* No Active Organization */}
+                  <div className="bg-card border border-border rounded-lg p-8 text-center">
+                    <Building2 className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                    <h3 className="text-lg font-semibold mb-2">No Active Organization</h3>
+                    <p className="text-muted-foreground mb-6">
+                      You're currently in your personal workspace. Switch to an organization or
+                      create a new one to collaborate with your team.
+                    </p>
+                    <div className="flex gap-3 justify-center">
+                      <Button onClick={() => setIsJoinDialogOpen(true)}>
+                        <UserPlus className="h-4 w-4 mr-2" />
+                        View Invitations
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* Organizations List */}
+                  {isLoadingOrgs ? (
+                    <div className="space-y-4">
+                      {[1, 2].map((i) => (
+                        <Skeleton key={i} className="h-24 w-full" />
+                      ))}
+                    </div>
+                  ) : organizations.length > 0 ? (
+                    <div>
+                      <h3 className="text-lg font-semibold mb-4">Your Organizations</h3>
+                      <div className="grid gap-4 md:grid-cols-2">
+                        {organizations.map((org) => (
+                          <div
+                            key={org.id}
+                            className="bg-card border border-border rounded-lg p-6 hover:border-primary/50 transition-colors"
+                          >
+                            <div className="flex items-start gap-4">
+                              {org.imageUrl ? (
+                                <img
+                                  src={org.imageUrl}
+                                  alt={org.name}
+                                  className="h-12 w-12 rounded"
+                                />
+                              ) : (
+                                <div className="h-12 w-12 rounded bg-primary/10 flex items-center justify-center">
+                                  <Building2 className="h-6 w-6 text-primary" />
+                                </div>
+                              )}
+                              <div className="flex-1 min-w-0">
+                                <h4 className="font-semibold truncate">{org.name}</h4>
+                                <p className="text-sm text-muted-foreground">
+                                  {org.membersCount}{" "}
+                                  {org.membersCount === 1 ? "member" : "members"}
+                                </p>
+                                <Badge variant="outline" className="mt-2">
+                                  {org.role === "admin" ? "Admin" : "Member"}
+                                </Badge>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="bg-card border border-border rounded-lg p-8 text-center">
+                      <p className="text-muted-foreground">
+                        You're not a member of any organizations yet.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </main>
+
+      {/* Join Organization Dialog */}
+      <JoinOrganizationDialog
+        open={isJoinDialogOpen}
+        onOpenChange={setIsJoinDialogOpen}
+      />
     </div>
   );
 }

@@ -11,6 +11,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import type { Notebook, Chapter } from '@/types/backend';
+import { useOrganizationContext } from '@/contexts/OrganizationContext';
 
 interface PublishNotebookDialogProps {
   open: boolean;
@@ -24,14 +25,15 @@ export const PublishNotebookDialog: React.FC<PublishNotebookDialogProps> = ({
   notebookId,
 }) => {
   const queryClient = useQueryClient();
+  const { activeOrg } = useOrganizationContext();
   const [selectedNoteIds, setSelectedNoteIds] = useState<string[]>([]);
   const [expandedChapters, setExpandedChapters] = useState<Set<string>>(new Set());
   const [isPublishing, setIsPublishing] = useState(false);
 
   // Get the notebook data
   const { data: notebooks, isLoading } = useQuery({
-    queryKey: ['userNotebooks'],
-    queryFn: getUserNotebooks,
+    queryKey: ['userNotebooks', activeOrg?.id],
+    queryFn: () => getUserNotebooks(activeOrg?.id),
     enabled: open,
   });
 

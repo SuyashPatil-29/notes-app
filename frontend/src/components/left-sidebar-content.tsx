@@ -1,13 +1,15 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { useNavigate, useLocation } from "react-router-dom"
-import { ChevronRight, Book, BookOpen, FileText, Plus, Pencil, Trash2, Eye, Globe } from "lucide-react"
+import { ChevronRight, Book, BookOpen, FileText, Plus, Pencil, Trash2, Eye, Globe, User, Building2 } from "lucide-react"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Separator } from "@/components/ui/separator"
 import { moveChapter } from "@/utils/chapter"
 import { moveNote } from "@/utils/notes"
 import { isNotebookPublished } from "@/utils/publish"
 import { toast } from "sonner"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import type { Notebook } from "@/types/backend"
+import { useOrganizationContext } from "@/contexts/OrganizationContext"
 import {
   DndContext,
   closestCenter,
@@ -83,8 +85,24 @@ export function LeftSidebarContent({
   const navigate = useNavigate()
   const location = useLocation()
   const queryClient = useQueryClient()
+  const { activeOrg } = useOrganizationContext()
 
-  // Extract noteId and chapterId from URL path
+  // Separate notebooks into personal and organization
+  const { personalNotebooks, orgNotebooks } = useMemo(() => {
+    if (!notebooks) {
+      return { personalNotebooks: [], orgNotebooks: [] }
+    }
+    
+    const personal = notebooks.filter(nb => !nb.organizationId)
+    const org = notebooks.filter(nb => nb.organizationId === activeOrg?.id)
+    
+    return {
+      personalNotebooks: personal,
+      orgNotebooks: org
+    }
+    }, [notebooks, activeOrg?.id])
+  
+    // Extract noteId and chapterId from URL path
   // URL format: /:notebookId/:chapterId/:noteId
   const pathParts = location.pathname.split('/').filter(Boolean)
   const currentNoteId = pathParts.length === 3 ? pathParts[2] : undefined
@@ -461,10 +479,16 @@ export function LeftSidebarContent({
         <ContextMenu>
           <ContextMenuTrigger asChild>
             <LeftSidebarContentWrapper>
-              <LeftSidebarGroup>
-                <LeftSidebarGroupContent>
-                  <LeftSidebarMenu>
-                    {notebooks.map((notebook) => (
+              {/* Personal Notebooks Section */}
+              {personalNotebooks.length > 0 && (
+                <LeftSidebarGroup>
+                  <div className="px-3 py-2 text-xs font-semibold text-muted-foreground flex items-center gap-2">
+                    <User className="h-3 w-3" />
+                    Personal
+                  </div>
+                  <LeftSidebarGroupContent>
+                    <LeftSidebarMenu>
+                      {personalNotebooks.map((notebook) => (
                       <Collapsible
                         key={notebook.id}
                         asChild
@@ -651,10 +675,211 @@ export function LeftSidebarContent({
                       </CollapsibleContent>
                     </LeftSidebarMenuItem>
                   </Collapsible>
-                ))}
-                  </LeftSidebarMenu>
-                </LeftSidebarGroupContent>
-              </LeftSidebarGroup>
+                      ))}
+                    </LeftSidebarMenu>
+                  </LeftSidebarGroupContent>
+                </LeftSidebarGroup>
+              )}
+
+              {/* Organization Notebooks Section */}
+              {activeOrg && orgNotebooks.length > 0 && (
+                <>
+                  {personalNotebooks.length > 0 && <Separator className="my-2" />}
+                  <LeftSidebarGroup>
+                    <div className="px-3 py-2 text-xs font-semibold text-muted-foreground flex items-center gap-2">
+                      <Building2 className="h-3 w-3" />
+                      {activeOrg.name}
+                    </div>
+                    <LeftSidebarGroupContent>
+                      <LeftSidebarMenu>
+                        {orgNotebooks.map((notebook) => (
+                        <Collapsible
+                          key={notebook.id}
+                          asChild
+                          open={expandedNotebooks.has(notebook.id)}
+                          onOpenChange={() => toggleNotebook(notebook.id)}
+                          className="group/collapsible"
+                        >
+                          <LeftSidebarMenuItem>
+                            <DroppableNotebook
+                              id={notebook.id}
+                              isOver={overId === `notebook:${notebook.id}`}
+                            >
+                              <ContextMenu>
+                                <ContextMenuTrigger asChild>
+                                  <CollapsibleTrigger asChild>
+                                    <LeftSidebarMenuButton tooltip={notebook.name}>
+                                      <Book />
+                                      <span className="flex-1">{notebook.name}</span>
+                                      {isNotebookPublished(notebook) && (
+                                        <Globe className="h-3 w-3 text-primary dark:text-primary mr-1" />
+                                      )}
+                                      <ChevronRight className="transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
+                                    </LeftSidebarMenuButton>
+                                  </CollapsibleTrigger>
+                                </ContextMenuTrigger>
+                            <ContextMenuContent>
+                              <ContextMenuItem onClick={() => navigate(`/${notebook.id}`)}>
+                                <Eye className="mr-2 h-4 w-4" />
+                                View Notebook
+                              </ContextMenuItem>
+                              <ContextMenuSeparator />
+                              <ContextMenuItem onClick={() => onCreateChapter?.(notebook.id)}>
+                                <Plus className="mr-2 h-4 w-4" />
+                                New Chapter
+                              </ContextMenuItem>
+                              <ContextMenuItem onClick={() => onRenameNotebook?.(notebook.id)}>
+                                <Pencil className="mr-2 h-4 w-4" />
+                                Rename
+                              </ContextMenuItem>
+                              <ContextMenuSeparator />
+                              <ContextMenuItem
+                                onClick={() => onDeleteNotebook?.(notebook.id)}
+                                className="text-destructive focus:text-destructive"
+                              >
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                Delete
+                              </ContextMenuItem>
+                            </ContextMenuContent>
+                          </ContextMenu>
+                        </DroppableNotebook>
+                        <CollapsibleContent>
+                          <LeftSidebarMenuSub>
+                            {notebook.chapters?.map((chapter) => (
+                              <Collapsible
+                                key={chapter.id}
+                                asChild
+                                open={expandedChapters.has(chapter.id) || currentChapterId === chapter.id}
+                                onOpenChange={() => toggleChapter(chapter.id)}
+                                className="group/chapter-collapsible"
+                              >
+                                <LeftSidebarMenuSubItem>
+                                  <DroppableChapter
+                                    id={chapter.id}
+                                    isOver={overId === `chapter:${chapter.id}`}
+                                  >
+                                    <DraggableChapter id={chapter.id}>
+                                      <TooltipProvider delayDuration={300}>
+                                        <Tooltip>
+                                          <ContextMenu>
+                                            <ContextMenuTrigger asChild>
+                                              <TooltipTrigger asChild>
+                                                <CollapsibleTrigger asChild>
+                                                  <LeftSidebarMenuSubButton>
+                                                    <BookOpen />
+                                                    <span className="flex-1 truncate">{chapter.name}</span>
+                                                    {chapter.isPublic && (
+                                                      <Globe className="h-3 w-3 text-primary! dark:text-primary! mr-1 shrink-0" />
+                                                    )}
+                                                    <ChevronRight className="ml-auto shrink-0 transition-transform duration-200 group-data-[state=open]/chapter-collapsible:rotate-90" />
+                                                  </LeftSidebarMenuSubButton>
+                                                </CollapsibleTrigger>
+                                              </TooltipTrigger>
+                                            </ContextMenuTrigger>
+                                            <TooltipContent side="right" className="max-w-xs">
+                                              <p>{chapter.name}</p>
+                                            </TooltipContent>
+                                        <ContextMenuContent>
+                                          <ContextMenuItem onClick={() => navigate(`/${notebook.id}/${chapter.id}`)}>
+                                            <Eye className="mr-2 h-4 w-4" />
+                                            View Chapter
+                                          </ContextMenuItem>
+                                          <ContextMenuItem onClick={() => onCreateNote?.(chapter.id)}>
+                                            <Plus className="mr-2 h-4 w-4" />
+                                            New Note
+                                          </ContextMenuItem>
+                                          <ContextMenuSeparator />
+                                          <ContextMenuItem onClick={() => onRenameChapter?.(chapter.id)}>
+                                            <Pencil className="mr-2 h-4 w-4" />
+                                            Rename
+                                          </ContextMenuItem>
+                                          <ContextMenuSeparator />
+                                          <ContextMenuItem
+                                            onClick={() => onDeleteChapter?.(chapter.id)}
+                                            className="text-destructive focus:text-destructive"
+                                          >
+                                            <Trash2 className="mr-2 h-4 w-4" />
+                                            Delete
+                                          </ContextMenuItem>
+                                        </ContextMenuContent>
+                                          </ContextMenu>
+                                        </Tooltip>
+                                      </TooltipProvider>
+                                    </DraggableChapter>
+                                  </DroppableChapter>
+                                  <CollapsibleContent>
+                                    <LeftSidebarMenuSub>
+                                      {chapter.notes?.map((note) => {
+                                        const isActive = currentNoteId === note.id
+                                        
+                                        return (
+                                          <LeftSidebarMenuSubItem key={note.id}>
+                                            <DraggableNote id={note.id}>
+                                              <TooltipProvider delayDuration={300}>
+                                                <Tooltip>
+                                                  <ContextMenu>
+                                                    <ContextMenuTrigger asChild>
+                                                      <TooltipTrigger asChild>
+                                                        <LeftSidebarMenuSubButton
+                                                          asChild
+                                                          isActive={isActive}
+                                                        >
+                                                          <button
+                                                            onClick={() => navigate(`/${notebook.id}/${chapter.id}/${note.id}`)}
+                                                          >
+                                                            <FileText />
+                                                            <span className="flex-1 truncate">{note.name}</span>
+                                                            {note.isPublic && (
+                                                              <Globe className="h-3 w-3 text-primary! dark:text-primary! mr-1 shrink-0" />
+                                                            )}
+                                                          </button>
+                                                        </LeftSidebarMenuSubButton>
+                                                      </TooltipTrigger>
+                                                    </ContextMenuTrigger>
+                                                    <TooltipContent side="right" className="max-w-xs">
+                                                      <p>{note.name}</p>
+                                                    </TooltipContent>
+                                                    <ContextMenuContent>
+                                                      <ContextMenuItem onClick={() => navigate(`/${notebook.id}/${chapter.id}/${note.id}`)}>
+                                                        <Eye className="mr-2 h-4 w-4" />
+                                                        View Note
+                                                      </ContextMenuItem>
+                                                      <ContextMenuSeparator />
+                                                      <ContextMenuItem onClick={() => onRenameNote?.(note.id)}>
+                                                        <Pencil className="mr-2 h-4 w-4" />
+                                                        Rename
+                                                      </ContextMenuItem>
+                                                      <ContextMenuSeparator />
+                                                      <ContextMenuItem
+                                                        onClick={() => onDeleteNote?.(note.id)}
+                                                        className="text-destructive focus:text-destructive"
+                                                      >
+                                                        <Trash2 className="mr-2 h-4 w-4" />
+                                                        Delete
+                                                      </ContextMenuItem>
+                                                    </ContextMenuContent>
+                                                  </ContextMenu>
+                                                </Tooltip>
+                                              </TooltipProvider>
+                                            </DraggableNote>
+                                          </LeftSidebarMenuSubItem>
+                                        )
+                                      })}
+                                    </LeftSidebarMenuSub>
+                                  </CollapsibleContent>
+                                </LeftSidebarMenuSubItem>
+                              </Collapsible>
+                            ))}
+                          </LeftSidebarMenuSub>
+                        </CollapsibleContent>
+                      </LeftSidebarMenuItem>
+                    </Collapsible>
+                        ))}
+                      </LeftSidebarMenu>
+                    </LeftSidebarGroupContent>
+                  </LeftSidebarGroup>
+                </>
+              )}
             </LeftSidebarContentWrapper>
           </ContextMenuTrigger>
           <ContextMenuContent>

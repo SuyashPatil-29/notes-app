@@ -44,6 +44,7 @@ import { SelectGroup, SelectLabel, SelectSeparator } from "@/components/ui/selec
 import { MentionNotesPopover, MentionedNotesBadges } from "@/components/ai/mention-notes"
 import { getUserNotebooks } from "@/utils/notebook"
 import type { Notebook } from "@/types/backend"
+import { useOrganizationContext } from "@/contexts/OrganizationContext"
 
 // Helper function to render tool output with nice formatting
 function renderToolOutput(toolName: string, result: any, onNavigateToNote?: (notebookId: string, chapterId: string, noteId: string) => void) {
@@ -534,10 +535,11 @@ interface MentionedNote {
 export function RightSidebarContent() {
     const { user, loading: userLoading } = useUser()
     const { getToken } = useAuth()
+    const { activeOrg } = useOrganizationContext()
     const navigate = useNavigate()
     const [model, setModel] = useState<Model>("gpt-5-mini")
     const [files, setFiles] = useState<FileList | null>(null)
-    const [authToken, setAuthToken] = useState<string>('')
+    const [authToken, setAuthToken] = useState<string | null>(null)
     const { open } = useRightSidebar()
     const inputRef = useRef<HTMLTextAreaElement>(null)
     
@@ -548,7 +550,7 @@ export function RightSidebarContent() {
             setAuthToken(token || '')
         }
         fetchToken()
-    }, [getToken])
+    }, [getToken, user]) // Add user dependency to refetch when user changes
     const queryClient = useQueryClient()
     const processedNoteIds = useRef<Set<string>>(new Set())
     const lastContentUpdateTime = useRef<number>(0)
@@ -558,17 +560,17 @@ export function RightSidebarContent() {
     const [mentionedNotes, setMentionedNotes] = useState<MentionedNote[]>([])
     // Fetch notebooks to get all notes for mentions
     const { data: notebooks, isLoading: notebooksLoading } = useQuery<Notebook[]>({
-        queryKey: ['userNotebooks'],
-        queryFn: getUserNotebooks,
+        queryKey: ['userNotebooks', activeOrg?.id],
+        queryFn: () => getUserNotebooks(activeOrg?.id),
         enabled: open && !!user,
     })
 
     // Flatten all notes for mention selector
     const allNotes = useMemo(() => {
         if (!notebooks) return []
-        return notebooks.flatMap(notebook =>
-            notebook.chapters?.flatMap(chapter =>
-                chapter.notes?.map(note => ({
+        return notebooks.flatMap((notebook: Notebook) =>
+            notebook.chapters?.flatMap((chapter: any) =>
+                chapter.notes?.map((note: any) => ({
                     id: note.id,
                     name: note.name,
                     content: note.content,
@@ -603,6 +605,7 @@ export function RightSidebarContent() {
     const hasSelectedApiKey = apiKeyStatus[selectedProvider as keyof ApiKeyStatus] || false;
 
     const { messages, input, handleInputChange, handleSubmit, status, setInput, append } = useChat({
+        key: authToken || 'no-token', // Force re-initialization when token changes
         api: "http://localhost:8080/api/chat",
         body: {
             provider: modelToProvider[model],

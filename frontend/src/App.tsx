@@ -8,6 +8,7 @@ import { useAuth, SignedIn, ClerkLoading } from '@clerk/clerk-react'
 import { setAuthTokenGetter } from '@/utils/api'
 import { toast } from 'sonner'
 import { Toaster } from '@/components/ui/sonner'
+import { useOrganizationContext } from '@/contexts/OrganizationContext'
 import { LeftSidebarContent } from '@/components/left-sidebar-content'
 import { RightSidebarContent } from '@/components/right-sidebar-content'
 import { Dashboard } from '@/components/Dashboard'
@@ -42,6 +43,7 @@ import Page from '@/pages/realtime-cursor'
 function App() {
   const { user, loading: userLoading, refetch: refetchUser } = useUser()
   const { getToken } = useAuth()
+  const { activeOrg } = useOrganizationContext()
   const queryClient = useQueryClient()
   const [createNotebookDialog, setCreateNotebookDialog] = useState(false)
   const [onboardingCompleted, setOnboardingCompleted] = useState(false)
@@ -137,8 +139,8 @@ function App() {
   })
 
   const { data: userNotebooks, isLoading: userNotebooksLoading } = useQuery({
-    queryKey: ['userNotebooks'],
-    queryFn: getUserNotebooks,
+    queryKey: ['userNotebooks', activeOrg?.id],
+    queryFn: () => getUserNotebooks(activeOrg?.id),
     refetchOnWindowFocus: false,
     enabled: !!user,
   })
@@ -160,13 +162,14 @@ function App() {
         isPublic: false,
         name: notebookName,
         userId: user.id,
+        organizationId: activeOrg?.id || null,
         chapters: [],
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       }
 
       await createNotebook(newNotebook)
-      toast.success("Notebook created successfully!")
+      toast.success(`Notebook created successfully${activeOrg ? ` in ${activeOrg.name}` : ''}!`)
       queryClient.invalidateQueries({ queryKey: ['userNotebooks'] })
     } catch (error: any) {
       if (error.response) {
@@ -193,11 +196,15 @@ function App() {
     if (!createChapterDialog.notebookId) return
 
     try {
+      // Get the notebook to inherit its organizationId
+      const notebook = userNotebooks?.find((n) => n.id === createChapterDialog.notebookId)
+      
       const newChapter: Chapter = {
         id: createId(),
         name: chapterName,
         isPublic: false,
         notebookId: createChapterDialog.notebookId,
+        organizationId: notebook?.organizationId || null,
         notebook: {} as any, // Will be populated by backend
         notes: [],
         createdAt: new Date().toISOString(),
@@ -242,12 +249,20 @@ function App() {
     if (!createNoteDialog.chapterId) return
 
     try {
+      // Get the chapter to inherit its organizationId
+      let chapter: Chapter | undefined
+      for (const notebook of userNotebooks || []) {
+        chapter = notebook.chapters?.find((c) => c.id === createNoteDialog.chapterId)
+        if (chapter) break
+      }
+      
       const newNote: Notes = {
         id: createId(),
         name: noteName,
         isPublic: false,
         content: "",
         chapterId: createNoteDialog.chapterId,
+        organizationId: chapter?.organizationId || null,
         chapter: {} as any,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),

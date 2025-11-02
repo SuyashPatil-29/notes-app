@@ -12,6 +12,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { createNote } from '@/utils/notes'
 import { createChapter as createChapterApi } from '@/utils/chapter'
 import { toast } from 'sonner'
+import { useOrganizationContext } from '@/contexts/OrganizationContext'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -26,6 +27,7 @@ interface DashboardProps {
 
 export function Dashboard({ user, userLoading = false }: DashboardProps) {
   const navigate = useNavigate()
+  const { activeOrg } = useOrganizationContext()
   const [activeTab, setActiveTab] = useState<'notebooks' | 'chapters' | 'notes' | 'meetings'>('notebooks')
   const queryClient = useQueryClient()
 
@@ -45,8 +47,8 @@ export function Dashboard({ user, userLoading = false }: DashboardProps) {
   const [selectedNotebookIdForChapter, setSelectedNotebookIdForChapter] = useState<string>('')
 
   const { data: notebooks, isLoading } = useQuery({
-    queryKey: ['userNotebooks'],
-    queryFn: getUserNotebooks,
+    queryKey: ['userNotebooks', activeOrg?.id],
+    queryFn: () => getUserNotebooks(activeOrg?.id),
     enabled: !!user,
   })
 
@@ -109,12 +111,20 @@ export function Dashboard({ user, userLoading = false }: DashboardProps) {
     if (!selectedChapterId || !newNoteName.trim()) return
     try {
       const id = createId()
+      // Get the chapter to inherit its organizationId
+      let chapter
+      for (const notebook of notebooks || []) {
+        chapter = notebook.chapters?.find((c) => c.id === selectedChapterId)
+        if (chapter) break
+      }
+      
       await createNote({
         id,
         name: newNoteName.trim(),
         content: '',
         isPublic: false,
         chapterId: selectedChapterId,
+        organizationId: chapter?.organizationId || null,
         chapter: {} as any,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
@@ -137,12 +147,13 @@ export function Dashboard({ user, userLoading = false }: DashboardProps) {
         id,
         name: newNotebookName.trim(),
         userId: user.id,
+        organizationId: activeOrg?.id || null,
         chapters: [],
         isPublic: false,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       })
-      toast.success('Notebook created successfully!')
+      toast.success(`Notebook created successfully${activeOrg ? ` in ${activeOrg.name}` : ''}!`)
       setCreateNotebookOpen(false)
       await queryClient.invalidateQueries({ queryKey: ['userNotebooks'] })
       navigate(`/${id}`)
@@ -156,11 +167,15 @@ export function Dashboard({ user, userLoading = false }: DashboardProps) {
     if (!selectedNotebookIdForChapter || !newChapterName.trim()) return
     try {
       const id = createId()
+      // Get the notebook to inherit its organizationId
+      const notebook = notebooks?.find((n) => n.id === selectedNotebookIdForChapter)
+      
       await createChapterApi({
         id,
         name: newChapterName.trim(),
         isPublic: false,
         notebookId: selectedNotebookIdForChapter,
+        organizationId: notebook?.organizationId || null,
         notebook: {} as any,
         notes: [],
         createdAt: new Date().toISOString(),
