@@ -1,6 +1,6 @@
-import { FileText, MessageSquare, Copy, Trash2 } from "lucide-react"
+import { FileText, MessageSquare, Copy, RotateCcw, SquareIcon } from "lucide-react"
 import { toast } from "sonner"
-import { useNavigate } from "react-router-dom"
+import { useNavigate, useLocation } from "react-router-dom"
 import {
     RightSidebar,
     RightSidebarContent as RightSidebarContentWrapper,
@@ -35,7 +35,7 @@ import {
 } from "@/components/ai/prompt-input"
 import { Response } from "@/components/ai/response"
 import { Reasoning, ReasoningTrigger, ReasoningContent } from "@/components/ai/reasoning"
-import { Tool, ToolHeader, ToolContent, ToolInput, ToolOutput } from "@/components/ai/tool"
+import { Task, TaskTrigger, TaskContent, TaskItem } from "@/components/ai/task"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { useUser } from "@/hooks/auth"
@@ -539,6 +539,18 @@ export function RightSidebarContent() {
     const { getToken } = useAuth()
     const { activeOrg } = useOrganizationContext()
     const navigate = useNavigate()
+    const location = useLocation()
+    
+    // Extract noteId from URL path: /:notebookId/:chapterId/:noteId
+    const noteId = useMemo(() => {
+        const pathParts = location.pathname.split('/').filter(Boolean)
+        // If we have 3 parts, the last one is the noteId
+        if (pathParts.length === 3) {
+            return pathParts[2]
+        }
+        return null
+    }, [location.pathname])
+    
     const [model, setModel] = useState<Model>("gpt-5-mini")
     const [files, setFiles] = useState<FileList | null>(null)
     const [authToken, setAuthToken] = useState<string | null>(null)
@@ -606,7 +618,7 @@ export function RightSidebarContent() {
     const selectedProvider = modelToProvider[model];
     const hasSelectedApiKey = apiKeyStatus[selectedProvider as keyof ApiKeyStatus] || false;
 
-    const { messages, input, handleInputChange, handleSubmit, status, setInput, append, setMessages } = useChat({
+    const { messages, input, handleInputChange, handleSubmit, status, setInput, append, setMessages, stop, reload, } = useChat({
         key: authToken || 'no-token', // Force re-initialization when token changes
         api: "http://localhost:8080/api/chat",
         body: {
@@ -618,7 +630,7 @@ export function RightSidebarContent() {
         headers: {
             Authorization: authToken ? `Bearer ${authToken}` : '',
         },
-        maxSteps: 5, // Enable multi-step tool calling
+        maxSteps: 10, // Enable multi-step tool calling
         onError: (error) => {
             console.error("Chat error:", error);
             // Show toast notification for errors
@@ -707,9 +719,14 @@ export function RightSidebarContent() {
     // Handle suggestion click
     const handleSuggestionClick = (suggestion: string) => {
         setInput(suggestion)
-        // Auto-focus the input after setting the suggestion
+        // Auto-focus the input and position cursor at the end
         setTimeout(() => {
-            inputRef.current?.focus()
+            if (inputRef.current) {
+                inputRef.current.focus()
+                // Position cursor at the end of the text
+                const length = suggestion.length
+                inputRef.current.setSelectionRange(length, length)
+            }
         }, 50)
     }
 
@@ -1054,13 +1071,10 @@ export function RightSidebarContent() {
                             </div>
                             {messages.length > 0 && (
                                 <Button
-                                    variant="ghost"
-                                    size="sm"
                                     onClick={handleClearChat}
-                                    className="h-8 w-8 p-0 hover:bg-destructive/10 hover:text-destructive"
                                     title="Clear chat"
                                 >
-                                    <Trash2 className="h-4 w-4" />
+                                    Clear Chat
                                 </Button>
                             )}
                         </RightSidebarMenuButton>
@@ -1102,10 +1116,10 @@ export function RightSidebarContent() {
                                             />
                                         </Suggestions>
                                         <Suggestions className="justify-center w-full">
-                                        <Suggestion
-                                            suggestion="List all my notebooks"
-                                            onClick={handleSuggestionClick}
-                                        />
+                                            <Suggestion
+                                                suggestion="List all my notebooks"
+                                                onClick={handleSuggestionClick}
+                                            />
                                         </Suggestions>
                                         <Suggestions className="justify-center w-full">
                                             <Suggestion
@@ -1172,78 +1186,116 @@ export function RightSidebarContent() {
                             }
 
                             if (role === "assistant") {
+                                // Group parts by type - separate tool invocations from text/reasoning
+                                const toolParts = m.parts?.filter(p => p.type === "tool-invocation") || []
+                                const nonToolParts = m.parts?.filter(p => p.type !== "tool-invocation") || []
+
                                 return (
-                                    <Message from={role} key={m.id}>
-                                        <MessageAvatar role={role} />
-                                        <MessageContent>
-                                            {m.parts?.map((part, index) => {
-                                                switch (part.type) {
-                                                    case "text":
-                                                        return (
-                                                            <div key={index} className="relative group">
-                                                                <Response>
-                                                                    {part.text}
-                                                                </Response>
-                                                                {part.text && (
-                                                                    <Button
-                                                                        variant="ghost"
-                                                                        size="sm"
-                                                                        onClick={() => handleCopyResponse(part.text)}
-                                                                        className="absolute top-0 right-0 h-7 w-7 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
-                                                                        title="Copy response"
-                                                                    >
-                                                                        <Copy className="h-3.5 w-3.5" />
-                                                                    </Button>
-                                                                )}
-                                                            </div>
-                                                        )
-
-                                                    case "tool-invocation":
+                                    <React.Fragment key={m.id}>
+                                        {/* Render tool invocations in their own message */}
+                                        {toolParts.length > 0 && (
+                                            <Message from={role}>
+                                                <MessageAvatar role={role} />
+                                                <MessageContent>
+                                                    {toolParts.map((part, index) => {
                                                         const toolInvocation = part.toolInvocation as any
-                                                        const toolState = toolInvocation.result
-                                                            ? "output-available"
-                                                            : "input-available"
+                                                        const isComplete = !!toolInvocation.result
+                                                        const taskTitle = isComplete
+                                                            ? `✓ ${toolInvocation.toolName}`
+                                                            : `⏳ ${toolInvocation.toolName}...`
 
                                                         return (
-                                                            <Tool key={index} defaultOpen>
-                                                                <ToolHeader
-                                                                    type={toolInvocation.toolName}
-                                                                    state={toolState}
-                                                                />
-                                                                <ToolContent>
-                                                                    {toolInvocation.args && (
-                                                                        <ToolInput input={toolInvocation.args} />
-                                                                    )}
+                                                            <Task key={index} defaultOpen={false} className="mt-3 first:mt-0">
+                                                                <TaskTrigger title={taskTitle} />
+                                                                <TaskContent>
                                                                     {toolInvocation.result && (
-                                                                        <ToolOutput
-                                                                            output={renderToolOutput(toolInvocation.toolName, toolInvocation.result, handleNavigateToNote)}
-                                                                            errorText={undefined}
-                                                                        />
+                                                                        <TaskItem>
+                                                                            {renderToolOutput(toolInvocation.toolName, toolInvocation.result, handleNavigateToNote)}
+                                                                        </TaskItem>
                                                                     )}
-                                                                </ToolContent>
-                                                            </Tool>
+                                                                    {!toolInvocation.result && toolInvocation.args && (
+                                                                        <TaskItem>
+                                                                            <div className="text-muted-foreground text-xs">
+                                                                                Running with: {Object.keys(toolInvocation.args).join(', ')}
+                                                                            </div>
+                                                                        </TaskItem>
+                                                                    )}
+                                                                </TaskContent>
+                                                            </Task>
                                                         )
+                                                    })}
+                                                </MessageContent>
+                                            </Message>
+                                        )}
 
-                                                    case "reasoning":
-                                                        return (
-                                                            <Reasoning
-                                                                key={index}
-                                                                isStreaming={status === "streaming"}
-                                                                defaultOpen={false}
+                                        {/* Render text and reasoning in a separate message */}
+                                        {nonToolParts.length > 0 && (
+                                            <Message from={role}>
+                                                <MessageAvatar role={role} />
+                                                <MessageContent>
+                                                    {nonToolParts.map((part, index) => {
+                                                        switch (part.type) {
+                                                            case "text":
+                                                                return (
+                                                                    <div key={index}>
+                                                                        <Response>
+                                                                            {part.text}
+                                                                        </Response>
+                                                                    </div>
+                                                                )
+
+                                                            case "reasoning":
+                                                                return (
+                                                                    <Reasoning
+                                                                        key={index}
+                                                                        isStreaming={status === "streaming"}
+                                                                        defaultOpen={false}
+                                                                    >
+                                                                        <ReasoningTrigger />
+                                                                        <ReasoningContent>
+                                                                            {part.reasoning || ""}
+                                                                        </ReasoningContent>
+                                                                    </Reasoning>
+                                                                )
+
+                                                            default:
+                                                                return null
+                                                        }
+                                                    })}
+                                                    {/* Action buttons at the bottom right */}
+                                                    <div className="flex items-center justify-end gap-2 mt-3 pt-2 border-t border-border/30">
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            onClick={() => reload()}
+                                                            className="h-8 gap-1.5"
+                                                            title="Regenerate response"
+                                                        >
+                                                            <RotateCcw className="h-3.5 w-3.5" />
+                                                            <span className="text-xs">Regenerate</span>
+                                                        </Button>
+                                                        {nonToolParts.some(p => p.type === "text" && p.text) && (
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                onClick={() => {
+                                                                    const textPart = nonToolParts.find(p => p.type === "text" && p.text)
+                                                                    if (textPart?.type === "text") {
+                                                                        handleCopyResponse(textPart.text)
+                                                                    }
+                                                                }}
+                                                                className="h-8 gap-1.5"
+                                                                title="Copy response"
                                                             >
-                                                                <ReasoningTrigger />
-                                                                <ReasoningContent>
-                                                                    {part.reasoning || ""}
-                                                                </ReasoningContent>
-                                                            </Reasoning>
-                                                        )
-
-                                                    default:
-                                                        return null
-                                                }
-                                            })}
-                                        </MessageContent>
-                                    </Message>
+                                                                <Copy className="h-3.5 w-3.5" />
+                                                                <span className="text-xs">Copy</span>
+                                                            </Button>
+                                                        )}
+                                                    </div>
+                                                </MessageContent>
+                                            </Message>
+                                        )}
+                                    </React.Fragment>
                                 )
                             }
 
@@ -1251,7 +1303,7 @@ export function RightSidebarContent() {
                         })}
 
                         {/* Loading indicator */}
-                        {status === "submitted" && (
+                        {status === "submitted" || status === "streaming" && (
                             <Message from="assistant">
                                 <MessageAvatar role="assistant" />
                                 <MessageContent>
@@ -1282,6 +1334,7 @@ export function RightSidebarContent() {
                                 notes={allNotes}
                                 onSelectNote={handleSelectNote}
                                 isLoading={notebooksLoading}
+                                currentNoteId={noteId}
                             />
                             <PromptInputTextarea
                                 ref={inputRef}
@@ -1289,7 +1342,7 @@ export function RightSidebarContent() {
                                 placeholder={hasSelectedApiKey ? "Ask me anything... (Type @ to mention notes)" : "Set up API keys in settings to start chatting..."}
                                 onChange={handleInputChangeWithMention}
                                 onKeyDown={handleKeyDown}
-                                disabled={status === "streaming" || !hasSelectedApiKey}
+                                disabled={status === "streaming" || status === "submitted" || !hasSelectedApiKey}
                             />
                         </div>
                         <PromptInputToolbar>
@@ -1342,10 +1395,24 @@ export function RightSidebarContent() {
                                     className="hidden"
                                 />
                             </PromptInputTools>
-                            <PromptInputSubmit
-                                status={status}
-                                disabled={!input.trim() || status === "streaming" || !hasSelectedApiKey}
-                            />
+                            {/* Submit/Stop button */}
+                            {status === "streaming" || status === "submitted" ? (
+                                <Button
+                                    type="button"
+                                    variant="default"
+                                    size="icon"
+                                    onClick={() => stop()}
+                                    className="gap-1.5 rounded-lg"
+                                    title="Stop generating"
+                                >
+                                    <SquareIcon className="size-4" />
+                                </Button>
+                            ) : (
+                                <PromptInputSubmit
+                                    status={status}
+                                    disabled={!input.trim() || !hasSelectedApiKey}
+                                />
+                            )}
                         </PromptInputToolbar>
                     </PromptInput>
                 </div>

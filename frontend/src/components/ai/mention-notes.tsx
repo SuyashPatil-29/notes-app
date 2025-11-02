@@ -2,7 +2,8 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { Badge } from "@/components/ui/badge"
 import { X, FileText } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { useEffect, useRef } from "react"
+import { useEffect, useRef, useMemo } from "react"
+import { getPreviewText } from "@/utils/markdown"
 
 interface MentionedNote {
   id: string
@@ -17,6 +18,7 @@ interface MentionNotesPopoverProps {
   notes: MentionedNote[]
   onSelectNote: (note: MentionedNote) => void
   isLoading?: boolean
+  currentNoteId?: string | null
 }
 
 export function MentionNotesPopover({
@@ -24,6 +26,7 @@ export function MentionNotesPopover({
   notes,
   onSelectNote,
   isLoading = false,
+  currentNoteId = null,
 }: MentionNotesPopoverProps) {
   const searchInputRef = useRef<HTMLInputElement>(null)
 
@@ -38,12 +41,24 @@ export function MentionNotesPopover({
     }
   }, [open])
 
+  // Split notes into current note and other notes
+  const { currentNote, otherNotes } = useMemo(() => {
+    if (!currentNoteId) {
+      return { currentNote: null, otherNotes: notes }
+    }
+    
+    const current = notes.find(note => note.id === currentNoteId)
+    const others = notes.filter(note => note.id !== currentNoteId)
+    
+    return { currentNote: current || null, otherNotes: others }
+  }, [notes, currentNoteId])
+
   if (!open) return null
 
   return (
     <div className="absolute bottom-full left-0 right-0 mb-2 z-50">
       <div className="w-full max-w-[450px] rounded-lg border bg-popover text-popover-foreground shadow-xl">
-        <Command className="rounded-lg">
+        <Command className="rounded-lg" shouldFilter={true}>
           <CommandInput 
             ref={searchInputRef}
             placeholder="Search notes..." 
@@ -59,27 +74,58 @@ export function MentionNotesPopover({
                 No notes found. Create some notes first!
               </CommandEmpty>
             ) : (
-              <CommandGroup heading={`${notes.length} note${notes.length !== 1 ? 's' : ''} available`}>
-                {notes.map((note) => (
-                  <CommandItem
-                    key={note.id}
-                    value={`${note.name} ${note.notebookName} ${note.chapterName}`}
-                    onSelect={() => onSelectNote(note)}
-                    className="flex items-start gap-3 py-3 cursor-pointer"
-                  >
-                    <FileText className="h-4 w-4 mt-0.5 text-muted-foreground shrink-0" />
-                    <div className="flex-1 space-y-1 overflow-hidden">
-                      <p className="text-sm font-medium leading-none truncate">{note.name}</p>
-                      <p className="text-xs text-muted-foreground truncate">
-                        {note.notebookName} → {note.chapterName}
-                      </p>
-                      <p className="text-xs text-muted-foreground line-clamp-2">
-                        {note.content ? note.content.substring(0, 100) + (note.content.length > 100 ? '...' : '') : 'Empty note'}
-                      </p>
-                    </div>
-                  </CommandItem>
-                ))}
-              </CommandGroup>
+              <>
+                {/* Current Note Group */}
+                {currentNote && (
+                  <CommandGroup heading="Current Note">
+                    <CommandItem
+                      key={currentNote.id}
+                      value={`${currentNote.name} ${currentNote.notebookName} ${currentNote.chapterName}`}
+                      onSelect={() => onSelectNote(currentNote)}
+                      className="flex items-start gap-3 py-3 cursor-pointer"
+                    >
+                      <FileText className="h-4 w-4 mt-0.5 text-muted-foreground shrink-0" />
+                      <div className="flex-1 space-y-1 overflow-hidden">
+                        <div className="flex items-center gap-2">
+                          <p className="text-sm font-medium leading-none truncate">{currentNote.name}</p>
+                          <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                            Current
+                          </Badge>
+                        </div>
+                        <p className="text-xs text-muted-foreground truncate">
+                          {currentNote.notebookName} → {currentNote.chapterName}
+                        </p>
+                        <p className="text-xs text-muted-foreground line-clamp-2">
+                          {getPreviewText(currentNote.content, 100)}
+                        </p>
+                      </div>
+                    </CommandItem>
+                  </CommandGroup>
+                )}
+                
+                {/* All Notes Group */}
+                <CommandGroup heading={`${otherNotes.length} other note${otherNotes.length !== 1 ? 's' : ''}`}>
+                  {otherNotes.map((note) => (
+                    <CommandItem
+                      key={note.id}
+                      value={`${note.name} ${note.notebookName} ${note.chapterName}`}
+                      onSelect={() => onSelectNote(note)}
+                      className="flex items-start gap-3 py-3 cursor-pointer"
+                    >
+                      <FileText className="h-4 w-4 mt-0.5 text-muted-foreground shrink-0" />
+                      <div className="flex-1 space-y-1 overflow-hidden">
+                        <p className="text-sm font-medium leading-none truncate">{note.name}</p>
+                        <p className="text-xs text-muted-foreground truncate">
+                          {note.notebookName} → {note.chapterName}
+                        </p>
+                        <p className="text-xs text-muted-foreground line-clamp-2">
+                          {getPreviewText(note.content, 100)}
+                        </p>
+                      </div>
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+              </>
             )}
           </CommandList>
         </Command>
