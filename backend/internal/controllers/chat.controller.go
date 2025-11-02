@@ -254,6 +254,59 @@ func handleNotesToolCall(toolCall aisdk.ToolCall, clerkUserID string, organizati
 	}
 }
 
+// getPreviewText extracts preview text from note content (handles JSON or plain text)
+func getPreviewText(content string, maxLength int) string {
+	if content == "" {
+		return "Empty note"
+	}
+
+	// Check if content is JSON (ProseMirror format)
+	if strings.HasPrefix(strings.TrimSpace(content), "{\"type\":\"doc\"") {
+		// Try to parse as ProseMirror JSON and extract text
+		var doc map[string]interface{}
+		if err := json.Unmarshal([]byte(content), &doc); err == nil {
+			text := extractTextFromProseMirror(doc)
+			if text == "" {
+				return "Empty note"
+			}
+			if len(text) > maxLength {
+				return text[:maxLength] + "..."
+			}
+			return text
+		}
+	}
+
+	// Plain text content
+	if len(content) > maxLength {
+		return content[:maxLength] + "..."
+	}
+	return content
+}
+
+// extractTextFromProseMirror recursively extracts plain text from ProseMirror JSON
+func extractTextFromProseMirror(node map[string]interface{}) string {
+	var textParts []string
+
+	// If this node has text content, extract it
+	if text, ok := node["text"].(string); ok {
+		return text
+	}
+
+	// If this node has content array, recurse through it
+	if content, ok := node["content"].([]interface{}); ok {
+		for _, child := range content {
+			if childMap, ok := child.(map[string]interface{}); ok {
+				childText := extractTextFromProseMirror(childMap)
+				if childText != "" {
+					textParts = append(textParts, childText)
+				}
+			}
+		}
+	}
+
+	return strings.Join(textParts, " ")
+}
+
 // searchNotes searches for notes by query in title and content
 func searchNotes(clerkUserID string, organizationID *string, query string) any {
 	var allNotes []models.Notes
@@ -301,16 +354,11 @@ func searchNotes(clerkUserID string, organizationID *string, query string) any {
 	// Format results
 	results := make([]map[string]any, len(allNotes))
 	for i, note := range allNotes {
-		// Truncate content for preview
-		preview := note.Content
-		if len(preview) > 200 {
-			preview = preview[:200] + "..."
-		}
-
 		results[i] = map[string]any{
 			"id":           note.ID,
 			"name":         note.Name,
-			"preview":      preview,
+			"content":      note.Content,
+			"preview":      getPreviewText(note.Content, 150),
 			"chapterName":  note.Chapter.Name,
 			"notebookName": note.Chapter.Notebook.Name,
 			"updatedAt":    note.UpdatedAt.Format("2006-01-02 15:04:05"),
@@ -510,16 +558,11 @@ func listNotesInChapter(clerkUserID string, chapterID string) any {
 	// Format results
 	results := make([]map[string]any, len(notes))
 	for i, note := range notes {
-		// Truncate content for preview
-		preview := note.Content
-		if len(preview) > 150 {
-			preview = preview[:150] + "..."
-		}
-
 		results[i] = map[string]any{
 			"id":        note.ID,
 			"name":      note.Name,
-			"preview":   preview,
+			"content":   note.Content,
+			"preview":   getPreviewText(note.Content, 150),
 			"updatedAt": note.UpdatedAt.Format("2006-01-02 15:04:05"),
 		}
 	}

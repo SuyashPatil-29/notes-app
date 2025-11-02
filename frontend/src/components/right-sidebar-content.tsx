@@ -47,6 +47,7 @@ import { Suggestions, Suggestion } from "@/components/ai/suggestion"
 import { getUserNotebooks } from "@/utils/notebook"
 import type { Notebook } from "@/types/backend"
 import { useOrganizationContext } from "@/contexts/OrganizationContext"
+import { getPreviewText } from "@/utils/markdown"
 
 // Helper function to render tool output with nice formatting
 function renderToolOutput(toolName: string, result: any, onNavigateToNote?: (notebookId: string, chapterId: string, noteId: string) => void) {
@@ -77,7 +78,9 @@ function renderToolOutput(toolName: string, result: any, onNavigateToNote?: (not
                                         <p className="text-xs text-muted-foreground">
                                             {note.notebookName} → {note.chapterName}
                                         </p>
-                                        <p className="mt-1 text-xs text-muted-foreground">{note.preview}</p>
+                                        <p className="mt-1 text-xs text-muted-foreground">
+                                            {note.content ? getPreviewText(note.content, 100) : (note.preview || 'Empty note')}
+                                        </p>
                                         <p className="mt-1 text-xs text-muted-foreground">Updated: {note.updatedAt}</p>
                                     </div>
                                 ))}
@@ -150,7 +153,7 @@ function renderToolOutput(toolName: string, result: any, onNavigateToNote?: (not
                         </p>
                     </div>
                     <div className="p-3 bg-muted/50 rounded border max-h-96 overflow-y-auto">
-                        <pre className="text-xs whitespace-pre-wrap font-mono">{result.content}</pre>
+                        <p className="text-xs whitespace-pre-wrap">{getPreviewText(result.content || '', 500)}</p>
                     </div>
                 </div>
             )
@@ -166,7 +169,9 @@ function renderToolOutput(toolName: string, result: any, onNavigateToNote?: (not
                             {result.notes.map((note: any, idx: number) => (
                                 <div key={idx} className="p-2 bg-muted/50 rounded border">
                                     <p className="font-medium text-foreground">{note.name}</p>
-                                    <p className="text-xs text-muted-foreground mt-1">{note.preview}</p>
+                                    <p className="text-xs text-muted-foreground mt-1">
+                                        {note.content ? getPreviewText(note.content, 100) : (note.preview || 'Empty note')}
+                                    </p>
                                     <p className="text-xs text-muted-foreground mt-1">Updated: {note.updatedAt}</p>
                                 </div>
                             ))}
