@@ -6,11 +6,13 @@ import { Header } from '@/components/Header'
 import { Skeleton } from '@/components/ui/skeleton'
 import { NoteVideoPlayer } from '@/components/NoteVideoPlayer'
 import type { AuthenticatedUser } from '@/types/backend'
-import { Loader2, Calendar, Clock, Video, VideoOff, Pause } from 'lucide-react'
+import { Loader2, Calendar, Clock, Video, VideoOff } from 'lucide-react'
 import { toast } from 'sonner'
 import { useOrganizationContext } from '@/contexts/OrganizationContext'
 import 'katex/dist/katex.min.css'
 import '@/prosemirror.css'
+import Collaboration from '@tiptap/extension-collaboration'
+import { CollaborationCaret } from '@tiptap/extension-collaboration-caret'
 
 import {
   EditorCommand,
@@ -37,9 +39,11 @@ import type { Notes } from "@/types/backend";
 import { RealtimeAvatarStack } from '@/components/realtime-avatar-stack'
 import { RealtimeCursors } from '@/components/realtime-cursors'
 import { isRealtimeConfigured } from '@/utils/check-realtime'
-import { useRealtimeEditLock } from '@/hooks/use-realtime-edit-lock'
 import { useRealtimePresenceRoom } from '@/hooks/use-realtime-presence-room'
-import { Edit3, Eye } from 'lucide-react'
+import { useYjsSupabaseProvider } from '@/hooks/use-yjs-supabase-provider'
+import { useCurrentUserName } from '@/hooks/use-current-user-name'
+import { useCurrentUserImage } from '@/hooks/use-current-user-image'
+import { Eye } from 'lucide-react'
 
 import GenerativeMenuSwitch from "./generative/generative-menu-switch";
 // import { uploadFn } from "./image-upload";
@@ -49,7 +53,11 @@ import { slashCommand, suggestionItems } from "./slash-command";
 import hljs from "highlight.js";
 import { Button } from './ui/button'
 
-const extensions = [...defaultExtensions, slashCommand];
+// Generate a random color for the user's cursor
+const getRandomColor = () => {
+  const colors = ['#958DF1', '#F98181', '#FBBC88', '#FAF594', '#70CFF8', '#94FADB', '#B9F18D']
+  return colors[Math.floor(Math.random() * colors.length)]
+}
 
 interface NoteEditorProps {
   user: AuthenticatedUser | null
@@ -73,23 +81,28 @@ export function NoteEditor({ user, userLoading = false }: NoteEditorProps) {
   const [isDeletingVideo, setIsDeletingVideo] = useState(false);
   const autoSaveTimerRef = useRef<number | null>(null);
   const hasUnsavedChanges = useRef(false);
+  const initialContentLoadedRef = useRef(false);
 
   const [openAI, setOpenAI] = useState(false);
   const [openNode, setOpenNode] = useState(false);
   const [openColor, setOpenColor] = useState(false);
   const [openLink, setOpenLink] = useState(false);
-  const [isEditMode, setIsEditMode] = useState(false);
 
-  // Edit lock system
-  const { currentEditor, requestEdit, releaseEdit, isEditing, canEdit } = useRealtimeEditLock(
-    noteId ? `note-${noteId}` : ''
-  );
+  // Get current user info for collaboration cursor
+  const currentUserName = useCurrentUserName()
+  const currentUserImage = useCurrentUserImage()
+
+  // Y.js collaboration provider
+  const { ydoc, provider, status: providerStatus, isSynced } = useYjsSupabaseProvider(
+    noteId || '',
+    !!noteId && !!user
+  )
 
   // Realtime presence for viewer count
   const { users: realtimeUsers } = useRealtimePresenceRoom(noteId ? `note-${noteId}` : '');
   const viewerCount = Object.keys(realtimeUsers).length;
 
-  const { data: noteResponse, isLoading, error, refetch: refetchNote } = useQuery({
+  const { data: noteResponse, isLoading, error } = useQuery({
     queryKey: ['note', noteId],
     queryFn: async () => {
       return await getNote(noteId!);
@@ -261,21 +274,35 @@ export function NoteEditor({ user, userLoading = false }: NoteEditorProps) {
     }
   }, [])
 
-  // Auto-release edit lock when unmounting or navigating away
+  // Load initial content into Y.js document when synced
   useEffect(() => {
-    return () => {
-      if (isEditing) {
-        releaseEdit()
-      }
+    if (!isSynced || !ydoc || !note || initialContentLoadedRef.current || !editorInstance) {
+      return
     }
-  }, [isEditing, releaseEdit])
 
-  // Update editor editable state when isEditMode changes
-  useEffect(() => {
-    if (editorInstance) {
-      editorInstance.setEditable(isEditMode)
+    console.log('[Y.js] Checking if initial content needs to be loaded')
+    
+    // Check if Y.js doc is empty (no one has edited yet)
+    const xmlFragment = ydoc.getXmlFragment('default')
+    
+    // Only load from DB if the Y.js document is truly empty AND has no content
+    if (xmlFragment.length === 0 && xmlFragment.toString().length === 0) {
+      console.log('[Y.js] Y.js doc is empty, loading initial content from database')
+      
+      // Small delay to ensure collaboration is fully initialized
+      setTimeout(() => {
+        if (note.content) {
+          const content = getInitialContent()
+          console.log('[Y.js] Setting initial content:', content)
+          editorInstance.commands.setContent(content, false)
+        }
+      }, 100)
+    } else {
+      console.log('[Y.js] Y.js doc already has content, skipping initial load')
     }
-  }, [isEditMode, editorInstance])
+    
+    initialContentLoadedRef.current = true
+  }, [isSynced, ydoc, note, editorInstance])
 
   if (userLoading || isLoading) {
     return (
@@ -332,82 +359,11 @@ export function NoteEditor({ user, userLoading = false }: NoteEditorProps) {
     return name.length > maxLength ? name.substring(0, maxLength) + '...' : name
   }
 
-  const handleStartEditing = async () => {
-    try {
-      // Request edit lock first
-      const success = await requestEdit()
-      if (!success) {
-        toast.error('Unable to start editing. Someone else may be editing.')
-        return
-      }
-
-      // Pull latest data from DB before enabling edit mode
-      await refetchNote()
-      
-      // Enable edit mode
-      setIsEditMode(true)
-      toast.success('You are now editing with latest version')
-    } catch (error) {
-      console.error('Failed to start editing:', error)
-      toast.error('Failed to start editing')
-      await releaseEdit() // Release lock if something went wrong
-    }
-  }
-
-  const handleStopEditing = async () => {
-    try {
-      // Save to DB first if there are unsaved changes
-      if (editorInstance && hasUnsavedChanges.current) {
-        setIsSaving(true)
-        const content = editorInstance.getJSON()
-        await updateNote(noteId!, {
-          content: JSON.stringify(content)
-        })
-        
-        // Update the cache immediately with the new content to prevent flicker on mode switch
-        queryClient.setQueryData(['note', noteId], (oldData: any) => {
-          if (!oldData) return oldData
-          return {
-            ...oldData,
-            data: {
-              ...oldData.data,
-              content: JSON.stringify(content),
-              updatedAt: new Date().toISOString()
-            }
-          }
-        })
-        
-        hasUnsavedChanges.current = false
-        setIsSaving(false)
-      }
-      
-      // Disable edit mode (this will trigger key change and remount)
-      setIsEditMode(false)
-      
-      // Release edit lock
-      await releaseEdit()
-      
-      // Invalidate queries to sync all viewers (this happens after mode change)
-      await queryClient.invalidateQueries({ queryKey: ['note', noteId] })
-      
-      toast.success('Stopped editing and saved')
-    } catch (error) {
-      console.error('Failed to stop editing:', error)
-      toast.error('Failed to save changes')
-      setIsSaving(false)
-    }
-  }
-
   const handleSave = async (isAutoSave = false) => {
     if (!editorInstance || !noteId) {
       if (!isAutoSave) {
         toast.error("Editor not ready")
       }
-      return
-    }
-
-    // Don't auto-save if not in edit mode
-    if (isAutoSave && !isEditMode) {
       return
     }
 
@@ -430,6 +386,7 @@ export function NoteEditor({ user, userLoading = false }: NoteEditorProps) {
       hasUnsavedChanges.current = false
 
       if (isAutoSave) {
+        console.log('[Auto-save] Saved Y.js state to database')
       } else {
         toast.success("Note saved successfully!")
       }
@@ -524,14 +481,11 @@ export function NoteEditor({ user, userLoading = false }: NoteEditorProps) {
               <h1 className="text-4xl font-bold tracking-tight">{note.name}</h1>
               {isRealtimeConfigured() && (
                 <div className="flex flex-col items-end gap-2">
-                  {/* Editing status badge - prominent if someone is editing */}
-                  {(isEditing || currentEditor) && (
-                    <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium ${isEditing
-                        ? 'bg-green-500/15 text-green-700 dark:text-green-400 border border-green-500/30'
-                        : 'bg-blue-500/15 text-blue-700 dark:text-blue-400 border border-blue-500/30'
-                      }`}>
-                      <Edit3 className="h-3.5 w-3.5" />
-                      <span>{isEditing ? "You're editing" : `${currentEditor?.name} is editing`}</span>
+                  {/* Connection status badge */}
+                  {providerStatus === 'connected' && (
+                    <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-green-500/15 text-green-700 dark:text-green-400 border border-green-500/30">
+                      <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                      <span>Live collaboration active</span>
                     </div>
                   )}
 
@@ -668,44 +622,6 @@ export function NoteEditor({ user, userLoading = false }: NoteEditorProps) {
 
           <div className="relative w-full max-w-5xl">
             <div className="flex absolute right-5 top-5 z-10 mb-5 gap-2">
-              {/* Edit control button */}
-              {isRealtimeConfigured() && (
-                <>
-                  {!isEditing && canEdit && (
-                    <Button
-                      onClick={handleStartEditing}
-                      size="sm"
-                      variant="default"
-                      className="gap-2"
-                    >
-                      <Edit3 className="h-3 w-3" />
-                      Start Editing
-                    </Button>
-                  )}
-                  {!isEditing && !canEdit && (
-                    <Button
-                      disabled
-                      size="sm"
-                      variant="outline"
-                      className="gap-2 cursor-not-allowed"
-                      title="Someone else is currently editing"
-                    >
-                      Edit (Locked)
-                    </Button>
-                  )}
-                  {isEditing && (
-                    <Button
-                      onClick={handleStopEditing}
-                      size="sm"
-                      variant="destructive"
-                      className="gap-2"
-                    >
-                      <Pause className="h-3 w-3" />
-                      Stop Editing
-                    </Button>
-                  )}
-                </>
-              )}
               {isAutoSaving && (
                 <div className="rounded-lg bg-blue-500/10 border border-blue-500/20 px-2 py-1 text-xs text-blue-600 dark:text-blue-400 flex items-center gap-1">
                   <Loader2 className="h-3 w-3 animate-spin" />
@@ -716,16 +632,39 @@ export function NoteEditor({ user, userLoading = false }: NoteEditorProps) {
                 {charsCount} Words
               </div>
             </div>
-            <EditorRoot key={`${noteId}-${note.updatedAt}-${isEditMode ? 'edit' : 'read'}`}>
-              <EditorContent
-                initialContent={getInitialContent()}
-                extensions={extensions}
-                className={`relative min-h-[500px] w-full max-w-5xl border rounded-lg transition-colors ${isEditMode
-                    ? 'border-border/40 hover:border-border/60 focus-within:border-border'
-                    : 'border-border/20 cursor-default bg-muted/20'
-                  }`}
+            {/* Show loading state while collaboration is initializing */}
+            {!isSynced && ydoc ? (
+              <div className="relative min-h-[500px] w-full max-w-5xl border rounded-lg border-border/40 flex items-center justify-center">
+                <div className="flex flex-col items-center gap-2 text-muted-foreground">
+                  <Loader2 className="h-6 w-6 animate-spin" />
+                  <p className="text-sm">Connecting to collaboration...</p>
+                </div>
+              </div>
+            ) : (
+              <EditorRoot key={`${noteId}-collab`}>
+                <EditorContent
+                  initialContent={getInitialContent()}
+                  extensions={[
+                    ...defaultExtensions,
+                    slashCommand,
+                    // Add Y.js collaboration extensions when ready
+                    ...(ydoc && provider && isSynced ? [
+                      Collaboration.configure({
+                        document: ydoc,
+                      }),
+                      CollaborationCaret.configure({
+                        provider: provider,
+                        user: {
+                          name: currentUserName || 'Anonymous',
+                          color: getRandomColor(),
+                          avatar: currentUserImage || undefined,
+                        },
+                      }),
+                    ] : []),
+                  ]}
+                className="relative min-h-[500px] w-full max-w-5xl border rounded-lg transition-colors border-border/40 hover:border-border/60 focus-within:border-border"
                 editorProps={{
-                  editable: () => isEditMode,
+                  editable: () => true, // Always editable for collaborative editing
                   handleDOMEvents: {
                     keydown: (_view, event) => handleCommandNavigation(event),
                   },
@@ -778,23 +717,22 @@ export function NoteEditor({ user, userLoading = false }: NoteEditorProps) {
                   </EditorCommandList>
                 </EditorCommand>
 
-                {isEditMode && (
-                  <GenerativeMenuSwitch open={openAI} onOpenChange={setOpenAI}>
-                    <Separator orientation="vertical" />
-                    <NodeSelector open={openNode} onOpenChange={setOpenNode} />
-                    <Separator orientation="vertical" />
+                <GenerativeMenuSwitch open={openAI} onOpenChange={setOpenAI}>
+                  <Separator orientation="vertical" />
+                  <NodeSelector open={openNode} onOpenChange={setOpenNode} />
+                  <Separator orientation="vertical" />
 
-                    <LinkSelector open={openLink} onOpenChange={setOpenLink} />
-                    <Separator orientation="vertical" />
-                    <MathSelector />
-                    <Separator orientation="vertical" />
-                    <TextButtons />
-                    <Separator orientation="vertical" />
-                    <ColorSelector open={openColor} onOpenChange={setOpenColor} />
+                  <LinkSelector open={openLink} onOpenChange={setOpenLink} />
+                  <Separator orientation="vertical" />
+                  <MathSelector />
+                  <Separator orientation="vertical" />
+                  <TextButtons />
+                  <Separator orientation="vertical" />
+                  <ColorSelector open={openColor} onOpenChange={setOpenColor} />
                   </GenerativeMenuSwitch>
-                )}
-              </EditorContent>
-            </EditorRoot>
+                </EditorContent>
+              </EditorRoot>
+            )}
           </div>
         </div>
       </div>

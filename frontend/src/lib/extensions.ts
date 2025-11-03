@@ -36,21 +36,6 @@ import {
     },
   });
   
-  const tiptapImage = TiptapImage.extend({
-    addProseMirrorPlugins() {
-      return [
-        UploadImagesPlugin({
-          imageClass: cx("opacity-40 rounded-lg border border-stone-200"),
-        }),
-      ];
-    },
-  }).configure({
-    allowBase64: true,
-    HTMLAttributes: {
-      class: cx("rounded-lg border border-muted"),
-    },
-  });
-  
   const updatedImage = UpdatedImage.configure({
     HTMLAttributes: {
       class: cx("rounded-lg border border-muted"),
@@ -96,11 +81,7 @@ import {
         class: cx("border-l-4 border-primary"),
       },
     },
-    codeBlock: {
-      HTMLAttributes: {
-        class: cx("rounded-md bg-muted text-muted-foreground border p-5 font-mono font-medium"),
-      },
-    },
+    codeBlock: false, // Disable StarterKit's codeBlock since we use CodeBlockLowlight
     code: {
       HTMLAttributes: {
         class: cx("rounded-md bg-muted  px-1.5 py-1 font-mono font-medium"),
@@ -113,6 +94,8 @@ import {
       width: 4,
     },
     gapcursor: false,
+    // Disable history for Y.js collaboration - Y.js manages its own history
+    history: false,
   });
   
   const codeBlockLowlight = CodeBlockLowlight.configure({
@@ -152,28 +135,27 @@ import {
   
   const characterCount = CharacterCount.configure();
   
-  export const defaultExtensions = [
-    starterKit,
-    placeholder,
-    tiptapLink,
-    tiptapImage,
-    updatedImage,
-    taskList,
-    taskItem,
-    horizontalRule,
-    aiHighlight,
-    codeBlockLowlight,
-    youtube,
-    twitter,
-    mathematics,
-    characterCount,
-    TiptapUnderline,
-    MarkdownExtension,
-    HighlightExtension,
-    TextStyle,
-    Color,
-    // CustomKeymap,
-    // GlobalDragHandle,
-    // AutoJoiner,
-  ];
+export const defaultExtensions = [
+  starterKit,
+  placeholder,
+  tiptapLink,
+  updatedImage, // Use only updatedImage, not both tiptapImage and updatedImage
+  taskList,
+  taskItem,
+  horizontalRule,
+  aiHighlight,
+  codeBlockLowlight, // This overrides the codeBlock from StarterKit
+  youtube,
+  twitter,
+  mathematics,
+  characterCount,
+  TiptapUnderline,
+  MarkdownExtension,
+  HighlightExtension,
+  TextStyle,
+  Color,
+  // CustomKeymap,
+  // GlobalDragHandle,
+  // AutoJoiner,
+];
   
