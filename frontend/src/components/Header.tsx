@@ -12,7 +12,7 @@ import { RightSidebarTrigger } from '@/components/ui/right-sidebar'
 import { ThemeSelector } from '@/components/ThemeSelector'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
-import { ArrowLeft, RotateCcw, Settings } from 'lucide-react'
+import { ArrowLeft, RotateCcw, Settings, Search } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { ClerkLoaded, ClerkLoading, UserButton } from '@clerk/clerk-react'
 import type { AuthenticatedUser } from '@/types/backend'
@@ -20,6 +20,8 @@ import api from '@/utils/api'
 import { toast } from 'sonner'
 import { ModeToggle } from './ModeToggle'
 import { OrganizationSwitcher } from './organizations/OrganizationSwitcher'
+import { KbdKey } from './ui/kbd'
+import { TooltipProvider, Tooltip, TooltipTrigger, TooltipContent } from './ui/tooltip'
 
 export interface HeaderBreadcrumbItem {
   label: string
@@ -66,7 +68,7 @@ export function Header({ user, breadcrumbs = [{ label: 'Dashboard' }], onOnboard
         >
           <ArrowLeft className="h-5 w-5" />
         </Button>
-        
+
         <LeftSidebarTrigger className="shrink-0" />
         <Separator orientation="vertical" className="h-4 hidden sm:block shrink-0" />
 
@@ -106,6 +108,45 @@ export function Header({ user, breadcrumbs = [{ label: 'Dashboard' }], onOnboard
             {actions}
           </div>
         )}
+
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div className={`shrink-0 ${actions ? "ml-1 sm:ml-2" : ""}`}>
+                <ClerkLoaded>
+                  <button
+                    type="button"
+                    className="flex items-center gap-1 px-2 rounded bg-muted hover:bg-accent transition border text-muted-foreground text-[11px] font-mono font-medium h-9"
+                    title="Search (Ctrl+K or Cmd+K)"
+                    aria-label="Open search"
+                    onClick={() => {
+                      window.dispatchEvent(new Event('openCommandMenu'));
+                    }}
+                  >
+
+                    <span className="flex items-center gap-0.5">
+                      <KbdKey
+                        className="shrink-0 text-[9px] px-1 py-0 leading-none"
+                        aria-label={navigator.platform.includes('Mac') ? "⌘" : "Ctrl"}
+                      >
+                        {navigator.platform.includes('Mac') ? "⌘" : "Ctrl"}
+                      </KbdKey>
+                      <KbdKey
+                        className="shrink-0 text-[9px] px-1 py-0 leading-none"
+                        aria-label="K"
+                      >
+                        K
+                      </KbdKey>
+                    </span>
+                  </button>
+                </ClerkLoaded>
+              </div>
+            </TooltipTrigger>
+            <TooltipContent side="top" className="max-w-xs">
+              <p>Search notes, notebooks, and more</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
 
         {/* Organization Switcher - Responsive */}
         <div className={`shrink-0 ${actions ? "ml-1 sm:ml-2" : ""}`}>

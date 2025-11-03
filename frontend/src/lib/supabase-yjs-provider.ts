@@ -81,6 +81,8 @@ export class SupabaseYjsProvider {
     try {
       const token = await this.getAuthToken()
       
+      console.log(`[SupabaseYjsProvider] Fetching initial state for note: ${this.noteId}`)
+      
       const response = await axios.get(
         `${API_BASE_URL}/note/${this.noteId}/yjs-state`,
         {
@@ -96,7 +98,6 @@ export class SupabaseYjsProvider {
         const jsonData = JSON.parse(new TextDecoder().decode(response.data))
         
         if (jsonData.requiresInit) {
-          console.log('[SupabaseYjsProvider] Document needs initialization, converting JSON to Yjs')
           await this.initializeFromJSON(jsonData.noteContent)
           return
         }
@@ -106,18 +107,31 @@ export class SupabaseYjsProvider {
       if (response.data && response.data.byteLength > 0) {
         const update = new Uint8Array(response.data)
         Y.applyUpdate(this.doc, update)
-        console.log('[SupabaseYjsProvider] Initial state loaded')
       }
       
       this.synced = true
       this.onSyncedCallback?.()
       
     } catch (error: any) {
-      console.error('[SupabaseYjsProvider] Failed to fetch initial state:', error)
+      console.error(`[SupabaseYjsProvider] Failed to fetch initial state for note ${this.noteId}:`, error)
+      console.error(`[SupabaseYjsProvider] Error status: ${error.response?.status}, Message: ${error.message}`)
+      
+      // If 403, it's likely a permission issue - retry after delay
+      if (error.response?.status === 403) {
+        console.warn(`[SupabaseYjsProvider] Access denied (403) for note ${this.noteId}, retrying in 2 seconds...`)
+        await new Promise(resolve => setTimeout(resolve, 2000))
+        try {
+          // Retry once
+          await this.fetchInitialState()
+          return
+        } catch (retryError) {
+          console.error(`[SupabaseYjsProvider] Retry failed for note ${this.noteId}:`, retryError)
+        }
+      }
       
       // If 404 or note doesn't exist, initialize empty
       if (error.response?.status === 404) {
-        console.log('[SupabaseYjsProvider] No existing state, starting fresh')
+        console.log(`[SupabaseYjsProvider] Note ${this.noteId} not found (404), initializing empty`)
         this.synced = true
         this.onSyncedCallback?.()
       } else {
@@ -128,8 +142,6 @@ export class SupabaseYjsProvider {
 
   private async initializeFromJSON(jsonContent: string) {
     try {
-      console.log('[SupabaseYjsProvider] Storing initial JSON content for editor')
-      
       // The content will be set by the editor when onCreate is called
       // We just store it in initialContent for now
       // Tiptap's Collaboration extension will handle converting it to Yjs format
@@ -148,10 +160,21 @@ export class SupabaseYjsProvider {
   }
   
   // Method to be called by the editor after it has loaded the initial content
+  // Note: The editor now waits for Yjs to sync before calling this, so we just validate and send
   public async markInitialized() {
     try {
       const token = await this.getAuthToken()
       const initialState = Y.encodeStateAsUpdate(this.doc)
+      
+      // Final safety check that we have actual content (not just empty doc)
+      // Empty Yjs doc is typically 2 bytes: [0, 0]
+      if (!initialState || initialState.length <= 2) {
+        console.warn(`[SupabaseYjsProvider] Cannot initialize - Yjs document is empty (${initialState?.length || 0} bytes)`)
+        console.warn(`[SupabaseYjsProvider] Editor should have waited for content. Check NoteEditor initialization.`)
+        return
+      }
+      
+      console.log(`[SupabaseYjsProvider] Marking document as initialized (${initialState.length} bytes)`)
       
       await axios.post(
         `${API_BASE_URL}/note/${this.noteId}/yjs-init`,
@@ -165,7 +188,8 @@ export class SupabaseYjsProvider {
         }
       )
       
-      console.log('[SupabaseYjsProvider] Document initialized and saved to backend')
+      console.log(`[SupabaseYjsProvider] Successfully marked document as initialized`)
+      
     } catch (error) {
       console.error('[SupabaseYjsProvider] Failed to mark document as initialized:', error)
       throw error
@@ -192,10 +216,8 @@ export class SupabaseYjsProvider {
         this.handleRemoteAwarenessUpdate(payload.payload)
       })
       .subscribe((status) => {
-        console.log('[SupabaseYjsProvider] Channel status:', status)
         
         if (status === REALTIME_SUBSCRIBE_STATES.SUBSCRIBED) {
-          console.log('[SupabaseYjsProvider] Connected to Supabase Realtime')
           this.onStatusCallback?.({ status: 'connected' })
           
           // Start awareness heartbeat
@@ -338,6 +360,8 @@ export class SupabaseYjsProvider {
       // Get auth token
       const token = await this.getAuthToken()
       
+      console.log(`[SupabaseYjsProvider] Flushing updates to backend for note: ${this.noteId}`)
+      
       // Send to backend
       await axios.post(
         `${API_BASE_URL}/note/${this.noteId}/yjs-update`,
@@ -351,15 +375,24 @@ export class SupabaseYjsProvider {
         }
       )
       
-      console.log('[SupabaseYjsProvider] Updates flushed to backend')
+      console.log(`[SupabaseYjsProvider] Successfully flushed updates for note: ${this.noteId}`)
       
       // Retry any failed updates
       if (this.failedUpdates.length > 0 && !this.retrying) {
         this.retryFailedUpdates()
       }
       
-    } catch (error) {
-      console.error('[SupabaseYjsProvider] Failed to flush updates:', error)
+    } catch (error: any) {
+      console.error(`[SupabaseYjsProvider] Failed to flush updates for note ${this.noteId}:`, error)
+      console.error(`[SupabaseYjsProvider] Error status: ${error.response?.status}, Message: ${error.message}`)
+      
+      // If 403, log detailed info
+      if (error.response?.status === 403) {
+        console.error(`[SupabaseYjsProvider] Permission denied (403) when trying to update note ${this.noteId}`)
+        console.error('[SupabaseYjsProvider] This may indicate the note was created but access permissions are not set correctly')
+        // Notify the error callback
+        this.onErrorCallback?.(new Error(`Permission denied when updating note ${this.noteId}`))
+      }
       
       // Queue for retry
       const mergedUpdate = Y.mergeUpdates(this.updateBuffer)
@@ -393,7 +426,6 @@ export class SupabaseYjsProvider {
         
         // Success, remove from failed queue
         this.failedUpdates.shift()
-        console.log('[SupabaseYjsProvider] Retry successful')
         
       } catch (error) {
         console.error('[SupabaseYjsProvider] Retry failed:', error)
@@ -489,8 +521,6 @@ export class SupabaseYjsProvider {
     
     // Destroy awareness
     this.awareness.destroy()
-    
-    console.log('[SupabaseYjsProvider] Provider destroyed')
   }
 
   // Manual sync trigger

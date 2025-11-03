@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"bytes"
 	"net/http"
 
 	"github.com/clerk/clerk-sdk-go/v2"
@@ -8,6 +9,23 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog/log"
 )
+
+// responseCapture wraps http.ResponseWriter to capture status code and body
+type responseCapture struct {
+	http.ResponseWriter
+	statusCode int
+	body       *bytes.Buffer
+}
+
+func (rc *responseCapture) WriteHeader(code int) {
+	rc.statusCode = code
+	rc.ResponseWriter.WriteHeader(code)
+}
+
+func (rc *responseCapture) Write(b []byte) (int, error) {
+	rc.body.Write(b)
+	return rc.ResponseWriter.Write(b)
+}
 
 // RequireAuth is middleware that validates Clerk JWT tokens
 func RequireAuth() gin.HandlerFunc {
@@ -33,12 +51,21 @@ func RequireAuth() gin.HandlerFunc {
 // ClerkMiddleware wraps Clerk's header authorization middleware for Gin
 func ClerkMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// Debug: Log the Authorization header
+		// Debug: Log the Authorization header (truncated for security)
 		authHeader := c.GetHeader("Authorization")
-		log.Debug().Str("authorization", authHeader).Msg("ClerkMiddleware: Processing request")
+		truncatedAuth := authHeader
+		if len(authHeader) > 50 {
+			truncatedAuth = authHeader[:50] + "..."
+		}
+		log.Debug().Str("authorization_prefix", truncatedAuth).Msg("ClerkMiddleware: Processing request")
 
-		// Create a response recorder to intercept writes
+		// Create a response recorder to capture error responses
 		var handlerCalled bool
+		recorder := &responseCapture{
+			ResponseWriter: c.Writer,
+			statusCode:     http.StatusOK,
+			body:           &bytes.Buffer{},
+		}
 
 		// Create a handler that uses Clerk's middleware
 		handler := clerkhttp.WithHeaderAuthorization()(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -55,12 +82,22 @@ func ClerkMiddleware() gin.HandlerFunc {
 			}
 		}))
 
-		// Call the Clerk middleware
-		handler.ServeHTTP(c.Writer, c.Request)
+		// Call the Clerk middleware with our response recorder
+		handler.ServeHTTP(recorder, c.Request)
 
 		// If Clerk middleware didn't call our handler, it means auth failed
 		if !handlerCalled {
-			log.Warn().Msg("ClerkMiddleware: Handler not called - auth failed")
+			errorBody := recorder.body.String()
+			log.Warn().
+				Int("status_code", recorder.statusCode).
+				Str("error_response", errorBody).
+				Msg("ClerkMiddleware: Authentication failed")
+
+			// Check if it's likely a token expiration issue
+			if recorder.statusCode == http.StatusUnauthorized {
+				log.Info().Msg("ClerkMiddleware: Token may be expired - client should refresh token")
+			}
+
 			c.Abort()
 			return
 		}

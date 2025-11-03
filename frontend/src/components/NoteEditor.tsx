@@ -95,9 +95,14 @@ export function NoteEditor({ user, userLoading = false }: NoteEditorProps) {
   const [collaborationStatus, setCollaborationStatus] = useState<'connecting' | 'connected' | 'disconnected' | 'error'>('connecting')
   const [providerReady, setProviderReady] = useState(false)
   const [awareness, setAwareness] = useState<Awareness | null>(null)
+  const [forceReinitKey, setForceReinitKey] = useState(0) // Key to force Yjs re-initialization
+  const lastKnownUpdatedAt = useRef<string | null>(null)
+  const [isRefreshingContent, setIsRefreshingContent] = useState(false) // Track if we're refreshing from external update
+  const isInitialLoad = useRef(true) // Track if this is the first load
 
   // Realtime presence for viewer count (keeps existing presence tracking)
   const { users: realtimeUsers } = useRealtimePresenceRoom(noteId ? `note-${noteId}` : '');
+  // Count only other collaborators (exclude current user)
   const viewerCount = Object.keys(realtimeUsers).length;
 
   const { data: noteResponse, isLoading, error } = useQuery({
@@ -120,6 +125,32 @@ export function NoteEditor({ user, userLoading = false }: NoteEditorProps) {
   const note: Notes = noteResponse?.data
   const notebook = notebooks?.find((n) => n.id === notebookId)
   const chapter = notebook?.chapters?.find((c) => c.id === chapterId)
+
+
+  // Reset lastKnownUpdatedAt when noteId changes (switching notes)
+  useEffect(() => {
+    lastKnownUpdatedAt.current = null
+    isInitialLoad.current = true
+  }, [noteId])
+
+  // Detect external content updates and force Yjs re-initialization
+  useEffect(() => {
+    if (!note || !note.updatedAt) return
+
+    // Initialize the lastKnownUpdatedAt on first load
+    if (lastKnownUpdatedAt.current === null) {
+      lastKnownUpdatedAt.current = note.updatedAt
+      isInitialLoad.current = false // Mark that we've completed initial load
+      return
+    }
+
+    // Check if the note was updated externally (e.g., by AI tool)
+    if (note.updatedAt !== lastKnownUpdatedAt.current) {
+      lastKnownUpdatedAt.current = note.updatedAt
+      setIsRefreshingContent(true)
+      setForceReinitKey(prev => prev + 1)
+    }
+  }, [note?.updatedAt, note])
 
   // With Yjs collaboration, we don't use initialContent from React
   // Content is managed by the Yjs document, which is synced via the provider
@@ -157,55 +188,44 @@ export function NoteEditor({ user, userLoading = false }: NoteEditorProps) {
   useEffect(() => {
     if (!noteId || !clerkUser || !session) return
 
-    // Reset provider ready state
     setProviderReady(false)
+    setCollaborationSynced(false)
 
-    // Create Yjs document and provider
     ydoc.current = new Y.Doc()
 
-    // Function to get auth token
     const getAuthToken = async () => {
       try {
         const token = await session.getToken()
         return token
       } catch (error) {
-        console.error('[NoteEditor] Failed to get auth token:', error)
         return null
       }
     }
 
     provider.current = new SupabaseYjsProvider(noteId, ydoc.current, clerkUser, getAuthToken)
-
-    // Store awareness in state
     setAwareness(provider.current.awareness)
 
-    // Setup event handlers
     provider.current.on('synced', () => {
-      console.log('[NoteEditor] Yjs document synced')
       setCollaborationSynced(true)
       setCollaborationStatus('connected')
 
-      // Ensure awareness is fully initialized before marking as ready
       setTimeout(() => {
         if (provider.current?.awareness) {
-          console.log('[NoteEditor] Provider ready with awareness')
           setProviderReady(true)
+          setIsRefreshingContent(false)
         }
-      }, 100) // Small delay to ensure everything is initialized
+      }, 100)
     })
 
     provider.current.on('status', ({ status }) => {
-      console.log('[NoteEditor] Collaboration status:', status)
       setCollaborationStatus(status as any)
     })
 
     provider.current.on('error', (error) => {
-      console.error('[NoteEditor] Collaboration error:', error)
       setCollaborationStatus('error')
       toast.error('Collaboration error: ' + error.message)
     })
 
-    // Cleanup on unmount
     return () => {
       provider.current?.destroy()
       ydoc.current?.destroy()
@@ -214,9 +234,7 @@ export function NoteEditor({ user, userLoading = false }: NoteEditorProps) {
       setAwareness(null)
       setProviderReady(false)
     }
-  }, [noteId, clerkUser, session])
-
-  console.log({ providerReady }, ":", { ydoc }, ":", { awareness })
+  }, [noteId, clerkUser, session, forceReinitKey])
 
   if (userLoading || isLoading) {
     return (
@@ -553,13 +571,19 @@ export function NoteEditor({ user, userLoading = false }: NoteEditorProps) {
           <div className="relative w-full max-w-5xl">
             <div className="flex absolute right-5 top-5 z-10 mb-5 gap-2">
               {/* Collaboration status indicator */}
-              {collaborationSynced && collaborationStatus === 'connected' && (
+              {isRefreshingContent && (
+                <div className="rounded-lg bg-blue-500/10 border border-blue-500/20 px-2 py-1 text-xs text-blue-600 dark:text-blue-400 flex items-center gap-1">
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  Updating note...
+                </div>
+              )}
+              {!isRefreshingContent && collaborationSynced && collaborationStatus === 'connected' && (
                 <div className="rounded-lg bg-primary/10 border border-primary/20 px-2 py-1 text-xs text-primary flex items-center gap-1">
                   <div className="h-2 w-2 rounded-full bg-primary" />
                   Synced
                 </div>
               )}
-              {!providerReady && (
+              {!isRefreshingContent && !providerReady && !isInitialLoad.current && (
                 <div className="rounded-lg bg-muted border border-border px-2 py-1 text-xs text-muted-foreground flex items-center gap-1">
                   <Loader2 className="h-3 w-3 animate-spin" />
                   Loading collaboration...
@@ -605,30 +629,56 @@ export function NoteEditor({ user, userLoading = false }: NoteEditorProps) {
                     },
                   }}
                   onCreate={async ({ editor }) => {
-                    // Editor created callback
                     debouncedUpdates(editor);
 
-                    // If this is a new document (from JSON conversion), set initial content
                     if (provider.current?.initialContent) {
-                      console.log('[NoteEditor] Setting initial content from JSON');
                       try {
                         const parsed = JSON.parse(provider.current.initialContent);
                         if (parsed && parsed.type === 'doc') {
-                          // Use setContent to initialize the Yjs document with content
                           editor.commands.setContent(parsed);
 
-                          // Mark as initialized in backend
-                          setTimeout(async () => {
-                            try {
-                              await provider.current?.markInitialized();
-                              console.log('[NoteEditor] Document initialized successfully');
-                            } catch (error) {
-                              console.error('[NoteEditor] Failed to mark document as initialized:', error);
-                            }
-                          }, 1000); // Wait for Tiptap to fully sync content to Yjs
+                          const yjsDoc = provider.current.doc;
+                          let updateCount = 0;
+                          const maxWaitTime = 5000;
+                          const startTime = Date.now();
+
+                          const waitForSync = () => {
+                            return new Promise<void>((resolve) => {
+                              const checkSync = () => {
+                                const elapsed = Date.now() - startTime;
+                                const stateVector = Y.encodeStateAsUpdate(yjsDoc);
+
+                                if (stateVector.length > 100 || elapsed > maxWaitTime) {
+                                  resolve();
+                                } else {
+                                  setTimeout(checkSync, 200);
+                                }
+                              };
+
+                              const onUpdate = () => {
+                                updateCount++;
+                                checkSync();
+                              };
+
+                              yjsDoc.on('update', onUpdate);
+                              checkSync();
+
+                              setTimeout(() => {
+                                yjsDoc.off('update', onUpdate);
+                              }, maxWaitTime + 1000);
+                            });
+                          };
+
+                          await waitForSync();
+                          
+                          try {
+                            await provider.current?.markInitialized();
+                          } catch (error) {
+                            // Silent fail
+                          }
                         }
                       } catch (error) {
-                        console.error('[NoteEditor] Failed to set initial content:', error);
+                        // Silent fail
                       }
                     }
                   }}

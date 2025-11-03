@@ -104,7 +104,6 @@ export function MeetingsList() {
     });
 
     if (newlyCompletedWithNotes.length > 0) {
-      console.log("Detected newly generated notes, invalidating queries...");
       
       // Invalidate all notebook-related queries to refresh sidebar
       // Since we don't have the full note details in the list item,

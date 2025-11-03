@@ -45,9 +45,6 @@ export const NoteVideoPlayer: React.FC<NoteVideoPlayerProps> = ({
   useEffect(() => {
     try {
       const data = JSON.parse(videoData) as VideoData;
-      console.log('Parsed video data:', data);
-      console.log('Content:', data.content);
-      console.log('Content length:', data.content?.length);
       setParsedVideoData(data);
       setIsLoading(false);
     } catch (err) {

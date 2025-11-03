@@ -190,9 +190,6 @@ export function Dashboard({ user, userLoading = false }: DashboardProps) {
     }
   }
 
-  console.log('userLoading:', userLoading)
-  console.log('user:', user)
-
   return (
     <div className="flex flex-col h-screen">
       <Header user={user} breadcrumbs={[{ label: 'Dashboard' }]} />

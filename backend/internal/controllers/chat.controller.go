@@ -11,6 +11,8 @@ import (
 	"backend/db"
 	"backend/internal/middleware"
 	"backend/internal/models"
+	"backend/internal/services"
+	internalutils "backend/internal/utils"
 	"backend/pkg/utils"
 
 	"github.com/anthropics/anthropic-sdk-go"
@@ -90,8 +92,6 @@ func getUserAPIKey(clerkUserID string, provider string) (string, error) {
 
 // handleNotesToolCall handles tool calls for notes-related operations
 func handleNotesToolCall(toolCall aisdk.ToolCall, clerkUserID string, organizationID *string) any {
-	log.Info().Str("tool", toolCall.Name).Interface("args", toolCall.Args).Msg("Tool called")
-
 	switch toolCall.Name {
 	case "searchNotes":
 		query, ok := toolCall.Args["query"].(string)
@@ -235,18 +235,14 @@ func handleNotesToolCall(toolCall aisdk.ToolCall, clerkUserID string, organizati
 		return deleteNote(clerkUserID, noteID)
 
 	case "updateNoteContent":
-		log.Info().Interface("args", toolCall.Args).Msg("updateNoteContent tool called")
 		noteID, ok := toolCall.Args["noteId"].(string)
 		if !ok {
-			log.Error().Interface("noteId", toolCall.Args["noteId"]).Msg("Invalid noteId parameter")
 			return map[string]string{"error": "Invalid noteId parameter"}
 		}
 		content, ok := toolCall.Args["content"].(string)
 		if !ok {
-			log.Error().Interface("content", toolCall.Args["content"]).Msg("Invalid content parameter")
 			return map[string]string{"error": "Invalid content parameter"}
 		}
-		log.Info().Str("noteID", noteID).Int("contentLen", len(content)).Msg("Calling updateNoteContent")
 		return updateNoteContent(clerkUserID, noteID, content)
 
 	default:
@@ -359,7 +355,9 @@ func searchNotes(clerkUserID string, organizationID *string, query string) any {
 			"name":         note.Name,
 			"content":      note.Content,
 			"preview":      getPreviewText(note.Content, 150),
+			"chapterId":    note.Chapter.ID,
 			"chapterName":  note.Chapter.Name,
+			"notebookId":   note.Chapter.Notebook.ID,
 			"notebookName": note.Chapter.Notebook.Name,
 			"updatedAt":    note.UpdatedAt.Format("2006-01-02 15:04:05"),
 		}
@@ -444,9 +442,7 @@ func listChapters(clerkUserID string, notebookID string) any {
 		return map[string]string{"error": "Notebook not found"}
 	}
 
-	// Check authorization
 	if !userCanAccessNotebookChat(context.Background(), &notebook, clerkUserID) {
-		log.Warn().Str("notebook_id", notebookID).Str("user_id", clerkUserID).Msg("User not authorized to access notebook")
 		return map[string]string{"error": "Notebook not found or access denied"}
 	}
 
@@ -501,9 +497,7 @@ func getNoteContent(clerkUserID string, noteID string) any {
 		return map[string]string{"error": "Note not found"}
 	}
 
-	// Check authorization
 	if !userCanAccessNotebookChat(context.Background(), &note.Chapter.Notebook, clerkUserID) {
-		log.Warn().Str("note_id", noteID).Str("user_id", clerkUserID).Msg("User not authorized to access note")
 		return map[string]string{"error": "Note not found or access denied"}
 	}
 
@@ -511,7 +505,9 @@ func getNoteContent(clerkUserID string, noteID string) any {
 		"id":           note.ID,
 		"name":         note.Name,
 		"content":      note.Content,
+		"chapterId":    note.Chapter.ID,
 		"chapterName":  note.Chapter.Name,
+		"notebookId":   note.Chapter.Notebook.ID,
 		"notebookName": note.Chapter.Notebook.Name,
 		"createdAt":    note.CreatedAt.Format("2006-01-02 15:04:05"),
 		"updatedAt":    note.UpdatedAt.Format("2006-01-02 15:04:05"),
@@ -528,9 +524,7 @@ func listNotesInChapter(clerkUserID string, chapterID string) any {
 		return map[string]string{"error": "Chapter not found"}
 	}
 
-	// Check authorization
 	if !userCanAccessNotebookChat(context.Background(), &chapter.Notebook, clerkUserID) {
-		log.Warn().Str("chapter_id", chapterID).Str("user_id", clerkUserID).Msg("User not authorized to access chapter")
 		return map[string]string{"error": "Chapter not found or access denied"}
 	}
 
@@ -586,16 +580,21 @@ func createNote(clerkUserID string, chapterID string, title string, content stri
 		return map[string]string{"error": "Chapter not found"}
 	}
 
-	// Check authorization
 	if !userCanAccessNotebookChat(context.Background(), &chapter.Notebook, clerkUserID) {
-		log.Warn().Str("chapter_id", chapterID).Str("user_id", clerkUserID).Msg("User not authorized to create note in chapter")
 		return map[string]string{"error": "Chapter not found or access denied"}
+	}
+
+	// Convert markdown to TipTap JSON format
+	tiptapContent, err := internalutils.MarkdownToTipTap(content)
+	if err != nil {
+		log.Error().Err(err).Str("chapterID", chapterID).Msg("Failed to convert markdown to TipTap JSON")
+		return map[string]string{"error": "Failed to convert content format"}
 	}
 
 	// Create the note with inherited organization_id
 	note := models.Notes{
 		Name:           title,
-		Content:        content,
+		Content:        tiptapContent,
 		ChapterID:      chapterID,
 		OrganizationID: chapter.OrganizationID,
 	}
@@ -637,9 +636,7 @@ func moveChapter(clerkUserID string, chapterID string, targetNotebookID string) 
 		return map[string]string{"error": "Chapter not found"}
 	}
 
-	// Check authorization for source notebook
 	if !userCanAccessNotebookChat(context.Background(), &chapter.Notebook, clerkUserID) {
-		log.Warn().Str("chapter_id", chapterID).Str("user_id", clerkUserID).Msg("User not authorized to move chapter")
 		return map[string]string{"error": "Chapter not found or access denied"}
 	}
 
@@ -652,7 +649,6 @@ func moveChapter(clerkUserID string, chapterID string, targetNotebookID string) 
 	}
 
 	if !userCanAccessNotebookChat(context.Background(), &targetNotebook, clerkUserID) {
-		log.Warn().Str("notebook_id", targetNotebookID).Str("user_id", clerkUserID).Msg("User not authorized to access target notebook")
 		return map[string]string{"error": "Target notebook not found or access denied"}
 	}
 
@@ -673,12 +669,6 @@ func moveChapter(clerkUserID string, chapterID string, targetNotebookID string) 
 		log.Error().Err(result.Error).Msg("Failed to move chapter")
 		return map[string]string{"error": "Failed to move chapter"}
 	}
-
-	if result.RowsAffected == 0 {
-		log.Warn().Str("chapterId", chapterID).Msg("Move chapter: 0 rows affected")
-	}
-
-	log.Info().Str("chapterId", chapterID).Str("newNotebookId", targetNotebookID).Int64("noteCount", noteCount).Int64("rowsAffected", result.RowsAffected).Msg("Chapter moved successfully via AI tool")
 
 	return map[string]any{
 		"success":      true,
@@ -701,9 +691,7 @@ func moveNote(clerkUserID string, noteID string, targetChapterID string) any {
 		return map[string]string{"error": "Note not found"}
 	}
 
-	// Check authorization for source notebook
 	if !userCanAccessNotebookChat(context.Background(), &note.Chapter.Notebook, clerkUserID) {
-		log.Warn().Str("note_id", noteID).Str("user_id", clerkUserID).Msg("User not authorized to move note")
 		return map[string]string{"error": "Note not found or access denied"}
 	}
 
@@ -716,7 +704,6 @@ func moveNote(clerkUserID string, noteID string, targetChapterID string) any {
 	}
 
 	if !userCanAccessNotebookChat(context.Background(), &targetChapter.Notebook, clerkUserID) {
-		log.Warn().Str("chapter_id", targetChapterID).Str("user_id", clerkUserID).Msg("User not authorized to access target chapter")
 		return map[string]string{"error": "Target chapter not found or access denied"}
 	}
 
@@ -735,12 +722,6 @@ func moveNote(clerkUserID string, noteID string, targetChapterID string) any {
 		return map[string]string{"error": "Failed to move note"}
 	}
 
-	if result.RowsAffected == 0 {
-		log.Warn().Str("noteId", noteID).Msg("Move note: 0 rows affected")
-	}
-
-	log.Info().Str("noteId", noteID).Str("newChapterId", targetChapterID).Int64("rowsAffected", result.RowsAffected).Msg("Note moved successfully via AI tool")
-
 	return map[string]any{
 		"success":      true,
 		"message":      "Note moved successfully!",
@@ -750,6 +731,8 @@ func moveNote(clerkUserID string, noteID string, targetChapterID string) any {
 		"fromNotebook": oldNotebookName,
 		"toChapter":    targetChapter.Name,
 		"toNotebook":   targetChapter.Notebook.Name,
+		"chapterId":    targetChapter.ID,
+		"notebookId":   targetChapter.Notebook.ID,
 	}
 }
 
@@ -763,22 +746,17 @@ func renameNote(clerkUserID string, noteID string, newName string) any {
 		return map[string]string{"error": "Note not found"}
 	}
 
-	// Check authorization
 	if !userCanAccessNotebookChat(context.Background(), &note.Chapter.Notebook, clerkUserID) {
-		log.Warn().Str("note_id", noteID).Str("user_id", clerkUserID).Msg("User not authorized to rename note")
 		return map[string]string{"error": "Note not found or access denied"}
 	}
 
 	oldName := note.Name
 
-	// Update note's name using Select to force update
 	result := db.DB.Model(&note).Select("Name").Updates(models.Notes{Name: newName})
 	if result.Error != nil {
 		log.Error().Err(result.Error).Msg("Failed to rename note")
 		return map[string]string{"error": "Failed to rename note"}
 	}
-
-	log.Info().Str("noteId", note.ID).Str("oldName", oldName).Str("newName", newName).Msg("Note renamed successfully via AI tool")
 
 	return map[string]any{
 		"success":      true,
@@ -786,7 +764,9 @@ func renameNote(clerkUserID string, noteID string, newName string) any {
 		"noteId":       note.ID,
 		"oldName":      oldName,
 		"newName":      newName,
+		"chapterId":    note.Chapter.ID,
 		"chapterName":  note.Chapter.Name,
+		"notebookId":   note.Chapter.Notebook.ID,
 		"notebookName": note.Chapter.Notebook.Name,
 	}
 }
@@ -801,25 +781,19 @@ func deleteNote(clerkUserID string, noteID string) any {
 		return map[string]string{"error": "Note not found"}
 	}
 
-	// Check authorization
 	if !userCanAccessNotebookChat(context.Background(), &note.Chapter.Notebook, clerkUserID) {
-		log.Warn().Str("note_id", noteID).Str("user_id", clerkUserID).Msg("User not authorized to delete note")
 		return map[string]string{"error": "Note not found or access denied"}
 	}
 
 	noteName := note.Name
 	chapterName := note.Chapter.Name
 	notebookName := note.Chapter.Notebook.Name
-	noteIDToDelete := note.ID
 
-	// Delete the note
 	err = db.DB.Delete(&note).Error
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to delete note")
 		return map[string]string{"error": "Failed to delete note"}
 	}
-
-	log.Info().Str("noteId", noteIDToDelete).Str("noteName", noteName).Msg("Note deleted successfully via AI tool")
 
 	return map[string]any{
 		"success":      true,
@@ -832,19 +806,6 @@ func deleteNote(clerkUserID string, noteID string) any {
 
 // updateNoteContent updates the content of a note
 func updateNoteContent(clerkUserID string, noteID string, content string) any {
-	log.Info().
-		Str("clerk_user_id", clerkUserID).
-		Str("noteID", noteID).
-		Int("contentLength", len(content)).
-		Str("contentPreview", func() string {
-			if len(content) > 100 {
-				return content[:100] + "..."
-			}
-			return content
-		}()).
-		Msg("updateNoteContent called")
-
-	// Get note with relationships
 	var note models.Notes
 	err := db.DB.Preload("Chapter.Notebook").Where("id = ?", noteID).First(&note).Error
 	if err != nil {
@@ -852,30 +813,29 @@ func updateNoteContent(clerkUserID string, noteID string, content string) any {
 		return map[string]string{"error": "Note not found"}
 	}
 
-	// Check authorization
 	if !userCanAccessNotebookChat(context.Background(), &note.Chapter.Notebook, clerkUserID) {
-		log.Warn().Str("note_id", noteID).Str("user_id", clerkUserID).Msg("User not authorized to update note")
 		return map[string]string{"error": "Note not found or access denied"}
 	}
 
-	log.Info().Str("noteID", noteID).Str("noteName", note.Name).Msg("Note found, attempting update")
+	tiptapContent, err := internalutils.MarkdownToTipTap(content)
+	if err != nil {
+		log.Error().Err(err).Str("noteID", noteID).Msg("Failed to convert markdown to TipTap JSON")
+		return map[string]string{"error": "Failed to convert content format"}
+	}
 
-	// Update note's content using Select to force update
-	result := db.DB.Model(&note).Select("Content").Updates(models.Notes{Content: content})
+	result := db.DB.Model(&note).Updates(models.Notes{Content: tiptapContent})
 	if result.Error != nil {
 		log.Error().Err(result.Error).Str("noteID", noteID).Msg("Failed to update note")
 		return map[string]string{"error": "Failed to update note"}
 	}
 
-	log.Info().Str("noteID", noteID).Int64("rowsAffected", result.RowsAffected).Msg("Database update executed")
+	yjsService := services.NewYjsService(db.DB)
+	_ = yjsService.DeleteYjsDocument(noteID)
 
-	// Reload to get updated timestamp
 	err = db.DB.Preload("Chapter.Notebook").First(&note, "id = ?", note.ID).Error
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to reload note after update")
 	}
-
-	log.Info().Str("noteId", note.ID).Int("contentSize", len(content)).Msg("Note content updated successfully via AI tool")
 
 	return map[string]any{
 		"success":      true,
@@ -901,14 +861,10 @@ func generateNoteVideo(clerkUserID string, noteID string) any {
 		return map[string]string{"error": "Note not found"}
 	}
 
-	// Check authorization
 	if !userCanAccessNotebookChat(context.Background(), &note.Chapter.Notebook, clerkUserID) {
-		log.Warn().Str("note_id", noteID).Str("user_id", clerkUserID).Msg("User not authorized to generate video for note")
 		return map[string]string{"error": "Note not found or access denied"}
 	}
 
-	// Generate video data with AI based on note content
-	log.Info().Str("noteID", noteID).Msg("Generating AI-powered video for note via chat tool")
 	videoData, err := GenerateVideoDataWithAI(clerkUserID, note.Name, note.Content)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to generate AI video, using fallback")
@@ -952,8 +908,6 @@ func generateNoteVideo(clerkUserID string, noteID string) any {
 		return map[string]string{"error": "Failed to save video data"}
 	}
 
-	log.Info().Str("noteID", noteID).Str("noteName", note.Name).Msg("AI-powered video generated successfully via chat tool")
-
 	return map[string]any{
 		"success":      true,
 		"message":      "AI-powered video generated successfully! Refresh the note to see it.",
@@ -977,13 +931,10 @@ func deleteNoteVideo(clerkUserID string, noteID string) any {
 		return map[string]string{"error": "Note not found"}
 	}
 
-	// Check authorization
 	if !userCanAccessNotebookChat(context.Background(), &note.Chapter.Notebook, clerkUserID) {
-		log.Warn().Str("note_id", noteID).Str("user_id", clerkUserID).Msg("User not authorized to delete video for note")
 		return map[string]string{"error": "Note not found or access denied"}
 	}
 
-	// Remove video data - use map to force update empty strings
 	result := db.DB.Model(&note).Select("VideoData", "HasVideo").Updates(map[string]interface{}{
 		"video_data": "",
 		"has_video":  false,
@@ -993,8 +944,6 @@ func deleteNoteVideo(clerkUserID string, noteID string) any {
 		log.Error().Err(result.Error).Str("noteID", noteID).Msg("Failed to remove video data")
 		return map[string]string{"error": "Failed to remove video data"}
 	}
-
-	log.Info().Str("noteID", noteID).Str("noteName", note.Name).Msg("Video removed successfully via AI tool")
 
 	return map[string]any{
 		"success":      true,
@@ -1024,12 +973,6 @@ func createNotebook(clerkUserID string, organizationID *string, name string) any
 		return map[string]string{"error": "Failed to create notebook"}
 	}
 
-	notebookType := "Personal"
-	if organizationID != nil && *organizationID != "" {
-		notebookType = "Organization"
-	}
-	log.Info().Str("notebookId", notebook.ID).Str("name", name).Str("type", notebookType).Msg("Notebook created successfully via AI tool")
-
 	return map[string]any{
 		"success":    true,
 		"message":    "Notebook created successfully!",
@@ -1049,13 +992,10 @@ func createChapter(clerkUserID string, notebookID string, name string) any {
 		return map[string]string{"error": "Notebook not found"}
 	}
 
-	// Check authorization
 	if !userCanAccessNotebookChat(context.Background(), &notebook, clerkUserID) {
-		log.Warn().Str("notebook_id", notebookID).Str("user_id", clerkUserID).Msg("User not authorized to create chapter in notebook")
 		return map[string]string{"error": "Notebook not found or access denied"}
 	}
 
-	// Create the chapter with inherited organization_id
 	chapter := models.Chapter{
 		Name:           name,
 		NotebookID:     notebookID,
@@ -1067,8 +1007,6 @@ func createChapter(clerkUserID string, notebookID string, name string) any {
 		log.Error().Err(err).Msg("Failed to create chapter")
 		return map[string]string{"error": "Failed to create chapter"}
 	}
-
-	log.Info().Str("chapterId", chapter.ID).Str("name", name).Str("notebookId", notebookID).Msg("Chapter created successfully via AI tool")
 
 	return map[string]any{
 		"success":      true,
@@ -1091,22 +1029,17 @@ func renameNotebook(clerkUserID string, notebookID string, newName string) any {
 		return map[string]string{"error": "Notebook not found"}
 	}
 
-	// Check authorization
 	if !userCanAccessNotebookChat(context.Background(), &notebook, clerkUserID) {
-		log.Warn().Str("notebook_id", notebookID).Str("user_id", clerkUserID).Msg("User not authorized to rename notebook")
 		return map[string]string{"error": "Notebook not found or access denied"}
 	}
 
 	oldName := notebook.Name
 
-	// Update notebook's name using Select to force update
 	result := db.DB.Model(&notebook).Select("Name").Updates(models.Notebook{Name: newName})
 	if result.Error != nil {
 		log.Error().Err(result.Error).Msg("Failed to rename notebook")
 		return map[string]string{"error": "Failed to rename notebook"}
 	}
-
-	log.Info().Str("notebookId", notebook.ID).Str("oldName", oldName).Str("newName", newName).Msg("Notebook renamed successfully via AI tool")
 
 	return map[string]any{
 		"success":    true,
@@ -1127,22 +1060,17 @@ func renameChapter(clerkUserID string, chapterID string, newName string) any {
 		return map[string]string{"error": "Chapter not found"}
 	}
 
-	// Check authorization
 	if !userCanAccessNotebookChat(context.Background(), &chapter.Notebook, clerkUserID) {
-		log.Warn().Str("chapter_id", chapterID).Str("user_id", clerkUserID).Msg("User not authorized to rename chapter")
 		return map[string]string{"error": "Chapter not found or access denied"}
 	}
 
 	oldName := chapter.Name
 
-	// Update chapter's name using Select to force update
 	result := db.DB.Model(&chapter).Select("Name").Updates(models.Chapter{Name: newName})
 	if result.Error != nil {
 		log.Error().Err(result.Error).Msg("Failed to rename chapter")
 		return map[string]string{"error": "Failed to rename chapter"}
 	}
-
-	log.Info().Str("chapterId", chapter.ID).Str("oldName", oldName).Str("newName", newName).Msg("Chapter renamed successfully via AI tool")
 
 	return map[string]any{
 		"success":      true,
@@ -1618,10 +1546,7 @@ func ChatHandler(c *gin.Context) {
 
 	// Tool handler
 	handleToolCall := func(toolCall aisdk.ToolCall) any {
-		log.Info().Str("toolName", toolCall.Name).Str("toolCallId", toolCall.ID).Msg("handleToolCall invoked")
-		result := handleNotesToolCall(toolCall, clerkUserID, req.OrganizationID)
-		log.Info().Str("toolName", toolCall.Name).Interface("result", result).Msg("handleToolCall completed")
-		return result
+		return handleNotesToolCall(toolCall, clerkUserID, req.OrganizationID)
 	}
 
 	// Set data stream headers
@@ -1769,20 +1694,13 @@ func ChatHandler(c *gin.Context) {
 			return
 		}
 
-		// Update messages with accumulated content
 		req.Messages = append(req.Messages, acc.Messages()...)
 		lastMessages = req.Messages[:]
 
-		// Log finish reason for debugging
-		log.Info().Str("finishReason", string(acc.FinishReason())).Int("messageCount", len(acc.Messages())).Msg("Stream completed")
-
-		// Continue if tool calls need to be processed
 		if acc.FinishReason() == aisdk.FinishReasonToolCalls {
-			log.Info().Msg("Tool calls detected, continuing loop")
 			continue
 		}
 
-		log.Info().Msg("Streaming loop finished")
 		break
 	}
 }

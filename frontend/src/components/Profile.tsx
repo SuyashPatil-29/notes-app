@@ -67,8 +67,6 @@ export function Profile() {
   const [calendarSyncTrigger, setCalendarSyncTrigger] = useState(0);
   const [hasCalendar, setHasCalendar] = useState(false);
 
-  console.log(activeOrg?.role);
-
   const isAdmin = membership?.role === 'org:admin';
 
   // Fetch API key status and calendar status on mount

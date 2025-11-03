@@ -27,6 +27,16 @@ const CommandMenu = ({ notebooks }: CommandMenuProps) => {
     return () => document.removeEventListener('keydown', down)
   }, [])
 
+  // Listen for custom event to open command menu
+  useEffect(() => {
+    const handleOpenCommand = () => {
+      setOpen((open) => !open)
+    }
+
+    window.addEventListener('openCommandMenu', handleOpenCommand)
+    return () => window.removeEventListener('openCommandMenu', handleOpenCommand)
+  }, [])
+
   // Handle Escape key to close the dialog
   useEffect(() => {
     if (!open) return

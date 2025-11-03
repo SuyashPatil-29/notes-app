@@ -22,14 +22,22 @@ func GetYjsState(c *gin.Context) {
 	}
 
 	noteID := c.Param("id")
+	log.Debug().Str("note_id", noteID).Str("user_id", clerkUserID).Msg("GetYjsState: Checking access")
 
 	// Check authorization
 	hasAccess, err := middleware.CheckNoteAccess(c.Request.Context(), db.DB, noteID, clerkUserID)
-	if err != nil || !hasAccess {
-		log.Warn().Str("note_id", noteID).Str("user_id", clerkUserID).Msg("User not authorized to access note")
+	if err != nil {
+		log.Error().Err(err).Str("note_id", noteID).Str("user_id", clerkUserID).Msg("GetYjsState: Error checking note access")
 		c.JSON(http.StatusForbidden, gin.H{"error": "Unauthorized"})
 		return
 	}
+	if !hasAccess {
+		log.Warn().Str("note_id", noteID).Str("user_id", clerkUserID).Msg("GetYjsState: User not authorized to access note")
+		c.JSON(http.StatusForbidden, gin.H{"error": "Unauthorized"})
+		return
+	}
+
+	log.Debug().Str("note_id", noteID).Str("user_id", clerkUserID).Msg("GetYjsState: Access granted")
 
 	// Get or create Yjs state
 	yjsService := services.NewYjsService(db.DB)
@@ -91,8 +99,12 @@ func InitializeYjsDocument(c *gin.Context) {
 	yjsService := services.NewYjsService(db.DB)
 	err = yjsService.InitializeYjsDocument(noteID, initialState)
 	if err != nil {
-		log.Error().Err(err).Str("note_id", noteID).Msg("Failed to initialize Yjs document")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to initialize document"})
+		log.Error().Err(err).
+			Str("note_id", noteID).
+			Int("state_size", len(initialState)).
+			Str("error_detail", err.Error()).
+			Msg("Failed to initialize Yjs document")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to initialize document", "detail": err.Error()})
 		return
 	}
 
@@ -111,19 +123,27 @@ func ApplyYjsUpdate(c *gin.Context) {
 	}
 
 	noteID := c.Param("id")
+	log.Debug().Str("note_id", noteID).Str("user_id", clerkUserID).Msg("ApplyYjsUpdate: Checking access")
 
 	// Check authorization
 	hasAccess, err := middleware.CheckNoteAccess(c.Request.Context(), db.DB, noteID, clerkUserID)
-	if err != nil || !hasAccess {
-		log.Warn().Str("note_id", noteID).Str("user_id", clerkUserID).Msg("User not authorized to access note")
+	if err != nil {
+		log.Error().Err(err).Str("note_id", noteID).Str("user_id", clerkUserID).Msg("ApplyYjsUpdate: Error checking note access")
+		c.JSON(http.StatusForbidden, gin.H{"error": "Unauthorized"})
+		return
+	}
+	if !hasAccess {
+		log.Warn().Str("note_id", noteID).Str("user_id", clerkUserID).Msg("ApplyYjsUpdate: User not authorized to access note")
 		c.JSON(http.StatusForbidden, gin.H{"error": "Unauthorized"})
 		return
 	}
 
+	log.Debug().Str("note_id", noteID).Str("user_id", clerkUserID).Msg("ApplyYjsUpdate: Access granted")
+
 	// Expect two fields: update (binary) and state (binary)
 	// We'll use multipart form or expect JSON with base64
 	// For simplicity, let's use query params to differentiate
-	
+
 	// Read binary update from request body
 	updateData, err := io.ReadAll(c.Request.Body)
 	if err != nil {
@@ -226,4 +246,3 @@ func GetDocumentVersion(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{"version": version})
 }
-

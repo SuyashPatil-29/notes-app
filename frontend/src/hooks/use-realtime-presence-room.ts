@@ -87,7 +87,6 @@ export const useRealtimePresenceRoom = (roomName: string) => {
           console.error('Realtime channel timed out')
           isTrackingRef.current = false
         } else if (status === REALTIME_SUBSCRIBE_STATES.CLOSED) {
-          console.log('Realtime channel closed')
           isTrackingRef.current = false
         }
       })
