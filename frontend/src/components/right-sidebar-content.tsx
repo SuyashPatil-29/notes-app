@@ -23,7 +23,6 @@ import {
 import { Message, MessageContent, MessageAvatar } from "@/components/ai/message"
 import {
     PromptInput,
-    PromptInputTextarea,
     PromptInputSubmit,
     PromptInputToolbar,
     PromptInputTools,
@@ -42,7 +41,7 @@ import { useUser } from "@/hooks/auth"
 import { useAuth } from "@clerk/clerk-react"
 import api from "@/utils/api"
 import { SelectGroup, SelectLabel, SelectSeparator } from "@/components/ui/select"
-import { MentionNotesPopover, MentionedNotesBadges } from "@/components/ai/mention-notes"
+import { MentionTagsInput } from "@/components/ai/mention-tags-input"
 import { Suggestions, Suggestion } from "@/components/ai/suggestion"
 import { getUserNotebooks } from "@/utils/notebook"
 import type { Notebook } from "@/types/backend"
@@ -575,7 +574,6 @@ export function RightSidebarContent() {
     const lastContentUpdateTime = useRef<number>(0)
 
     // Mention notes state
-    const [mentionOpen, setMentionOpen] = useState(false)
     const [mentionedNotes, setMentionedNotes] = useState<MentionedNote[]>([])
     // Fetch notebooks to get all notes for mentions
     const { data: notebooks, isLoading: notebooksLoading } = useQuery<Notebook[]>({
@@ -623,7 +621,7 @@ export function RightSidebarContent() {
     const selectedProvider = modelToProvider[model];
     const hasSelectedApiKey = apiKeyStatus[selectedProvider as keyof ApiKeyStatus] || false;
 
-    const { messages, input, handleInputChange, handleSubmit, status, setInput, append, setMessages, stop, reload, } = useChat({
+    const { messages, input, handleSubmit, status, setInput, append, setMessages, stop, reload, } = useChat({
         key: authToken || 'no-token', // Force re-initialization when token changes
         api: "http://localhost:8080/api/chat",
         body: {
@@ -649,55 +647,9 @@ export function RightSidebarContent() {
         },
     })
 
-    // Handle @ mention detection
-    const handleInputChangeWithMention = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-        handleInputChange(e)
-
-        const value = e.target.value
-        const cursorPos = e.target.selectionStart
-
-        // Check if @ was just typed
-        if (value[cursorPos - 1] === '@') {
-            setMentionOpen(true)
-        } else if (mentionOpen && (value[cursorPos - 1] === ' ' || !value.includes('@'))) {
-            // Close on space or if @ is removed
-            setMentionOpen(false)
-        }
-    }
-
-    // Handle keyboard events for mention popover
-    const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-        if (e.key === 'Escape' && mentionOpen) {
-            e.preventDefault()
-            setMentionOpen(false)
-            // Refocus textarea after closing
-            setTimeout(() => {
-                inputRef.current?.focus()
-            }, 50)
-        }
-    }
-
-    // Handle note selection from mention
-    const handleSelectNote = (note: MentionedNote) => {
-        // Add to mentioned notes if not already added
-        if (!mentionedNotes.find(n => n.id === note.id)) {
-            setMentionedNotes([...mentionedNotes, note])
-        }
-
-        // Remove the @ symbol from input
-        const newInput = input.slice(0, -1) + ' '
-        setInput(newInput)
-        setMentionOpen(false)
-
-        // Refocus textarea with a small delay
-        setTimeout(() => {
-            inputRef.current?.focus()
-        }, 100)
-    }
-
-    // Remove mentioned note
-    const handleRemoveMentionedNote = (noteId: string) => {
-        setMentionedNotes(mentionedNotes.filter(n => n.id !== noteId))
+    // Handle mentioned notes change from MentionTagsInput
+    const handleMentionedNotesChange = (notes: MentionedNote[]) => {
+        setMentionedNotes(notes)
     }
 
     // Navigate to a note
@@ -1329,27 +1281,16 @@ export function RightSidebarContent() {
 
                 <div className="p-6 pt-4 border-t bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/60">
                     <PromptInput onSubmit={handleSubmitWithFiles} className="shadow-lg">
-                        <MentionedNotesBadges
-                            notes={mentionedNotes}
-                            onRemove={handleRemoveMentionedNote}
-                        />
-                        <div className="relative overflow-visible">
-                            <MentionNotesPopover
-                                open={mentionOpen}
-                                notes={allNotes}
-                                onSelectNote={handleSelectNote}
-                                isLoading={notebooksLoading}
-                                currentNoteId={noteId}
-                            />
-                            <PromptInputTextarea
-                                ref={inputRef}
+                        <MentionTagsInput
                                 value={input}
+                            onChange={setInput}
                                 placeholder={hasSelectedApiKey ? "Ask me anything... (Type @ to mention notes)" : "Set up API keys in settings to start chatting..."}
-                                onChange={handleInputChangeWithMention}
-                                onKeyDown={handleKeyDown}
                                 disabled={status === "streaming" || status === "submitted" || !hasSelectedApiKey}
+                            allNotes={allNotes}
+                            notesLoading={notebooksLoading}
+                            currentNoteId={noteId}
+                            onMentionedNotesChange={handleMentionedNotesChange}
                             />
-                        </div>
                         <PromptInputToolbar>
                             <PromptInputTools>
                                 <PromptInputModelSelect value={model} onValueChange={(value) => setModel(value as Model)}>

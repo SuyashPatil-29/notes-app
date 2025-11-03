@@ -12,7 +12,7 @@ import {
   getMeetingPlatform,
   backfillVideoURLs,
 } from "@/utils/meeting";
-import type { MeetingRecording } from "@/types/backend";
+import type { MeetingListItem } from "@/types/backend";
 import { useNavigate } from "react-router-dom";
 import { formatDistanceToNow } from "date-fns";
 import { useEffect, useRef, useState } from "react";
@@ -29,7 +29,7 @@ import { toast } from "sonner";
 export function MeetingsList() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const previousMeetingsRef = useRef<MeetingRecording[]>([]);
+  const previousMeetingsRef = useRef<MeetingListItem[]>([]);
   const [isRecordDialogOpen, setIsRecordDialogOpen] = useState(false);
 
   const {
@@ -43,11 +43,11 @@ export function MeetingsList() {
       // Refetch every 5 seconds if there are pending/processing meetings
       // OR if there are completed meetings without generated notes (note generation in progress)
       const hasActiveMeetings = query.state.data?.some(
-        (meeting: MeetingRecording) =>
+        (meeting: MeetingListItem) =>
           meeting.status === "pending" ||
           meeting.status === "recording" ||
           meeting.status === "processing" ||
-          (meeting.status === "completed" && !meeting.generatedNote)
+          (meeting.status === "completed" && !meeting.generatedNoteId)
       );
       return hasActiveMeetings ? 5000 : false;
     },
@@ -98,8 +98,8 @@ export function MeetingsList() {
       const previous = previousMeetings.find((m) => m.id === meeting.id);
       // Check if this meeting just got a generated note
       return (
-        meeting.generatedNote &&
-        (!previous || !previous.generatedNote)
+        meeting.generatedNoteId &&
+        (!previous || !previous.generatedNoteId)
       );
     });
 
@@ -107,26 +107,10 @@ export function MeetingsList() {
       console.log("Detected newly generated notes, invalidating queries...");
       
       // Invalidate all notebook-related queries to refresh sidebar
+      // Since we don't have the full note details in the list item,
+      // we invalidate all notebooks to be safe
       queryClient.invalidateQueries({ queryKey: ["notebooks"] });
       queryClient.invalidateQueries({ queryKey: ["userNotebooks"] });
-      
-      // Invalidate chapter queries for the affected notebooks
-      newlyCompletedWithNotes.forEach((meeting) => {
-        if (meeting.generatedNote?.chapter?.notebookId) {
-          queryClient.invalidateQueries({
-            queryKey: ["chapters", meeting.generatedNote.chapter.notebookId],
-          });
-        }
-      });
-      
-      // Invalidate notes queries for the affected chapters
-      newlyCompletedWithNotes.forEach((meeting) => {
-        if (meeting.generatedNote?.chapterId) {
-          queryClient.invalidateQueries({
-            queryKey: ["notes", meeting.generatedNote.chapterId],
-          });
-        }
-      });
     }
 
     previousMeetingsRef.current = meetings;
@@ -255,8 +239,7 @@ export function MeetingsList() {
           {/* Title with Status */}
           <div className="flex items-start justify-between gap-3">
             <h3 className="text-lg font-semibold text-card-foreground truncate flex-1">
-              {meeting.generatedNote?.name ||
-                `${getMeetingPlatform(meeting.meetingUrl)} Meeting`}
+              {getMeetingPlatform(meeting.meetingUrl)} Meeting
             </h3>
             {meeting.status === "completed" && (
               <CheckCircle2 className="w-5 h-5 text-green-500 shrink-0" />
@@ -281,24 +264,8 @@ export function MeetingsList() {
               addSuffix: true,
             })}{" "}
             • {getMeetingPlatform(meeting.meetingUrl)}
+            {meeting.generatedNoteId && " • Notes generated"}
           </p>
-
-          {/* View Notes Button */}
-          {meeting.generatedNote && meeting.generatedNote.chapter && (
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                const note = meeting.generatedNote!;
-                const notebookId = note.chapter.notebook?.id || note.chapter.notebookId;
-                const chapterId = note.chapterId;
-                const noteId = note.id;
-                navigate(`/${notebookId}/${chapterId}/${noteId}`);
-              }}
-              className="w-full mt-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors text-sm font-medium"
-            >
-              View Notes
-            </button>
-          )}
         </button>
         ))}
       </div>

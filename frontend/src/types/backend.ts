@@ -238,6 +238,7 @@ export type CreateOrganizationRequest = {
 export type InviteMemberRequest = {
   emailAddress: string;
   role: 'org:admin' | 'org:member';
+  redirectUrl?: string; // Optional URL to redirect after accepting invitation
 };
 
 export type UpdateMemberRoleRequest = {

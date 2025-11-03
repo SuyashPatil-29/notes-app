@@ -1,6 +1,7 @@
 import api from './api';
 import type { 
-  MeetingRecording, 
+  MeetingRecording,
+  MeetingListItem,
   StartMeetingRecordingRequest, 
   StartMeetingRecordingResponse, 
   GetMeetingsResponse 
@@ -24,8 +25,9 @@ export const startMeetingRecording = async (meetingUrl: string): Promise<Meeting
 
 /**
  * Get all meeting recordings for the authenticated user
+ * Returns lightweight meeting list items without nested generated note data
  */
-export const getUserMeetings = async (): Promise<MeetingRecording[]> => {
+export const getUserMeetings = async (): Promise<MeetingListItem[]> => {
   try {
     const response = await api.get<GetMeetingsResponse>('/meetings');
     return response.data.data;

@@ -363,17 +363,31 @@ export function NoteEditor({ user, userLoading = false }: NoteEditorProps) {
         await updateNote(noteId!, {
           content: JSON.stringify(content)
         })
+        
+        // Update the cache immediately with the new content to prevent flicker on mode switch
+        queryClient.setQueryData(['note', noteId], (oldData: any) => {
+          if (!oldData) return oldData
+          return {
+            ...oldData,
+            data: {
+              ...oldData.data,
+              content: JSON.stringify(content),
+              updatedAt: new Date().toISOString()
+            }
+          }
+        })
+        
         hasUnsavedChanges.current = false
         setIsSaving(false)
       }
       
+      // Disable edit mode (this will trigger key change and remount)
+      setIsEditMode(false)
+      
       // Release edit lock
       await releaseEdit()
       
-      // Disable edit mode
-      setIsEditMode(false)
-      
-      // Invalidate queries to sync all viewers
+      // Invalidate queries to sync all viewers (this happens after mode change)
       await queryClient.invalidateQueries({ queryKey: ['note', noteId] })
       
       toast.success('Stopped editing and saved')
@@ -576,10 +590,7 @@ export function NoteEditor({ user, userLoading = false }: NoteEditorProps) {
 
           {/* Path and Save - Sticky */}
           <div className="sticky top-0 z-20 bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/80 border-b -mx-6 px-6 py-3 mb-6">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-mono bg-accent px-3 py-1.5 rounded">
-                Path: {note.chapter.notebook.name} / {note.chapter.name} / {note.name}
-              </span>
+            <div className="flex items-center w-full justify-end">
               <div className='flex items-center gap-2'>
                 {!note.hasVideo && (
                   <Button

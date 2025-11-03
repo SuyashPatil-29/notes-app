@@ -39,6 +39,7 @@ import { SSOCallback } from '@/components/auth/sso-callback'
 import { LandingPage } from '@/pages/landing-page'
 import { PublicOnlyRoute } from '@/components/auth/protected-route'
 import Page from '@/pages/realtime-cursor'
+import { AcceptInvitationPage } from '@/pages/accept-invitation-page'
 
 function App() {
   const { user, loading: userLoading, refetch: refetchUser } = useUser()
@@ -527,6 +528,9 @@ function App() {
           </PublicOnlyRoute>
         } />
         <Route path="/sso-callback" element={<SSOCallback />} />
+        
+        {/* Public invitation acceptance - must be public for Clerk redirect */}
+        <Route path="/accept-invitation" element={<AcceptInvitationPage />} />
 
         {/* Public content routes - accessible without auth */}
         <Route path="/public/:notebookId" element={<PublicNotebookView />} />

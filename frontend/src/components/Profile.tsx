@@ -6,7 +6,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Key, Trash2, User as UserIcon, Mail, Save, Calendar, Video, Sparkles, Check, X, Building2, UserPlus } from "lucide-react";
+import { Key, Trash2, User as UserIcon, Mail, Save, Calendar, Video, Sparkles, Check, X, Building2 } from "lucide-react";
 import { toast } from "sonner";
 import api from "@/utils/api";
 import { useQueryClient } from "@tanstack/react-query";
@@ -14,6 +14,7 @@ import { CalendarSettings } from "@/components/CalendarSettings";
 import { CalendarEventsList } from "@/components/CalendarEventsList";
 import { useOrganizationContext } from "@/contexts/OrganizationContext";
 import { OrganizationSettings } from "@/components/organizations/OrganizationSettings";
+import { OrganizationsMemberView } from "@/components/organizations/OrganizationsMemberView";
 import { JoinOrganizationDialog } from "@/components/organizations/JoinOrganizationDialog";
 import { useOrganization } from "@clerk/clerk-react";
 
@@ -324,6 +325,10 @@ export function Profile() {
                     <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-t-lg" />
                   )}
                 </button>
+              </>
+            )}
+            
+            {/* Organizations tab - always visible for all users */}
                 <button
                   onClick={() => setActiveTab('organizations')}
                   className={`flex items-center gap-2 px-4 py-3 font-medium transition-colors relative ${
@@ -343,8 +348,6 @@ export function Profile() {
                     <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-t-lg" />
                   )}
                 </button>
-              </>
-            )}
           </div>
 
           {/* Profile Tab */}
@@ -589,83 +592,18 @@ export function Profile() {
             </div>
           )}
 
-          {/* Organizations Tab - Only accessible in personal account or as org admin */}
-          {activeTab === 'organizations' && (!activeOrg || isAdmin) && (
+          {/* Organizations Tab - Always accessible for all users */}
+          {activeTab === 'organizations' && (
             <div className="space-y-6">
-              {activeOrg ? (
+              {activeOrg && isAdmin ? (
+                // Show admin controls if user is admin of active org
                 <OrganizationSettings
                   organization={activeOrg}
-                  userRole={isAdmin ? 'admin' : 'member'}
+                  userRole="admin"
                 />
               ) : (
-                <div className="space-y-6">
-                  {/* No Active Organization */}
-                  <div className="bg-card border border-border rounded-lg p-8 text-center">
-                    <Building2 className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                    <h3 className="text-lg font-semibold mb-2">No Active Organization</h3>
-                    <p className="text-muted-foreground mb-6">
-                      You're currently in your personal workspace. Switch to an organization or
-                      create a new one to collaborate with your team.
-                    </p>
-                    <div className="flex gap-3 justify-center">
-                      <Button onClick={() => setIsJoinDialogOpen(true)}>
-                        <UserPlus className="h-4 w-4 mr-2" />
-                        View Invitations
-                      </Button>
-                    </div>
-                  </div>
-
-                  {/* Organizations List */}
-                  {isLoadingOrgs ? (
-                    <div className="space-y-4">
-                      {[1, 2].map((i) => (
-                        <Skeleton key={i} className="h-24 w-full" />
-                      ))}
-                    </div>
-                  ) : organizations.length > 0 ? (
-                    <div>
-                      <h3 className="text-lg font-semibold mb-4">Your Organizations</h3>
-                      <div className="grid gap-4 md:grid-cols-2">
-                        {organizations.map((org) => (
-                          <div
-                            key={org.id}
-                            className="bg-card border border-border rounded-lg p-6 hover:border-primary/50 transition-colors"
-                          >
-                            <div className="flex items-start gap-4">
-                              {org.imageUrl ? (
-                                <img
-                                  src={org.imageUrl}
-                                  alt={org.name}
-                                  className="h-12 w-12 rounded"
-                                />
-                              ) : (
-                                <div className="h-12 w-12 rounded bg-primary/10 flex items-center justify-center">
-                                  <Building2 className="h-6 w-6 text-primary" />
-                                </div>
-                              )}
-                              <div className="flex-1 min-w-0">
-                                <h4 className="font-semibold truncate">{org.name}</h4>
-                                <p className="text-sm text-muted-foreground">
-                                  {org.membersCount}{" "}
-                                  {org.membersCount === 1 ? "member" : "members"}
-                                </p>
-                                <Badge variant="outline" className="mt-2">
-                                  {org.role === "admin" ? "Admin" : "Member"}
-                                </Badge>
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="bg-card border border-border rounded-lg p-8 text-center">
-                      <p className="text-muted-foreground">
-                        You're not a member of any organizations yet.
-                      </p>
-                    </div>
-                  )}
-                </div>
+                // Show member view for: members in org OR anyone in personal account
+                <OrganizationsMemberView />
               )}
             </div>
           )}

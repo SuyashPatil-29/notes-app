@@ -39,7 +39,7 @@ export function MeetingDetail() {
         (meeting.status === "pending" ||
           meeting.status === "recording" ||
           meeting.status === "processing" ||
-          (meeting.status === "completed" && !meeting.generatedNote));
+          (meeting.status === "completed" && !meeting.generatedNoteId));
       return needsRefetch ? 5000 : false;
     },
   });
@@ -101,8 +101,7 @@ export function MeetingDetail() {
           <div className="flex items-start justify-between gap-4 mb-4">
             <div className="flex-1">
               <h1 className="text-3xl font-bold mb-2">
-                {meeting.generatedNote?.name ||
-                  `${getMeetingPlatform(meeting.meetingUrl)} Meeting`}
+                {getMeetingPlatform(meeting.meetingUrl)} Meeting
               </h1>
               <div className="flex items-center gap-4 text-muted-foreground">
                 <div className="flex items-center gap-2">
@@ -138,36 +137,19 @@ export function MeetingDetail() {
           </div>
         </div>
 
-        {/* AI Summary Section */}
-        {meeting.generatedNote?.aiSummary && (
-          <div className="mb-8 border rounded-lg p-6 bg-card">
-            <h2 className="text-xl font-semibold mb-3 flex items-center gap-2">
-              <FileText className="w-5 h-5" />
-              AI Summary
-            </h2>
-            <p className="text-muted-foreground leading-relaxed">
-              {meeting.generatedNote.aiSummary}
-            </p>
-          </div>
-        )}
-
         {/* Action Buttons */}
-        {meeting.generatedNote && meeting.generatedNote.chapter && (
+        {meeting.generatedNoteId && (
           <div className="mb-8">
+            <p className="text-muted-foreground mb-4">
+              Notes have been generated from this meeting.
+            </p>
             <Button
               size="lg"
               className="w-full"
-              onClick={() => {
-                const note = meeting.generatedNote!;
-                const notebookId =
-                  note.chapter.notebook?.id || note.chapter.notebookId;
-                const chapterId = note.chapterId;
-                const noteId = note.id;
-                navigate(`/${notebookId}/${chapterId}/${noteId}`);
-              }}
+              onClick={() => navigate('/dashboard')}
             >
               <FileText className="w-5 h-5 mr-2" />
-              View Full Notes
+              Go to Dashboard to View Notes
             </Button>
           </div>
         )}

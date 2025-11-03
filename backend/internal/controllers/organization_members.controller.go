@@ -28,6 +28,7 @@ func InviteMember(c *gin.Context) {
 	var req struct {
 		EmailAddress string `json:"emailAddress" binding:"required,email"`
 		Role         string `json:"role" binding:"required"`
+		RedirectURL  string `json:"redirectUrl"` // Optional redirect URL after accepting invitation
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -47,6 +48,11 @@ func InviteMember(c *gin.Context) {
 		EmailAddress:   clerk.String(req.EmailAddress),
 		InviterUserID:  clerk.String(inviterUserID),
 		Role:           clerk.String(req.Role),
+	}
+
+	// Add redirect URL if provided
+	if req.RedirectURL != "" {
+		params.RedirectURL = clerk.String(req.RedirectURL)
 	}
 
 	invitation, err := organizationinvitation.Create(c.Request.Context(), params)

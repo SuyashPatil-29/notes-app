@@ -27,6 +27,7 @@ export function InviteMembersDialog({
 }: InviteMembersDialogProps) {
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<"org:admin" | "org:member">("org:member");
+  // Default redirect to the invitations page
   const [isLoading, setIsLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -48,6 +49,7 @@ export function InviteMembersDialog({
       await inviteMember(organizationId, {
         emailAddress: email.trim(),
         role,
+          redirectUrl: `${window.location.origin}/accept-invitation`, // Redirect to public acceptance page
       });
       toast.success(`Invitation sent to ${email}`);
       setEmail("");

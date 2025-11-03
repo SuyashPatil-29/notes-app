@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Calendar as CalendarIcon, Bot, BotOff, ExternalLink, RefreshCw } from "lucide-react";
+import { Calendar as CalendarIcon, Bot, BotOff, ExternalLink, RefreshCw, Video } from "lucide-react";
 import { toast } from "sonner";
 import type { Calendar, CalendarEvent } from "@/types/backend";
 import {
@@ -14,6 +15,7 @@ import {
 } from "@/utils/calendar";
 
 export function CalendarEventsList() {
+  const navigate = useNavigate();
   const [calendars, setCalendars] = useState<Calendar[]>([]);
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -113,10 +115,6 @@ export function CalendarEventsList() {
     }
   };
 
-  if (calendars.length === 0) {
-    return null; // Don't show if no calendars connected
-  }
-
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -126,6 +124,7 @@ export function CalendarEventsList() {
             Virtual meetings that can be recorded by AI bots
           </p>
         </div>
+        {calendars.length > 0 && (
         <Button
           variant="outline"
           size="sm"
@@ -134,6 +133,7 @@ export function CalendarEventsList() {
         >
           <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
         </Button>
+        )}
       </div>
 
       <div className="bg-card border rounded-lg p-6">
@@ -141,13 +141,40 @@ export function CalendarEventsList() {
           <div className="text-center py-8 text-muted-foreground">
             Loading events...
           </div>
+        ) : calendars.length === 0 ? (
+          <div className="text-center py-12 space-y-4">
+            <Video className="w-16 h-16 mx-auto text-muted-foreground/30" />
+            <div className="space-y-2">
+              <h3 className="text-lg font-semibold">No Calendar Connected</h3>
+              <p className="text-muted-foreground max-w-md mx-auto">
+                Connect your Google or Microsoft calendar to see upcoming virtual meetings and schedule AI bots for automatic recording.
+              </p>
+            </div>
+            <Button
+              onClick={() => navigate('/profile')}
+              className="mt-4"
+            >
+              <CalendarIcon className="w-4 h-4 mr-2" />
+              Connect Calendar
+            </Button>
+          </div>
         ) : events.length === 0 ? (
-          <div className="text-center py-8 space-y-2">
-            <CalendarIcon className="w-12 h-12 mx-auto text-muted-foreground/50" />
-            <p className="text-muted-foreground">No upcoming virtual meetings</p>
-            <p className="text-xs text-muted-foreground">
-              Virtual meetings with Zoom, Google Meet, Teams, etc. will appear here
+          <div className="text-center py-12 space-y-4">
+            <CalendarIcon className="w-16 h-16 mx-auto text-muted-foreground/30" />
+            <div className="space-y-2">
+              <h3 className="text-lg font-semibold">No Upcoming Meetings</h3>
+              <p className="text-muted-foreground max-w-md mx-auto">
+                You don't have any upcoming virtual meetings. Zoom, Google Meet, Microsoft Teams, and other virtual meetings will appear here.
             </p>
+            </div>
+            <Button
+              variant="outline"
+              onClick={fetchData}
+              className="mt-4"
+            >
+              <RefreshCw className="w-4 h-4 mr-2" />
+              Refresh
+            </Button>
           </div>
         ) : (
           <div className="space-y-3">

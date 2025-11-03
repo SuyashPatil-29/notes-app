@@ -25,11 +25,11 @@ func InitDB() {
 	// Open connection with local PostgreSQL optimized settings
 	DB, err = gorm.Open(postgres.New(postgres.Config{
 		DSN:                  dsn,
-		PreferSimpleProtocol: false, // Enable prepared statements for local DB (faster)
+		PreferSimpleProtocol: true, // Use simple protocol to avoid prepared statement conflicts with hot-reload
 	}), &gorm.Config{
-		PrepareStmt:            true,                                // Enable prepared statements for local DB performance
+		PrepareStmt:            false,                               // Disable prepared statements for hot-reload compatibility
 		SkipDefaultTransaction: true,                                // Improves performance
-		Logger:                 logger.Default.LogMode(logger.Info), // Enable SQL query logging to debug slow queries
+		Logger:                 logger.Default.LogMode(logger.Warn), // Only log slow queries and errors, not routine queries
 	})
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to connect to database")
