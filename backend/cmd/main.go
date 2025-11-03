@@ -130,6 +130,13 @@ func main() {
 		protected.POST("/note/:id/generate-video", controllers.GenerateNoteVideo)
 		protected.DELETE("/note/:id/video", controllers.DeleteNoteVideo)
 
+		// Yjs collaboration routes
+		protected.GET("/note/:id/yjs-state", controllers.GetYjsState)
+		protected.POST("/note/:id/yjs-init", controllers.InitializeYjsDocument)
+		protected.POST("/note/:id/yjs-update", controllers.ApplyYjsUpdate)
+		protected.POST("/note/:id/yjs-sync", controllers.SyncYjsToNote)
+		protected.GET("/note/:id/yjs-version", controllers.GetDocumentVersion)
+
 		// Publishing routes
 		protected.POST("/notebook/:id/publish", controllers.PublishNotebook)
 		protected.PUT("/notebook/:id/published-notes", controllers.UpdatePublishedNotes)

@@ -113,6 +113,8 @@ import {
       width: 4,
     },
     gapcursor: false,
+    // Disable history for collaboration (Yjs handles history)
+    history: false,
   });
   
   const codeBlockLowlight = CodeBlockLowlight.configure({
@@ -152,6 +154,8 @@ import {
   
   const characterCount = CharacterCount.configure();
   
+  // Note: Collaboration and CollaborationCaret extensions are added dynamically in NoteEditor
+  // because they require runtime configuration (ydoc and provider instances)
   export const defaultExtensions = [
     starterKit,
     placeholder,

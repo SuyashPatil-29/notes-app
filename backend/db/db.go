@@ -67,6 +67,8 @@ func InitDB() {
 		&models.Calendar{},
 		&models.CalendarEvent{},
 		&models.CalendarOAuthState{},
+		&models.YjsDocument{},
+		&models.YjsUpdate{},
 	); err != nil {
 		log.Fatal().Err(err).Msg("Failed to migrate schema")
 	}

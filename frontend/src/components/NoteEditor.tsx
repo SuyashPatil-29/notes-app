@@ -1,12 +1,12 @@
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { getNote, updateNote, generateNoteVideo, deleteNoteVideo } from '@/utils/notes'
+import { getNote, generateNoteVideo, deleteNoteVideo } from '@/utils/notes'
 import { getUserNotebooks } from '@/utils/notebook'
 import { Header } from '@/components/Header'
 import { Skeleton } from '@/components/ui/skeleton'
 import { NoteVideoPlayer } from '@/components/NoteVideoPlayer'
 import type { AuthenticatedUser } from '@/types/backend'
-import { Loader2, Calendar, Clock, Video, VideoOff, Pause } from 'lucide-react'
+import { Loader2, Calendar, Clock, Video, VideoOff } from 'lucide-react'
 import { toast } from 'sonner'
 import { useOrganizationContext } from '@/contexts/OrganizationContext'
 import 'katex/dist/katex.min.css'
@@ -37,11 +37,18 @@ import type { Notes } from "@/types/backend";
 import { RealtimeAvatarStack } from '@/components/realtime-avatar-stack'
 import { RealtimeCursors } from '@/components/realtime-cursors'
 import { isRealtimeConfigured } from '@/utils/check-realtime'
-import { useRealtimeEditLock } from '@/hooks/use-realtime-edit-lock'
 import { useRealtimePresenceRoom } from '@/hooks/use-realtime-presence-room'
-import { Edit3, Eye } from 'lucide-react'
+import { Eye } from 'lucide-react'
 
 import GenerativeMenuSwitch from "./generative/generative-menu-switch";
+
+// Yjs collaboration imports
+import * as Y from 'yjs'
+import { Awareness } from 'y-protocols/awareness'
+import Collaboration from '@tiptap/extension-collaboration'
+import CollaborationCaret from '@tiptap/extension-collaboration-caret'
+import { SupabaseYjsProvider } from '@/lib/supabase-yjs-provider'
+import { useUser, useSession } from '@clerk/clerk-react'
 // import { uploadFn } from "./image-upload";
 import { TextButtons } from "./selectors/text-buttons";
 import { slashCommand, suggestionItems } from "./slash-command";
@@ -49,7 +56,8 @@ import { slashCommand, suggestionItems } from "./slash-command";
 import hljs from "highlight.js";
 import { Button } from './ui/button'
 
-const extensions = [...defaultExtensions, slashCommand];
+// Extensions will be configured dynamically in the component to include collaboration
+// const extensions = [...defaultExtensions, slashCommand];
 
 interface NoteEditorProps {
   user: AuthenticatedUser | null
@@ -65,8 +73,9 @@ export function NoteEditor({ user, userLoading = false }: NoteEditorProps) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { activeOrg } = useOrganizationContext()
+  const { user: clerkUser } = useUser()
+  const { session } = useSession()
   const [charsCount, setCharsCount] = useState();
-  const [editorInstance, setEditorInstance] = useState<EditorInstance | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [isAutoSaving, setIsAutoSaving] = useState(false);
   const [isGeneratingVideo, setIsGeneratingVideo] = useState(false);
@@ -78,18 +87,20 @@ export function NoteEditor({ user, userLoading = false }: NoteEditorProps) {
   const [openNode, setOpenNode] = useState(false);
   const [openColor, setOpenColor] = useState(false);
   const [openLink, setOpenLink] = useState(false);
-  const [isEditMode, setIsEditMode] = useState(false);
 
-  // Edit lock system
-  const { currentEditor, requestEdit, releaseEdit, isEditing, canEdit } = useRealtimeEditLock(
-    noteId ? `note-${noteId}` : ''
-  );
+  // Yjs collaboration state
+  const ydoc = useRef<Y.Doc | null>(null)
+  const provider = useRef<SupabaseYjsProvider | null>(null)
+  const [collaborationSynced, setCollaborationSynced] = useState(false)
+  const [collaborationStatus, setCollaborationStatus] = useState<'connecting' | 'connected' | 'disconnected' | 'error'>('connecting')
+  const [providerReady, setProviderReady] = useState(false)
+  const [awareness, setAwareness] = useState<Awareness | null>(null)
 
-  // Realtime presence for viewer count
+  // Realtime presence for viewer count (keeps existing presence tracking)
   const { users: realtimeUsers } = useRealtimePresenceRoom(noteId ? `note-${noteId}` : '');
   const viewerCount = Object.keys(realtimeUsers).length;
 
-  const { data: noteResponse, isLoading, error, refetch: refetchNote } = useQuery({
+  const { data: noteResponse, isLoading, error } = useQuery({
     queryKey: ['note', noteId],
     queryFn: async () => {
       return await getNote(noteId!);
@@ -110,128 +121,9 @@ export function NoteEditor({ user, userLoading = false }: NoteEditorProps) {
   const notebook = notebooks?.find((n) => n.id === notebookId)
   const chapter = notebook?.chapters?.find((c) => c.id === chapterId)
 
-  // Convert markdown to ProseMirror JSON structure
-  const markdownToJSON = (markdown: string) => {
-    const lines = markdown.split('\n');
-    const content: any[] = [];
-    let i = 0;
-
-    while (i < lines.length) {
-      const line = lines[i];
-
-      // Empty line
-      if (line.trim() === '') {
-        content.push({ type: 'paragraph' });
-        i++;
-        continue;
-      }
-
-      // Heading
-      const headingMatch = line.match(/^(#{1,6})\s+(.+)$/);
-      if (headingMatch) {
-        const level = headingMatch[1].length;
-        content.push({
-          type: 'heading',
-          attrs: { level },
-          content: [{ type: 'text', text: headingMatch[2] }]
-        });
-        i++;
-        continue;
-      }
-
-      // Code block
-      if (line.trim().startsWith('```')) {
-        const language = line.trim().slice(3).trim() || 'plaintext';
-        const codeLines: string[] = [];
-        i++; // Skip opening ```
-
-        while (i < lines.length && !lines[i].trim().startsWith('```')) {
-          codeLines.push(lines[i]);
-          i++;
-        }
-        i++; // Skip closing ```
-
-        content.push({
-          type: 'codeBlock',
-          attrs: { language },
-          content: codeLines.length > 0
-            ? [{ type: 'text', text: codeLines.join('\n') }]
-            : undefined
-        });
-        continue;
-      }
-
-      // List items (bullet)
-      if (line.match(/^[-*]\s+/)) {
-        const listItems: any[] = [];
-        while (i < lines.length && lines[i].match(/^[-*]\s+/)) {
-          const text = lines[i].replace(/^[-*]\s+/, '');
-          listItems.push({
-            type: 'listItem',
-            content: [{
-              type: 'paragraph',
-              content: [{ type: 'text', text }]
-            }]
-          });
-          i++;
-        }
-        content.push({
-          type: 'bulletList',
-          content: listItems
-        });
-        continue;
-      }
-
-      // Regular paragraph
-      content.push({
-        type: 'paragraph',
-        content: [{ type: 'text', text: line }]
-      });
-      i++;
-    }
-
-    return {
-      type: 'doc',
-      content: content.length > 0 ? content : [{ type: 'paragraph' }]
-    };
-  };
-
-  // Parse note content safely - handle both JSON and plain text/markdown
-  const getInitialContent = () => {
-    if (!note?.content || note.content.trim() === '') {
-      // Return empty document with a single paragraph
-      return {
-        type: 'doc',
-        content: [{ type: 'paragraph' }]
-      };
-    }
-
-    // Try to parse as JSON first (new format)
-    try {
-      const parsed = JSON.parse(note.content);
-      // Validate it has proper structure
-      if (parsed && parsed.type === 'doc') {
-        return parsed;
-      }
-      // If not proper structure, return empty doc
-      return {
-        type: 'doc',
-        content: [{ type: 'paragraph' }]
-      };
-    } catch (error) {
-      // If it's not JSON, treat it as markdown and convert
-      try {
-        return markdownToJSON(note.content);
-      } catch (mdError) {
-        // Fallback to empty document if markdown conversion fails
-        console.error('Failed to convert markdown:', mdError);
-        return {
-          type: 'doc',
-          content: [{ type: 'paragraph' }]
-        };
-      }
-    }
-  }
+  // With Yjs collaboration, we don't use initialContent from React
+  // Content is managed by the Yjs document, which is synced via the provider
+  // Initial content is set when the document is first created via onCreate callback
 
   //Apply Codeblock Highlighting on the HTML from editor.getHTML()
   const highlightCodeblocks = (content: string) => {
@@ -261,21 +153,70 @@ export function NoteEditor({ user, userLoading = false }: NoteEditorProps) {
     }
   }, [])
 
-  // Auto-release edit lock when unmounting or navigating away
+  // Initialize Yjs collaboration
   useEffect(() => {
-    return () => {
-      if (isEditing) {
-        releaseEdit()
+    if (!noteId || !clerkUser || !session) return
+
+    // Reset provider ready state
+    setProviderReady(false)
+
+    // Create Yjs document and provider
+    ydoc.current = new Y.Doc()
+
+    // Function to get auth token
+    const getAuthToken = async () => {
+      try {
+        const token = await session.getToken()
+        return token
+      } catch (error) {
+        console.error('[NoteEditor] Failed to get auth token:', error)
+        return null
       }
     }
-  }, [isEditing, releaseEdit])
 
-  // Update editor editable state when isEditMode changes
-  useEffect(() => {
-    if (editorInstance) {
-      editorInstance.setEditable(isEditMode)
+    provider.current = new SupabaseYjsProvider(noteId, ydoc.current, clerkUser, getAuthToken)
+
+    // Store awareness in state
+    setAwareness(provider.current.awareness)
+
+    // Setup event handlers
+    provider.current.on('synced', () => {
+      console.log('[NoteEditor] Yjs document synced')
+      setCollaborationSynced(true)
+      setCollaborationStatus('connected')
+
+      // Ensure awareness is fully initialized before marking as ready
+      setTimeout(() => {
+        if (provider.current?.awareness) {
+          console.log('[NoteEditor] Provider ready with awareness')
+          setProviderReady(true)
+        }
+      }, 100) // Small delay to ensure everything is initialized
+    })
+
+    provider.current.on('status', ({ status }) => {
+      console.log('[NoteEditor] Collaboration status:', status)
+      setCollaborationStatus(status as any)
+    })
+
+    provider.current.on('error', (error) => {
+      console.error('[NoteEditor] Collaboration error:', error)
+      setCollaborationStatus('error')
+      toast.error('Collaboration error: ' + error.message)
+    })
+
+    // Cleanup on unmount
+    return () => {
+      provider.current?.destroy()
+      ydoc.current?.destroy()
+      provider.current = null
+      ydoc.current = null
+      setAwareness(null)
+      setProviderReady(false)
     }
-  }, [isEditMode, editorInstance])
+  }, [noteId, clerkUser, session])
+
+  console.log({ providerReady }, ":", { ydoc }, ":", { awareness })
 
   if (userLoading || isLoading) {
     return (
@@ -332,82 +273,15 @@ export function NoteEditor({ user, userLoading = false }: NoteEditorProps) {
     return name.length > maxLength ? name.substring(0, maxLength) + '...' : name
   }
 
-  const handleStartEditing = async () => {
-    try {
-      // Request edit lock first
-      const success = await requestEdit()
-      if (!success) {
-        toast.error('Unable to start editing. Someone else may be editing.')
-        return
-      }
+  // Removed old edit lock handlers - collaboration is always active with Yjs
 
-      // Pull latest data from DB before enabling edit mode
-      await refetchNote()
-      
-      // Enable edit mode
-      setIsEditMode(true)
-      toast.success('You are now editing with latest version')
-    } catch (error) {
-      console.error('Failed to start editing:', error)
-      toast.error('Failed to start editing')
-      await releaseEdit() // Release lock if something went wrong
-    }
-  }
-
-  const handleStopEditing = async () => {
-    try {
-      // Save to DB first if there are unsaved changes
-      if (editorInstance && hasUnsavedChanges.current) {
-        setIsSaving(true)
-        const content = editorInstance.getJSON()
-        await updateNote(noteId!, {
-          content: JSON.stringify(content)
-        })
-        
-        // Update the cache immediately with the new content to prevent flicker on mode switch
-        queryClient.setQueryData(['note', noteId], (oldData: any) => {
-          if (!oldData) return oldData
-          return {
-            ...oldData,
-            data: {
-              ...oldData.data,
-              content: JSON.stringify(content),
-              updatedAt: new Date().toISOString()
-            }
-          }
-        })
-        
-        hasUnsavedChanges.current = false
-        setIsSaving(false)
-      }
-      
-      // Disable edit mode (this will trigger key change and remount)
-      setIsEditMode(false)
-      
-      // Release edit lock
-      await releaseEdit()
-      
-      // Invalidate queries to sync all viewers (this happens after mode change)
-      await queryClient.invalidateQueries({ queryKey: ['note', noteId] })
-      
-      toast.success('Stopped editing and saved')
-    } catch (error) {
-      console.error('Failed to stop editing:', error)
-      toast.error('Failed to save changes')
-      setIsSaving(false)
-    }
-  }
-
+  // Save function is now handled automatically by Yjs provider
+  // Manual save will trigger a sync to backend
   const handleSave = async (isAutoSave = false) => {
-    if (!editorInstance || !noteId) {
+    if (!provider.current || !noteId) {
       if (!isAutoSave) {
-        toast.error("Editor not ready")
+        toast.error("Collaboration not ready")
       }
-      return
-    }
-
-    // Don't auto-save if not in edit mode
-    if (isAutoSave && !isEditMode) {
       return
     }
 
@@ -418,25 +292,16 @@ export function NoteEditor({ user, userLoading = false }: NoteEditorProps) {
     }
 
     try {
-      const content = editorInstance.getJSON()
-      await updateNote(noteId, {
-        content: JSON.stringify(content)
-      })
+      // Trigger immediate sync to backend
+      await provider.current.sync()
 
-      // Invalidate cache to refetch the updated note
-      queryClient.invalidateQueries({ queryKey: ['note', noteId] })
-      queryClient.invalidateQueries({ queryKey: ['userNotebooks'] })
-
-      hasUnsavedChanges.current = false
-
-      if (isAutoSave) {
-      } else {
-        toast.success("Note saved successfully!")
+      if (!isAutoSave) {
+        toast.success("Note synced successfully!")
       }
     } catch (error) {
-      console.error("Failed to save note:", error)
+      console.error("Failed to sync note:", error)
       if (!isAutoSave) {
-        toast.error("Failed to save note")
+        toast.error("Failed to sync note")
       }
     } finally {
       if (isAutoSave) {
@@ -501,6 +366,22 @@ export function NoteEditor({ user, userLoading = false }: NoteEditorProps) {
     })
   }
 
+  // Generate consistent color for user based on ID
+  const generateUserColor = (userId: string): string => {
+    const colors = [
+      '#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A',
+      '#98D8C8', '#F7DC6F', '#BB8FCE', '#85C1E2',
+      '#F8B739', '#52B788', '#E07A5F', '#81B29A',
+    ]
+
+    let hash = 0
+    for (let i = 0; i < userId.length; i++) {
+      hash = userId.charCodeAt(i) + ((hash << 5) - hash)
+    }
+
+    return colors[Math.abs(hash) % colors.length]
+  }
+
   const breadcrumbs = [
     { label: 'Dashboard', href: '/' },
     ...(notebook ? [{ label: notebook.name, href: `/${notebookId}` }] : []),
@@ -524,14 +405,17 @@ export function NoteEditor({ user, userLoading = false }: NoteEditorProps) {
               <h1 className="text-4xl font-bold tracking-tight">{note.name}</h1>
               {isRealtimeConfigured() && (
                 <div className="flex flex-col items-end gap-2">
-                  {/* Editing status badge - prominent if someone is editing */}
-                  {(isEditing || currentEditor) && (
-                    <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium ${isEditing
-                        ? 'bg-green-500/15 text-green-700 dark:text-green-400 border border-green-500/30'
-                        : 'bg-blue-500/15 text-blue-700 dark:text-blue-400 border border-blue-500/30'
-                      }`}>
-                      <Edit3 className="h-3.5 w-3.5" />
-                      <span>{isEditing ? "You're editing" : `${currentEditor?.name} is editing`}</span>
+                  {/* Collaboration status */}
+                  {collaborationStatus === 'connected' && (
+                    <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-primary/10 text-primary border border-primary/20">
+                      <div className="h-2 w-2 rounded-full bg-primary animate-pulse" />
+                      <span>Live collaboration active</span>
+                    </div>
+                  )}
+                  {collaborationStatus === 'connecting' && (
+                    <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-muted text-muted-foreground border border-border">
+                      <div className="h-2 w-2 rounded-full bg-muted-foreground animate-pulse" />
+                      <span>Connecting...</span>
                     </div>
                   )}
 
@@ -543,10 +427,10 @@ export function NoteEditor({ user, userLoading = false }: NoteEditorProps) {
                         <Eye className="h-3.5 w-3.5" />
                         <span>
                           {viewerCount === 0
-                            ? 'No viewers'
+                            ? 'No collaborators'
                             : viewerCount === 1
-                              ? '1 viewer currently'
-                              : `${viewerCount} viewers currently`}
+                              ? '1 collaborator'
+                              : `${viewerCount} collaborators`}
                         </span>
                       </div>
                     </div>
@@ -566,7 +450,7 @@ export function NoteEditor({ user, userLoading = false }: NoteEditorProps) {
               </div>
               {note.meetingRecordingId && (
                 <div className="flex items-center gap-2 px-2 py-1 bg-blue-100 dark:bg-blue-900/30 rounded-md">
-                  <Video className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                  <Video className="h-4 w-4 text-secondary dark:text-secondary" />
                   <span className="text-blue-800 dark:text-blue-200 font-medium">Generated from Meeting</span>
                 </div>
               )}
@@ -668,117 +552,123 @@ export function NoteEditor({ user, userLoading = false }: NoteEditorProps) {
 
           <div className="relative w-full max-w-5xl">
             <div className="flex absolute right-5 top-5 z-10 mb-5 gap-2">
-              {/* Edit control button */}
-              {isRealtimeConfigured() && (
-                <>
-                  {!isEditing && canEdit && (
-                    <Button
-                      onClick={handleStartEditing}
-                      size="sm"
-                      variant="default"
-                      className="gap-2"
-                    >
-                      <Edit3 className="h-3 w-3" />
-                      Start Editing
-                    </Button>
-                  )}
-                  {!isEditing && !canEdit && (
-                    <Button
-                      disabled
-                      size="sm"
-                      variant="outline"
-                      className="gap-2 cursor-not-allowed"
-                      title="Someone else is currently editing"
-                    >
-                      Edit (Locked)
-                    </Button>
-                  )}
-                  {isEditing && (
-                    <Button
-                      onClick={handleStopEditing}
-                      size="sm"
-                      variant="destructive"
-                      className="gap-2"
-                    >
-                      <Pause className="h-3 w-3" />
-                      Stop Editing
-                    </Button>
-                  )}
-                </>
+              {/* Collaboration status indicator */}
+              {collaborationSynced && collaborationStatus === 'connected' && (
+                <div className="rounded-lg bg-primary/10 border border-primary/20 px-2 py-1 text-xs text-primary flex items-center gap-1">
+                  <div className="h-2 w-2 rounded-full bg-primary" />
+                  Synced
+                </div>
+              )}
+              {!providerReady && (
+                <div className="rounded-lg bg-muted border border-border px-2 py-1 text-xs text-muted-foreground flex items-center gap-1">
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  Loading collaboration...
+                </div>
               )}
               {isAutoSaving && (
-                <div className="rounded-lg bg-blue-500/10 border border-blue-500/20 px-2 py-1 text-xs text-blue-600 dark:text-blue-400 flex items-center gap-1">
+                <div className="rounded-lg bg-accent/50 border border-accent px-2 py-1 text-xs text-accent-foreground flex items-center gap-1">
                   <Loader2 className="h-3 w-3 animate-spin" />
-                  Auto-saving...
+                  Syncing...
                 </div>
               )}
               <div className={charsCount ? "rounded-lg bg-accent px-2 py-1 text-sm text-muted-foreground" : "hidden"}>
                 {charsCount} Words
               </div>
             </div>
-            <EditorRoot key={`${noteId}-${note.updatedAt}-${isEditMode ? 'edit' : 'read'}`}>
-              <EditorContent
-                initialContent={getInitialContent()}
-                extensions={extensions}
-                className={`relative min-h-[500px] w-full max-w-5xl border rounded-lg transition-colors ${isEditMode
-                    ? 'border-border/40 hover:border-border/60 focus-within:border-border'
-                    : 'border-border/20 cursor-default bg-muted/20'
-                  }`}
-                editorProps={{
-                  editable: () => isEditMode,
-                  handleDOMEvents: {
-                    keydown: (_view, event) => handleCommandNavigation(event),
-                  },
-                  // handlePaste: (view, event) => handleImagePaste(view, event, uploadFn),
-                  // handleDrop: (view, event, _slice, moved) => handleImageDrop(view, event, moved, uploadFn),
-                  attributes: {
-                    class:
-                      "prose prose-lg dark:prose-invert prose-headings:font-title font-default focus:outline-none max-w-full",
-                  },
-                }}
-                onCreate={({ editor }) => {
-                  // Set editor instance when editor is first created
-                  setEditorInstance(editor);
-                  debouncedUpdates(editor);
-                }}
-                onUpdate={({ editor }) => {
-                  setEditorInstance(editor);
-                  hasUnsavedChanges.current = true;
-                  debouncedUpdates(editor);
+            {providerReady && ydoc.current && awareness ? (
+              <EditorRoot key={`${noteId}-${note.updatedAt}-collab`}>
+                <EditorContent
+                  extensions={[
+                    ...defaultExtensions,
+                    slashCommand,
+                    Collaboration.configure({
+                      document: ydoc.current,
+                    }),
+                    CollaborationCaret.configure({
+                      provider: provider.current,
+                      user: {
+                        name: clerkUser?.fullName || clerkUser?.username || 'Anonymous',
+                        color: generateUserColor(clerkUser?.id || 'default'),
+                      },
+                    }),
+                  ]}
+                  className="relative min-h-[500px] w-full max-w-5xl border rounded-lg transition-colors border-border/40 hover:border-border/60 focus-within:border-border"
+                  editorProps={{
+                    handleDOMEvents: {
+                      keydown: (_view, event) => handleCommandNavigation(event),
+                    },
+                    // handlePaste: (view, event) => handleImagePaste(view, event, uploadFn),
+                    // handleDrop: (view, event, _slice, moved) => handleImageDrop(view, event, moved, uploadFn),
+                    attributes: {
+                      class:
+                        "prose prose-lg dark:prose-invert prose-headings:font-title font-default focus:outline-none max-w-full",
+                    },
+                  }}
+                  onCreate={async ({ editor }) => {
+                    // Editor created callback
+                    debouncedUpdates(editor);
 
-                  // Reset auto-save timer on every update
-                  if (autoSaveTimerRef.current) {
-                    window.clearTimeout(autoSaveTimerRef.current)
-                  }
-                  autoSaveTimerRef.current = window.setTimeout(() => {
-                    handleSave(true)
-                  }, 60000) // 1 minute
-                }}
-                slotAfter={<ImageResizer />}
-              >
-                <EditorCommand className="z-50 h-auto max-h-[330px] overflow-y-auto rounded-md border border-muted bg-background px-1 py-2 shadow-md transition-all">
-                  <EditorCommandEmpty className="px-2 text-muted-foreground">No results</EditorCommandEmpty>
-                  <EditorCommandList>
-                    {suggestionItems.map((item) => (
-                      <EditorCommandItem
-                        value={item.title}
-                        onCommand={(val) => item.command?.(val)}
-                        className="flex w-full items-center space-x-2 rounded-md px-2 py-1 text-left text-sm hover:bg-accent aria-selected:bg-accent"
-                        key={item.title}
-                      >
-                        <div className="flex h-10 w-10 items-center justify-center rounded-md border border-muted bg-background">
-                          {item.icon}
-                        </div>
-                        <div>
-                          <p className="font-medium">{item.title}</p>
-                          <p className="text-xs text-muted-foreground">{item.description}</p>
-                        </div>
-                      </EditorCommandItem>
-                    ))}
-                  </EditorCommandList>
-                </EditorCommand>
+                    // If this is a new document (from JSON conversion), set initial content
+                    if (provider.current?.initialContent) {
+                      console.log('[NoteEditor] Setting initial content from JSON');
+                      try {
+                        const parsed = JSON.parse(provider.current.initialContent);
+                        if (parsed && parsed.type === 'doc') {
+                          // Use setContent to initialize the Yjs document with content
+                          editor.commands.setContent(parsed);
 
-                {isEditMode && (
+                          // Mark as initialized in backend
+                          setTimeout(async () => {
+                            try {
+                              await provider.current?.markInitialized();
+                              console.log('[NoteEditor] Document initialized successfully');
+                            } catch (error) {
+                              console.error('[NoteEditor] Failed to mark document as initialized:', error);
+                            }
+                          }, 1000); // Wait for Tiptap to fully sync content to Yjs
+                        }
+                      } catch (error) {
+                        console.error('[NoteEditor] Failed to set initial content:', error);
+                      }
+                    }
+                  }}
+                  onUpdate={({ editor }) => {
+                    hasUnsavedChanges.current = true;
+                    debouncedUpdates(editor);
+
+                    // Reset auto-save timer on every update
+                    if (autoSaveTimerRef.current) {
+                      window.clearTimeout(autoSaveTimerRef.current)
+                    }
+                    autoSaveTimerRef.current = window.setTimeout(() => {
+                      handleSave(true)
+                    }, 60000) // 1 minute
+                  }}
+                  slotAfter={<ImageResizer />}
+                >
+                  <EditorCommand className="z-50 h-auto max-h-[330px] overflow-y-auto rounded-md border border-muted bg-background px-1 py-2 shadow-md transition-all">
+                    <EditorCommandEmpty className="px-2 text-muted-foreground">No results</EditorCommandEmpty>
+                    <EditorCommandList>
+                      {suggestionItems.map((item) => (
+                        <EditorCommandItem
+                          value={item.title}
+                          onCommand={(val) => item.command?.(val)}
+                          className="flex w-full items-center space-x-2 rounded-md px-2 py-1 text-left text-sm hover:bg-accent aria-selected:bg-accent"
+                          key={item.title}
+                        >
+                          <div className="flex h-10 w-10 items-center justify-center rounded-md border border-muted bg-background">
+                            {item.icon}
+                          </div>
+                          <div>
+                            <p className="font-medium">{item.title}</p>
+                            <p className="text-xs text-muted-foreground">{item.description}</p>
+                          </div>
+                        </EditorCommandItem>
+                      ))}
+                    </EditorCommandList>
+                  </EditorCommand>
+
+                  {/* Editor toolbar - always available with collaboration */}
                   <GenerativeMenuSwitch open={openAI} onOpenChange={setOpenAI}>
                     <Separator orientation="vertical" />
                     <NodeSelector open={openNode} onOpenChange={setOpenNode} />
@@ -792,9 +682,16 @@ export function NoteEditor({ user, userLoading = false }: NoteEditorProps) {
                     <Separator orientation="vertical" />
                     <ColorSelector open={openColor} onOpenChange={setOpenColor} />
                   </GenerativeMenuSwitch>
-                )}
-              </EditorContent>
-            </EditorRoot>
+                </EditorContent>
+              </EditorRoot>
+            ) : (
+              <div className="relative min-h-[500px] w-full max-w-5xl border rounded-lg transition-colors border-border/40 flex items-center justify-center">
+                <div className="text-center space-y-2">
+                  <Loader2 className="h-8 w-8 animate-spin mx-auto text-blue-500" />
+                  <p className="text-sm text-muted-foreground">Initializing collaboration...</p>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
