@@ -42,7 +42,6 @@ import { SSOCallback } from '@/components/auth/sso-callback'
 import { LandingPage } from '@/pages/landing-page'
 import { PublicOnlyRoute } from '@/components/auth/protected-route'
 import { AcceptInvitationPage } from '@/pages/accept-invitation-page'
-import { CustomKanban } from './components/ui/kanban'
 
 function App() {
   const { user, loading: userLoading, refetch: refetchUser } = useUser()
@@ -638,7 +637,6 @@ function App() {
         <Route path="/public/:notebookId/:chapterId" element={<PublicChapterView />} />
         <Route path="/public/:notebookId/:chapterId/:noteId" element={<PublicNoteView />} />
         <Route path="/public/user/:email" element={<PublicUserProfile />} />
-        <Route path="/public/kanban" element={<CustomKanban/>} />
 
         {/* Protected routes */}
         <Route path="/*" element={

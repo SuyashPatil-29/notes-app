@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Plus, Trash, Flame, Edit, MoreHorizontal, Users, User } from "lucide-react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -31,6 +31,12 @@ import { toast } from "sonner";
 import type { Task, TaskBoard, OrganizationMemberForAssignment } from "@/types/backend";
 import { updateTask, deleteTask, createTask, assignTaskToUsers, getOrganizationMembers } from "@/utils/tasks";
 import TaskDetailModal from "./TaskDetailModal";
+import { RealtimeCursors } from "@/components/realtime-cursors";
+import { useRealtimeKanbanDrag } from "@/hooks/use-realtime-kanban-drag";
+import { useRealtimeKanbanUpdates } from "@/hooks/use-realtime-kanban-updates";
+import { useCurrentUserName } from "@/hooks/use-current-user-name";
+import { useCurrentUserId } from "@/hooks/use-current-user-id";
+import { useClerkUserCached } from "@/hooks/use-clerk-user-cached";
 
 type ColumnType = "backlog" | "todo" | "in_progress" | "done";
 
@@ -55,15 +61,34 @@ interface ColumnProps {
   organizationMembers: OrganizationMemberForAssignment[];
   isFirst?: boolean;
   isLast?: boolean;
+  activeDrags: Record<string, { taskId: string; position: { x: number; y: number }; user: { id: string; name: string; clerkId?: string }; color: string; timestamp: number }>;
+  cardHovers: Record<string, { taskId: string | null; user: { id: string; name: string; clerkId?: string }; color: string; timestamp: number }>;
+  onDragStart: (taskId: string, position: { x: number; y: number }) => void;
+  onDragMove: (position: { x: number; y: number }, column?: string | null) => void;
+  onDragEnd: () => void;
+  onCardHover: (taskId: string | null) => void;
 }
 
 interface TaskCardProps {
   task: Task;
   handleDragStart: (e: React.DragEvent<HTMLDivElement>, task: Task) => void;
+  handleDrag?: (e: React.DragEvent<HTMLDivElement>) => void;
   onEdit: (task: Task) => void;
   onDelete: (taskId: string) => void;
   onAssign: (task: Task) => void;
   organizationMembers: OrganizationMemberForAssignment[];
+  onMouseEnter?: () => void;
+  onMouseLeave?: () => void;
+  isBeingDraggedByOthers?: boolean;
+  isBeingHoveredByOthers?: { color: string; name: string } | null;
+}
+
+interface GhostCardProps {
+  taskId: string;
+  position: { x: number; y: number };
+  color: string;
+  userName: string;
+  task: Task | undefined;
 }
 
 interface DropIndicatorProps {
@@ -102,6 +127,64 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
   const [isAssignmentModalOpen, setIsAssignmentModalOpen] = useState(false);
   const [organizationMembers, setOrganizationMembers] = useState<OrganizationMemberForAssignment[]>([]);
 
+  // Realtime features
+  const { isSignedIn, isLoaded } = useClerkUserCached();
+  const currentUserName = useCurrentUserName();
+  const currentUserId = useCurrentUserId();
+  const roomName = `kanban-board-${taskBoard.id}`;
+
+  // Realtime drag tracking
+  const {
+    activeDrags,
+    cardHovers,
+    broadcastDragStart,
+    broadcastDragMove,
+    broadcastDragEnd,
+    broadcastCardHover,
+  } = useRealtimeKanbanDrag({
+    boardId: taskBoard.id,
+    username: currentUserName,
+    clerkUserId: currentUserId,
+    enabled: isLoaded && isSignedIn,
+  });
+
+  // Realtime task updates
+  const { broadcastTaskCreated, broadcastTaskUpdated, broadcastTaskDeleted } = useRealtimeKanbanUpdates({
+    boardId: taskBoard.id,
+    clerkUserId: currentUserId,
+    onTaskCreated: (task) => {
+      setTasks((prev) => {
+        // Check if task already exists
+        if (prev.find(t => t.id === task.id)) {
+          return prev;
+        }
+        return [...prev, task];
+      });
+      toast.info("Task created by another user");
+    },
+    onTaskUpdated: (taskId, changes) => {
+      setTasks((prev) =>
+        prev.map((task) => {
+          if (task.id === taskId) {
+            // Merge changes but preserve assignments if not in changes
+            return {
+              ...task,
+              ...changes,
+              // Don't overwrite assignments if they weren't explicitly changed
+              assignments: changes.assignments !== undefined ? changes.assignments : task.assignments,
+            };
+          }
+          return task;
+        })
+      );
+    },
+    onTaskDeleted: (taskId) => {
+      setTasks((prev) => prev.filter((task) => task.id !== taskId));
+      toast.info("Task deleted by another user");
+    },
+    enabled: isLoaded && isSignedIn,
+  });
+
   // Only sync when the board ID changes (switching to a different board)
   // Don't sync on regular re-renders to preserve optimistic updates
   useEffect(() => {
@@ -131,31 +214,69 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
   const handleTaskUpdate = async (updatedTask: Task) => {
     // Optimistically update local state immediately
     const previousTasks = tasks;
-    setTasks((prev) => prev.map((task) => (task.id === updatedTask.id ? updatedTask : task)));
+    
+    // Preserve assignments from current state if not explicitly updated
+    const currentTask = tasks.find(t => t.id === updatedTask.id);
+    const taskWithAssignments = {
+      ...updatedTask,
+      // Keep existing assignments if they exist and weren't explicitly changed
+      assignments: updatedTask.assignments || currentTask?.assignments || [],
+    };
+    
+    setTasks((prev) => prev.map((task) => (task.id === updatedTask.id ? taskWithAssignments : task)));
 
     // Notify parent component optimistically
-    onTaskUpdate?.(updatedTask);
+    onTaskUpdate?.(taskWithAssignments);
+    
+    // Broadcast update to other users immediately (before backend)
+    broadcastTaskUpdated(updatedTask.id, {
+      title: taskWithAssignments.title,
+      description: taskWithAssignments.description,
+      status: taskWithAssignments.status,
+      priority: taskWithAssignments.priority,
+      position: taskWithAssignments.position,
+      assignments: taskWithAssignments.assignments,
+    });
 
+    // Update backend in the background (non-blocking)
     try {
-      // Update backend
       const result = await updateTask(updatedTask.id, {
-        title: updatedTask.title,
-        description: updatedTask.description,
-        status: updatedTask.status,
-        priority: updatedTask.priority,
-        position: updatedTask.position,
+        title: taskWithAssignments.title,
+        description: taskWithAssignments.description,
+        status: taskWithAssignments.status,
+        priority: taskWithAssignments.priority,
+        position: taskWithAssignments.position,
       });
 
-      // Update with server response
-      setTasks((prev) => prev.map((task) => (task.id === updatedTask.id ? result : task)));
-      onTaskUpdate?.(result);
+      // Merge server response with current assignments (backend might not return assignments)
+      const mergedResult = {
+        ...result,
+        assignments: taskWithAssignments.assignments,
+      };
+      
+      // Silently sync with server response (no UI flash)
+      setTasks((prev) => prev.map((task) => (task.id === updatedTask.id ? mergedResult : task)));
+      onTaskUpdate?.(mergedResult);
     } catch (error) {
       console.error("Failed to update task:", error);
-      toast.error("Failed to update task");
+      toast.error("Failed to update task - changes reverted");
       
       // Rollback on error
       setTasks(previousTasks);
       onTaskUpdate?.(previousTasks.find(t => t.id === updatedTask.id)!);
+      
+      // Broadcast rollback to other users
+      const originalTask = previousTasks.find(t => t.id === updatedTask.id);
+      if (originalTask) {
+        broadcastTaskUpdated(originalTask.id, {
+          title: originalTask.title,
+          description: originalTask.description,
+          status: originalTask.status,
+          priority: originalTask.priority,
+          position: originalTask.position,
+          assignments: originalTask.assignments,
+        });
+      }
     }
   };
 
@@ -172,6 +293,9 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
       // Delete from backend
       await deleteTask(taskId);
       toast.success("Task deleted successfully");
+      
+      // Broadcast deletion to other users
+      broadcastTaskDeleted(taskId);
     } catch (error) {
       console.error("Failed to delete task:", error);
       toast.error("Failed to delete task");
@@ -192,6 +316,9 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
         const withoutTemp = prev.filter(t => !t.id.startsWith('temp-'));
         return [...withoutTemp, newTask];
       });
+      
+      // Broadcast creation to other users
+      broadcastTaskCreated(newTask);
     } else {
       // Optimistically add temporary task immediately
       setTasks((prev) => [...prev, newTask]);
@@ -212,44 +339,87 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
   };
 
   const handleAssignUsers = async (taskId: string, userIds: string[]) => {
+    // Create assignment objects
+    const updatedAssignments = userIds.map((userId) => ({
+      id: `temp-${userId}`,
+      taskId,
+      userId,
+      createdAt: new Date().toISOString(),
+    }));
+
+    // Optimistically update UI immediately
+    setTasks((prev) =>
+      prev.map((task) =>
+        task.id === taskId
+          ? { ...task, assignments: updatedAssignments }
+          : task
+      )
+    );
+
+    // Update selected task for modal
+    if (selectedTaskForAssignment && selectedTaskForAssignment.id === taskId) {
+      setSelectedTaskForAssignment({
+        ...selectedTaskForAssignment,
+        assignments: updatedAssignments,
+      });
+    }
+
+    // Broadcast assignment update to other users immediately
+    broadcastTaskUpdated(taskId, {
+      assignments: updatedAssignments,
+    });
+
+    // Update backend in background
     try {
       await assignTaskToUsers(taskId, userIds);
-
-      // Update the task with new assignments (optimistic update)
-      const updatedAssignments = userIds.map((userId) => ({
-        id: `temp-${userId}`,
-        taskId,
-        userId,
-        createdAt: new Date().toISOString(),
-      }));
-
-      setTasks((prev) =>
-        prev.map((task) =>
-          task.id === taskId
-            ? { ...task, assignments: updatedAssignments }
-            : task
-        )
-      );
-
-      // Update selected task for modal
-      if (selectedTaskForAssignment && selectedTaskForAssignment.id === taskId) {
-        setSelectedTaskForAssignment({
-          ...selectedTaskForAssignment,
-          assignments: updatedAssignments,
-        });
-      }
-
       toast.success("Task assignments updated successfully");
     } catch (error) {
       console.error("Failed to assign users to task:", error);
       toast.error("Failed to update task assignments");
+      
+      // Rollback on error
+      setTasks((prev) =>
+        prev.map((task) =>
+          task.id === taskId
+            ? { ...task, assignments: [] }
+            : task
+        )
+      );
+      
+      // Broadcast rollback
+      broadcastTaskUpdated(taskId, {
+        assignments: [],
+      });
+      
       throw error;
     }
   };
 
   return (
     <>
+      {/* Realtime Cursors */}
+      {isLoaded && isSignedIn && (
+        <RealtimeCursors roomName={roomName} username={currentUserName} />
+      )}
+
       <div className={`h-full w-full bg-background ${className}`}>
+        {/* Ghost cards for other users' drags */}
+        <AnimatePresence>
+          {Object.entries(activeDrags).map(([userId, dragState]) => {
+            const task = tasks.find(t => t.id === dragState.taskId);
+            return (
+              <GhostCard
+                key={userId}
+                taskId={dragState.taskId}
+                position={dragState.position}
+                color={dragState.color}
+                userName={dragState.user.name}
+                task={task}
+              />
+            );
+          })}
+        </AnimatePresence>
+
         <div className="flex h-full w-full gap-0 overflow-x-auto p-6 md:p-12">
         <Column
           title="Backlog"
@@ -263,6 +433,12 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
           onTaskAssign={handleOpenAssignmentModal}
           organizationMembers={organizationMembers}
           isFirst
+          activeDrags={activeDrags}
+          cardHovers={cardHovers}
+          onDragStart={broadcastDragStart}
+          onDragMove={broadcastDragMove}
+          onDragEnd={broadcastDragEnd}
+          onCardHover={broadcastCardHover}
         />
         <Column
           title="TODO"
@@ -275,6 +451,12 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
           onTaskCreate={handleTaskCreate}
           onTaskAssign={handleOpenAssignmentModal}
           organizationMembers={organizationMembers}
+          activeDrags={activeDrags}
+          cardHovers={cardHovers}
+          onDragStart={broadcastDragStart}
+          onDragMove={broadcastDragMove}
+          onDragEnd={broadcastDragEnd}
+          onCardHover={broadcastCardHover}
         />
         <Column
           title="In progress"
@@ -287,6 +469,12 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
           onTaskCreate={handleTaskCreate}
           onTaskAssign={handleOpenAssignmentModal}
           organizationMembers={organizationMembers}
+          activeDrags={activeDrags}
+          cardHovers={cardHovers}
+          onDragStart={broadcastDragStart}
+          onDragMove={broadcastDragMove}
+          onDragEnd={broadcastDragEnd}
+          onCardHover={broadcastCardHover}
         />
         <Column
           title="Complete"
@@ -300,6 +488,12 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
           onTaskAssign={handleOpenAssignmentModal}
           organizationMembers={organizationMembers}
           isLast
+          activeDrags={activeDrags}
+          cardHovers={cardHovers}
+          onDragStart={broadcastDragStart}
+          onDragMove={broadcastDragMove}
+          onDragEnd={broadcastDragEnd}
+          onCardHover={broadcastCardHover}
         />
           <BurnBarrel onDelete={handleTaskDelete} />
         </div>
@@ -330,12 +524,22 @@ const Column: React.FC<ColumnProps> = ({
   organizationMembers,
   isFirst,
   isLast,
+  activeDrags,
+  cardHovers,
+  onDragStart: broadcastDragStart,
+  onDragMove: broadcastDragMove,
+  onDragEnd: broadcastDragEnd,
+  onCardHover: broadcastCardHover,
 }) => {
   const [active, setActive] = useState<boolean>(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
 
   const handleDragStart = (e: React.DragEvent<HTMLDivElement>, task: Task) => {
     e.dataTransfer.setData("taskId", task.id);
+    
+    // Get cursor position and broadcast
+    const position = { x: e.clientX, y: e.clientY };
+    broadcastDragStart(task.id, position);
   };
 
   const handleDragEnd = async (e: React.DragEvent<HTMLDivElement>) => {
@@ -343,6 +547,9 @@ const Column: React.FC<ColumnProps> = ({
 
     setActive(false);
     clearHighlights();
+    
+    // Broadcast drag end
+    broadcastDragEnd();
 
     const indicators = getIndicators();
     const { element } = getNearestIndicator(e, indicators);
@@ -352,9 +559,6 @@ const Column: React.FC<ColumnProps> = ({
     if (before !== taskId) {
       const taskToMove = tasks.find((t) => t.id === taskId);
       if (!taskToMove) return;
-
-      // Update task status
-      const updatedTask = { ...taskToMove, status: column };
 
       // Calculate new position
       const columnTasks = tasks.filter((t) => t.status === column && t.id !== taskId);
@@ -371,8 +575,11 @@ const Column: React.FC<ColumnProps> = ({
         }
       }
 
-      updatedTask.position = newPosition;
-      await onTaskUpdate(updatedTask);
+      // Create updated task with new status and position
+      const updatedTask = { ...taskToMove, status: column, position: newPosition };
+      
+      // OPTIMISTIC UPDATE: Update UI immediately (non-blocking)
+      onTaskUpdate(updatedTask);
     }
   };
 
@@ -432,9 +639,17 @@ const Column: React.FC<ColumnProps> = ({
   };
 
   const filteredTasks = tasks.filter((t) => t.status === column);
+  
+  // Sort by priority (high -> medium -> low) then by position
+  const priorityOrder = { high: 0, medium: 1, low: 2 };
+  const sortedTasks = [...filteredTasks].sort((a, b) => {
+    const priorityDiff = priorityOrder[a.priority] - priorityOrder[b.priority];
+    if (priorityDiff !== 0) return priorityDiff;
+    return a.position - b.position;
+  });
 
   return (
-    <div className={`w-72 shrink-0 ${!isLast ? 'border-r border-border/40 pr-4' : ''} ${!isFirst ? 'pl-4' : ''}`}>
+    <div className={`w-72 shrink-0 ${!isLast ? 'border-r border-border/40' : ''} ${!isFirst ? 'pl-4' : ''} ${isLast ? 'pl-4 pr-4' : 'pr-4'}`}>
       <div className="mb-3 flex items-center justify-between">
         <h3 className={`font-medium ${headingColor}`}>{title}</h3>
         <span className="rounded text-sm text-muted-foreground">{filteredTasks.length}</span>
@@ -446,16 +661,35 @@ const Column: React.FC<ColumnProps> = ({
         className={`h-full w-full transition-colors ${active ? "bg-muted/50" : "bg-muted/0"
           }`}
       >
-        {filteredTasks.map((task) => {
+        {sortedTasks.map((task) => {
+          // Check if this task is being dragged by someone else
+          const beingDraggedByOthers = Object.values(activeDrags).some(drag => drag.taskId === task.id);
+          
+          // Check if this task is being hovered by someone else
+          const hoverInfo = Object.values(cardHovers).find(hover => hover.taskId === task.id);
+          const beingHoveredByOthers = hoverInfo ? { color: hoverInfo.color, name: hoverInfo.user.name } : null;
+          
           return (
             <TaskCard
               key={task.id}
               task={task}
-              handleDragStart={handleDragStart}
+              handleDragStart={(e, task) => {
+                handleDragStart(e, task);
+              }}
+              handleDrag={(e) => {
+                // Broadcast drag position updates
+                if (e.clientX > 0 && e.clientY > 0) {
+                  broadcastDragMove({ x: e.clientX, y: e.clientY }, column);
+                }
+              }}
               onEdit={(task) => setEditingTask(task)}
               onDelete={onTaskDelete}
               onAssign={onTaskAssign}
               organizationMembers={organizationMembers}
+              onMouseEnter={() => broadcastCardHover(task.id)}
+              onMouseLeave={() => broadcastCardHover(null)}
+              isBeingDraggedByOthers={beingDraggedByOthers}
+              isBeingHoveredByOthers={beingHoveredByOthers}
             />
           );
         })}
@@ -474,7 +708,19 @@ const Column: React.FC<ColumnProps> = ({
   );
 };
 
-const TaskCard: React.FC<TaskCardProps> = ({ task, handleDragStart, onEdit, onDelete, onAssign, organizationMembers }) => {
+const TaskCard: React.FC<TaskCardProps> = ({ 
+  task, 
+  handleDragStart,
+  handleDrag,
+  onEdit, 
+  onDelete, 
+  onAssign, 
+  organizationMembers,
+  onMouseEnter,
+  onMouseLeave,
+  isBeingDraggedByOthers,
+  isBeingHoveredByOthers,
+}) => {
   const handleDelete = () => {
     if (confirm("Are you sure you want to delete this task?")) {
       onDelete(task.id);
@@ -507,20 +753,64 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, handleDragStart, onEdit, onDe
 
   const assignedMembers = getAssignedMembers();
 
+  // Build dynamic className for visual indicators
+  const getCardClassName = () => {
+    let className = "cursor-grab rounded border bg-card p-3 active:cursor-grabbing mb-3 transition-all group";
+    
+    if (isBeingDraggedByOthers) {
+      className += " ring-2 ring-offset-2 ring-blue-500 animate-pulse opacity-70";
+    } else if (isBeingHoveredByOthers) {
+      className += ` border-l-4`;
+    } else {
+      className += " border-border hover:border-primary/50";
+    }
+    
+    return className;
+  };
+
+  const cardStyle: React.CSSProperties = {};
+  if (isBeingHoveredByOthers && !isBeingDraggedByOthers) {
+    cardStyle.borderLeftColor = isBeingHoveredByOthers.color;
+  }
+
   return (
     <>
       <DropIndicator beforeId={task.id} column={task.status} />
       <motion.div
         layout
         layoutId={task.id}
-        className="cursor-grab rounded border border-border bg-card p-3 active:cursor-grabbing mb-3 hover:border-primary/50 transition-colors group"
+        className={getCardClassName()}
+        style={cardStyle}
+        onMouseEnter={onMouseEnter}
+        onMouseLeave={onMouseLeave}
       >
         <div
           draggable="true"
           onDragStart={(e) => handleDragStart(e, task)}
+          onDrag={handleDrag}
           className="w-full"
         >
           <div className="space-y-2">
+            {/* Show who is interacting with this card */}
+            {(isBeingDraggedByOthers || isBeingHoveredByOthers) && (
+              <div className="text-[10px] font-medium text-muted-foreground flex items-center gap-1">
+                {isBeingDraggedByOthers && (
+                  <span className="flex items-center gap-1">
+                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></span>
+                    Being moved...
+                  </span>
+                )}
+                {!isBeingDraggedByOthers && isBeingHoveredByOthers && (
+                  <span className="flex items-center gap-1">
+                    <span 
+                      className="inline-block w-1.5 h-1.5 rounded-full" 
+                      style={{ backgroundColor: isBeingHoveredByOthers.color }}
+                    ></span>
+                    {isBeingHoveredByOthers.name} viewing
+                  </span>
+                )}
+              </div>
+            )}
             <div className="flex items-start justify-between gap-2">
               <p className="text-sm text-foreground flex-1 leading-tight">{task.title}</p>
               <DropdownMenu>
@@ -628,6 +918,52 @@ const DropIndicator: React.FC<DropIndicatorProps> = ({ beforeId, column }) => {
   );
 };
 
+const GhostCard: React.FC<GhostCardProps> = ({ position, color, userName, task }) => {
+  return (
+    <motion.div
+      initial={{ opacity: 0, scale: 0.8 }}
+      animate={{ opacity: 0.6, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.8 }}
+      transition={{ duration: 0.2 }}
+      className="fixed pointer-events-none z-40"
+      style={{
+        left: position.x,
+        top: position.y,
+        transform: 'translate(-50%, -50%)',
+      }}
+    >
+      <div
+        className="w-64 rounded-lg border-2 bg-card/90 backdrop-blur-sm p-3 shadow-2xl"
+        style={{ borderColor: color }}
+      >
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <div
+              className="w-2 h-2 rounded-full animate-pulse"
+              style={{ backgroundColor: color }}
+            ></div>
+            <span className="text-xs font-medium text-muted-foreground">{userName}</span>
+          </div>
+          {task && (
+            <>
+              <p className="text-sm text-foreground font-medium line-clamp-2">{task.title}</p>
+              {task.description && (
+                <p className="text-xs text-muted-foreground line-clamp-1">{task.description}</p>
+              )}
+              <div className="flex items-center gap-2">
+                <Badge variant="outline" className="text-xs">
+                  {task.priority}
+                </Badge>
+                <span className="text-xs text-muted-foreground">#{task.position}</span>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </motion.div>
+  );
+};
+
 const BurnBarrel: React.FC<BurnBarrelProps> = ({ onDelete }) => {
   const [active, setActive] = useState<boolean>(false);
 
@@ -655,7 +991,7 @@ const BurnBarrel: React.FC<BurnBarrelProps> = ({ onDelete }) => {
       onDrop={handleDragEnd}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
-      className={`mt-10 grid h-56 w-72 shrink-0 place-content-center rounded border text-3xl transition-colors ${active
+      className={`mt-10 grid h-56 w-72 shrink-0 place-content-center rounded border text-3xl transition-colors pl-4 ${active
           ? "border-destructive bg-destructive/20 text-destructive"
           : "border-border bg-muted/20 text-muted-foreground"
         }`}

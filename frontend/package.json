@@ -14,6 +14,7 @@
     "@ai-sdk/react": "1.2.6",
     "@clerk/clerk-react": "^5.53.4",
     "@clerk/themes": "^2.4.30",
+    "@diceui/mention": "^0.7.3",
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/modifiers": "^9.0.0",
     "@dnd-kit/sortable": "^10.0.0",

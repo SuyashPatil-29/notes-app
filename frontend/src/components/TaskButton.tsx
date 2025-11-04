@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
-import { Loader2, CheckSquare, Plus, Eye, Sparkles, ListTodo } from 'lucide-react'
+import { Loader2, CheckSquare, Plus, Eye } from 'lucide-react'
 import { toast } from 'sonner'
 import { getTasksForNote, generateTasksFromNote, createTaskBoard } from '@/utils/tasks'
 import type { TaskBoard } from '@/types/backend'

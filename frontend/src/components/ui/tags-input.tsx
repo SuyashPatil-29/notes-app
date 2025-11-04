@@ -57,7 +57,6 @@ export const TagsInput = React.forwardRef<HTMLDivElement, TagsInputProps>(
     const [disableButton, setDisableButton] = React.useState(false);
     const [isValueSelected, setIsValueSelected] = React.useState(false);
     const [selectedValue, setSelectedValue] = React.useState("");
-    const [isTyping, setIsTyping] = React.useState(false);
 
     const parseMinItems = minItems ?? 0;
     const parseMaxItems = maxItems ?? Infinity;

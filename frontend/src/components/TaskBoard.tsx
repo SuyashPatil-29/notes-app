@@ -1,11 +1,12 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
-import { Loader2, ArrowLeft, Settings, Trash2, Edit, RotateCcw } from 'lucide-react'
+import { Loader2, ArrowLeft, Settings, Trash2, Edit, RotateCcw, Eye } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
+import { useRealtimePresenceRoom } from '@/hooks/use-realtime-presence-room'
 import {
   Dialog,
   DialogContent,
@@ -44,6 +45,11 @@ export function TaskBoard({
   const [editDescription, setEditDescription] = useState("")
   const [isUpdating, setIsUpdating] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
+
+  // Realtime presence for viewer count
+  const roomName = `kanban-board-${boardId}`;
+  const { users: realtimeUsers } = useRealtimePresenceRoom(roomName);
+  const viewerCount = useMemo(() => Object.keys(realtimeUsers).length, [realtimeUsers]);
 
   const {
     data: taskBoard,
@@ -244,6 +250,12 @@ export function TaskBoard({
               )}
               <div className="flex items-center gap-3 mt-1.5 text-xs text-muted-foreground">
                 <span>{taskBoard.tasks.length} tasks</span>
+                {viewerCount > 0 && (
+                  <span className="flex items-center gap-1">
+                    <Eye className="h-3 w-3" />
+                    {viewerCount} {viewerCount === 1 ? 'viewer' : 'viewers'}
+                  </span>
+                )}
                 {taskBoard.noteId && taskBoard.note && (
                   <Link to={`/${taskBoard.note.chapter.notebookId}/${taskBoard.note.chapterId}/${taskBoard.noteId}`}>
                     <Badge variant="secondary" className="hover:bg-secondary/80 transition-colors cursor-pointer">
