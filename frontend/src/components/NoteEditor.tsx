@@ -55,6 +55,7 @@ import { slashCommand, suggestionItems } from "./slash-command";
 
 import hljs from "highlight.js";
 import { Button } from './ui/button'
+import { TaskButton } from './TaskButton'
 
 // Extensions will be configured dynamically in the component to include collaboration
 // const extensions = [...defaultExtensions, slashCommand];
@@ -494,6 +495,7 @@ export function NoteEditor({ user, userLoading = false }: NoteEditorProps) {
           <div className="sticky top-0 z-20 bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/80 border-b -mx-6 px-6 py-3 mb-6">
             <div className="flex items-center w-full justify-end">
               <div className='flex items-center gap-2'>
+                <TaskButton noteId={noteId!} />
                 {!note.hasVideo && (
                   <Button
                     variant="outline"

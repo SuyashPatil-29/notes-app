@@ -347,3 +347,72 @@ func DeleteOrgAPICredential(c *gin.Context) {
 		"provider": req.Provider,
 	})
 }
+
+// GetOrganizationMembers fetches all members of an organization for task assignment
+func GetOrganizationMembers(c *gin.Context) {
+	orgID := c.Param("orgId")
+
+	// Get authenticated user ID
+	clerkUserID, exists := middleware.GetClerkUserID(c)
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Not authenticated"})
+		return
+	}
+
+	// Verify user is a member of the organization
+	_, isMember, err := middleware.GetOrgMemberRole(c.Request.Context(), orgID, clerkUserID)
+	if err != nil || !isMember {
+		log.Warn().Str("org_id", orgID).Str("user_id", clerkUserID).Msg("User not authorized to view organization members")
+		c.JSON(http.StatusForbidden, gin.H{"error": "You are not a member of this organization"})
+		return
+	}
+
+	// Fetch organization memberships from Clerk
+	params := &organizationmembership.ListParams{}
+	params.Limit = clerk.Int64(100) // Fetch up to 100 members
+	params.OrganizationID = orgID
+
+	memberships, err := organizationmembership.List(c.Request.Context(), params)
+	if err != nil {
+		log.Error().Err(err).Str("org_id", orgID).Msg("Failed to fetch organization members")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch organization members"})
+		return
+	}
+
+	// Build response with member details
+	members := make([]gin.H, 0)
+	for _, membership := range memberships.OrganizationMemberships {
+		// Map Clerk role to our simplified role format
+		role := "member"
+		if membership.Role == "org:admin" {
+			role = "admin"
+		}
+
+		members = append(members, gin.H{
+			"id":       membership.PublicUserData.UserID,
+			"name":     getDisplayName(membership.PublicUserData),
+			"email":    membership.PublicUserData.Identifier,
+			"imageUrl": membership.PublicUserData.ImageURL,
+			"role":     role,
+		})
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"members": members,
+		"total":   len(members),
+	})
+}
+
+// Helper function to get display name from Clerk user data
+func getDisplayName(userData *clerk.OrganizationMembershipPublicUserData) string {
+	if userData.FirstName != nil && userData.LastName != nil {
+		return *userData.FirstName + " " + *userData.LastName
+	}
+	if userData.FirstName != nil {
+		return *userData.FirstName
+	}
+	if userData.LastName != nil {
+		return *userData.LastName
+	}
+	return userData.Identifier // Fallback to email/username
+}

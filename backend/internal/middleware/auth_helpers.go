@@ -213,3 +213,109 @@ func CheckNoteAccessWithGin(c *gin.Context, db *gorm.DB, noteID, clerkUserID str
 
 	return CheckChapterAccessWithGin(c, db, result.ChapterID, clerkUserID)
 }
+
+// CheckTaskBoardAccess verifies user has access to task board
+func CheckTaskBoardAccess(ctx context.Context, db *gorm.DB, taskBoardID, clerkUserID string) (bool, error) {
+	var result struct {
+		ClerkUserID    string
+		OrganizationID *string
+		NoteID         *string
+		IsStandalone   bool
+	}
+
+	err := db.Model(&models.TaskBoard{}).
+		Select("clerk_user_id, organization_id, note_id, is_standalone").
+		Where("id = ?", taskBoardID).
+		First(&result).Error
+
+	if err != nil {
+		log.Error().Err(err).Str("task_board_id", taskBoardID).Str("user_id", clerkUserID).Msg("CheckTaskBoardAccess: Task board not found")
+		return false, err
+	}
+
+	log.Debug().
+		Str("task_board_id", taskBoardID).
+		Str("owner_id", result.ClerkUserID).
+		Bool("is_standalone", result.IsStandalone).
+		Str("user_id", clerkUserID).
+		Msg("CheckTaskBoardAccess: Found task board")
+
+	// For note-associated boards, check note access
+	if !result.IsStandalone && result.NoteID != nil {
+		log.Debug().
+			Str("task_board_id", taskBoardID).
+			Str("note_id", *result.NoteID).
+			Str("user_id", clerkUserID).
+			Msg("CheckTaskBoardAccess: Note-associated board - checking note access")
+
+		return CheckNoteAccess(ctx, db, *result.NoteID, clerkUserID)
+	}
+
+	// For standalone boards, check ownership and organization membership
+	// Personal board check
+	if result.OrganizationID == nil || *result.OrganizationID == "" {
+		hasAccess := result.ClerkUserID == clerkUserID
+		if !hasAccess {
+			log.Warn().
+				Str("task_board_id", taskBoardID).
+				Str("owner_id", result.ClerkUserID).
+				Str("user_id", clerkUserID).
+				Msg("CheckTaskBoardAccess: Personal board - user is not owner")
+		} else {
+			log.Debug().Str("task_board_id", taskBoardID).Str("user_id", clerkUserID).Msg("CheckTaskBoardAccess: Personal board - access granted")
+		}
+		return hasAccess, nil
+	}
+
+	// Organization board check
+	log.Debug().
+		Str("task_board_id", taskBoardID).
+		Str("org_id", *result.OrganizationID).
+		Str("user_id", clerkUserID).
+		Msg("CheckTaskBoardAccess: Organization board - checking membership")
+
+	_, isMember, err := GetOrgMemberRoleCached(ctx, *result.OrganizationID, clerkUserID)
+	if err != nil {
+		log.Error().Err(err).Str("task_board_id", taskBoardID).Str("org_id", *result.OrganizationID).Str("user_id", clerkUserID).Msg("CheckTaskBoardAccess: Error checking org membership")
+	} else if !isMember {
+		log.Warn().Str("task_board_id", taskBoardID).Str("org_id", *result.OrganizationID).Str("user_id", clerkUserID).Msg("CheckTaskBoardAccess: User is not org member")
+	} else {
+		log.Debug().Str("task_board_id", taskBoardID).Str("org_id", *result.OrganizationID).Str("user_id", clerkUserID).Msg("CheckTaskBoardAccess: Org membership verified - access granted")
+	}
+
+	return isMember, err
+}
+
+// CheckTaskAccess verifies user has access to task through its task board
+func CheckTaskAccess(ctx context.Context, db *gorm.DB, taskID, clerkUserID string) (bool, error) {
+	var result struct {
+		TaskBoardID string
+	}
+
+	err := db.Model(&models.Task{}).
+		Select("task_board_id").
+		Where("id = ?", taskID).
+		First(&result).Error
+
+	if err != nil {
+		log.Error().Err(err).Str("task_id", taskID).Str("user_id", clerkUserID).Msg("CheckTaskAccess: Task not found")
+		return false, err
+	}
+
+	log.Debug().
+		Str("task_id", taskID).
+		Str("task_board_id", result.TaskBoardID).
+		Str("user_id", clerkUserID).
+		Msg("CheckTaskAccess: Found task, checking task board access")
+
+	hasAccess, err := CheckTaskBoardAccess(ctx, db, result.TaskBoardID, clerkUserID)
+	if err != nil {
+		log.Error().Err(err).Str("task_id", taskID).Str("task_board_id", result.TaskBoardID).Str("user_id", clerkUserID).Msg("CheckTaskAccess: Error checking task board access")
+	} else if !hasAccess {
+		log.Warn().Str("task_id", taskID).Str("task_board_id", result.TaskBoardID).Str("user_id", clerkUserID).Msg("CheckTaskAccess: User does not have task board access")
+	} else {
+		log.Debug().Str("task_id", taskID).Str("user_id", clerkUserID).Msg("CheckTaskAccess: Access granted")
+	}
+
+	return hasAccess, err
+}

@@ -17,7 +17,7 @@ interface DeleteConfirmDialogProps {
   title: string
   description: string
   itemName?: string
-  itemType: "Notebook" | "Chapter" | "Note"
+  itemType: "Notebook" | "Chapter" | "Note" | "Task Board"
 }
 
 export function DeleteConfirmDialog({

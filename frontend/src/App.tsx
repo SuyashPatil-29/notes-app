@@ -3,6 +3,7 @@ import { Routes, Route } from 'react-router-dom'
 import { getUserNotebooks, createNotebook, updateNotebook, deleteNotebook } from '@/utils/notebook'
 import { createChapter, updateChapter, deleteChapter } from '@/utils/chapter'
 import { createNote, updateNote, deleteNote } from '@/utils/notes'
+import { getUserTaskBoards, updateTaskBoard, deleteTaskBoard } from '@/utils/tasks'
 import { useUser } from '@/hooks/auth'
 import { useAuth, SignedIn, ClerkLoading } from '@clerk/clerk-react'
 import { setAuthTokenGetter } from '@/utils/api'
@@ -20,6 +21,8 @@ import { CreateChapterDialog } from '@/components/SidebarDialogs/CreateChapterDi
 import { CreateNoteDialog } from '@/components/SidebarDialogs/CreateNoteDialog'
 import { RenameDialog } from '@/components/SidebarDialogs/RenameDialog'
 import { DeleteConfirmDialog } from '@/components/SidebarDialogs/DeleteConfirmDialog'
+import { CreateTaskBoardDialog } from '@/components/CreateTaskBoardDialog'
+import { TaskBoardPage } from '@/pages/TaskBoardPage'
 import { PublicNotebookView } from '@/components/public/PublicNotebookView'
 import { PublicChapterView } from '@/components/public/PublicChapterView'
 import { PublicNoteView } from '@/components/public/PublicNoteView'
@@ -38,8 +41,8 @@ import { SignUpPage } from '@/pages/sign-up-page'
 import { SSOCallback } from '@/components/auth/sso-callback'
 import { LandingPage } from '@/pages/landing-page'
 import { PublicOnlyRoute } from '@/components/auth/protected-route'
-import Page from '@/pages/realtime-cursor'
 import { AcceptInvitationPage } from '@/pages/accept-invitation-page'
+import { CustomKanban } from './components/ui/kanban'
 
 function App() {
   const { user, loading: userLoading, refetch: refetchUser } = useUser()
@@ -47,6 +50,7 @@ function App() {
   const { activeOrg } = useOrganizationContext()
   const queryClient = useQueryClient()
   const [createNotebookDialog, setCreateNotebookDialog] = useState(false)
+  const [createTaskBoardDialog, setCreateTaskBoardDialog] = useState(false)
   const [onboardingCompleted, setOnboardingCompleted] = useState(false)
 
   // Set up auth token getter for API calls
@@ -139,12 +143,41 @@ function App() {
     noteName: "",
   })
 
+  const [renameTaskBoardDialog, setRenameTaskBoardDialog] = useState<{
+    open: boolean
+    boardId: string | null
+    currentName: string
+  }>({
+    open: false,
+    boardId: null,
+    currentName: "",
+  })
+
+  const [deleteTaskBoardDialog, setDeleteTaskBoardDialog] = useState<{
+    open: boolean
+    boardId: string | null
+    boardName: string
+  }>({
+    open: false,
+    boardId: null,
+    boardName: "",
+  })
+
   const { data: userNotebooks, isLoading: userNotebooksLoading } = useQuery({
     queryKey: ['userNotebooks', activeOrg?.id],
     queryFn: () => getUserNotebooks(activeOrg?.id),
     refetchOnWindowFocus: false,
     enabled: !!user,
   })
+
+  const { data: userTaskBoardsResponse, isLoading: userTaskBoardsLoading } = useQuery({
+    queryKey: ['userTaskBoards', activeOrg?.id],
+    queryFn: () => getUserTaskBoards(activeOrg?.id),
+    refetchOnWindowFocus: false,
+    enabled: !!user,
+  })
+
+  const userTaskBoards = userTaskBoardsResponse?.data
 
   // Context menu handlers
   const handleCreateNotebook = () => {
@@ -500,6 +533,74 @@ function App() {
     await refetchUser()
   }
 
+  // Task Board handlers
+  const handleCreateTaskBoard = () => {
+    setCreateTaskBoardDialog(true)
+  }
+
+  const handleCreateTaskBoardSubmit = () => {
+    queryClient.invalidateQueries({ queryKey: ['userTaskBoards'] })
+  }
+
+  const handleRenameTaskBoard = (boardId: string) => {
+    // Find task board name
+    const board = userTaskBoards?.find((b) => b.id === boardId)
+    if (!board) return
+    setRenameTaskBoardDialog({
+      open: true,
+      boardId,
+      currentName: board.name,
+    })
+  }
+
+  const handleRenameTaskBoardSubmit = async (newName: string) => {
+    if (!renameTaskBoardDialog.boardId) return
+
+    try {
+      await updateTaskBoard(renameTaskBoardDialog.boardId, { name: newName })
+      toast.success("Task board renamed successfully!")
+      queryClient.invalidateQueries({ queryKey: ['userTaskBoards'] })
+    } catch (error: any) {
+      if (error.response) {
+        const status = error.response.status
+        const message = error.response.data?.message || error.response.data?.error || error.message
+        toast.error(`Error ${status}: ${message}`)
+      } else {
+        toast.error("Failed to rename task board")
+      }
+      throw error
+    }
+  }
+
+  const handleDeleteTaskBoard = (boardId: string) => {
+    const board = userTaskBoards?.find((b) => b.id === boardId)
+    if (!board) return
+    setDeleteTaskBoardDialog({
+      open: true,
+      boardId,
+      boardName: board.name,
+    })
+  }
+
+  const handleDeleteTaskBoardConfirm = async () => {
+    if (!deleteTaskBoardDialog.boardId) return
+
+    try {
+      await deleteTaskBoard(deleteTaskBoardDialog.boardId)
+      toast.success("Task board deleted successfully!")
+      queryClient.invalidateQueries({ queryKey: ['userTaskBoards'] })
+    } catch (error: any) {
+      if (error.response) {
+        const status = error.response.status
+        const message = error.response.data?.message || error.response.data?.error || error.message
+        toast.error(`Error ${status}: ${message}`)
+      } else {
+        toast.error("Failed to delete task board")
+      }
+      throw error
+    }
+  }
+
   return (
     <>
       <Toaster />
@@ -537,7 +638,7 @@ function App() {
         <Route path="/public/:notebookId/:chapterId" element={<PublicChapterView />} />
         <Route path="/public/:notebookId/:chapterId/:noteId" element={<PublicNoteView />} />
         <Route path="/public/user/:email" element={<PublicUserProfile />} />
-        <Route path="/public/realtime-cursor" element={<Page />} />
+        <Route path="/public/kanban" element={<CustomKanban/>} />
 
         {/* Protected routes */}
         <Route path="/*" element={
@@ -548,7 +649,9 @@ function App() {
               <LeftSidebarProvider defaultOpen>
                 <LeftSidebarContent
                   notebooks={userNotebooks}
+                  taskBoards={userTaskBoards}
                   loading={userNotebooksLoading}
+                  taskBoardsLoading={userTaskBoardsLoading}
                   onCreateNotebook={handleCreateNotebook}
                   onCreateChapter={handleCreateChapter}
                   onRenameNotebook={handleRenameNotebook}
@@ -558,6 +661,9 @@ function App() {
                   onDeleteChapter={handleDeleteChapter}
                   onRenameNote={handleRenameNote}
                   onDeleteNote={handleDeleteNote}
+                  onCreateTaskBoard={handleCreateTaskBoard}
+                  onRenameTaskBoard={handleRenameTaskBoard}
+                  onDeleteTaskBoard={handleDeleteTaskBoard}
                 />
                 <LeftSidebarInset>
                   <RightSidebarProvider defaultOpen={false}>
@@ -567,6 +673,7 @@ function App() {
                         <Route path="/dashboard" element={<Dashboard user={user} userLoading={userLoading} />} />
                         <Route path="/profile" element={<Profile />} />
                         <Route path="/meetings/:meetingId" element={<MeetingDetail />} />
+                        <Route path="/kanban/:boardId" element={<TaskBoardPage />} />
                         <Route path="/:notebookId" element={<NotebookView user={user} userLoading={userLoading} onCreateChapter={handleCreateChapter} />} />
                         <Route path="/:notebookId/:chapterId" element={<ChapterView user={user} userLoading={userLoading} onCreateNote={handleCreateNote} />} />
                         <Route path="/:notebookId/:chapterId/:noteId" element={<NoteEditor user={user} userLoading={userLoading} />} />
@@ -669,6 +776,35 @@ function App() {
               description="Are you sure you want to delete this note? This action cannot be undone."
               itemName={deleteNoteDialog.noteName}
               itemType="Note"
+            />
+
+            <CreateTaskBoardDialog
+              open={createTaskBoardDialog}
+              onOpenChange={setCreateTaskBoardDialog}
+              onTaskBoardCreated={handleCreateTaskBoardSubmit}
+            />
+
+            <RenameDialog
+              open={renameTaskBoardDialog.open}
+              onOpenChange={(open) =>
+                setRenameTaskBoardDialog({ ...renameTaskBoardDialog, open })
+              }
+              onSubmit={handleRenameTaskBoardSubmit}
+              title="Rename Task Board"
+              currentName={renameTaskBoardDialog.currentName}
+              itemType="Task Board"
+            />
+
+            <DeleteConfirmDialog
+              open={deleteTaskBoardDialog.open}
+              onOpenChange={(open) =>
+                setDeleteTaskBoardDialog({ ...deleteTaskBoardDialog, open })
+              }
+              onConfirm={handleDeleteTaskBoardConfirm}
+              title="Delete Task Board"
+              description="Are you sure you want to delete this task board? This action cannot be undone and will delete all tasks within this board."
+              itemName={deleteTaskBoardDialog.boardName}
+              itemType="Task Board"
             />
 
             <CommandMenu notebooks={userNotebooks} />

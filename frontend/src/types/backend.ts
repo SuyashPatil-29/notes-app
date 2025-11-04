@@ -68,6 +68,7 @@ export type Notes = {
   meetingRecordingId?: string;
   aiSummary?: string;
   transcriptRaw?: string;
+  taskBoard?: TaskBoard;
   createdAt: string;
   updatedAt: string;
 };
@@ -286,4 +287,133 @@ export type SetOrgAPICredentialRequest = {
 
 export type DeleteOrgAPICredentialRequest = {
   provider: string;
+};
+
+// Task Management Types
+export type TaskAssignment = {
+  id: string;
+  taskId: string;
+  userId: string;
+  createdAt: string;
+};
+
+export type Task = {
+  id: string;
+  title: string;
+  description: string;
+  status: 'backlog' | 'todo' | 'in_progress' | 'done';
+  priority: 'low' | 'medium' | 'high';
+  taskBoardId: string;
+  position: number;
+  organizationId?: string | null;
+  taskBoard?: TaskBoard;
+  assignments?: TaskAssignment[];
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type TaskBoard = {
+  id: string;
+  name: string;
+  description: string;
+  noteId?: string | null;
+  clerkUserId: string;
+  organizationId?: string | null;
+  isStandalone: boolean;
+  tasks: Task[];
+  note?: Notes;
+  createdAt: string;
+  updatedAt: string;
+};
+
+// Lightweight task board for list views
+export type TaskBoardListItem = {
+  id: string;
+  name: string;
+  description: string;
+  noteId?: string | null;
+  clerkUserId: string;
+  organizationId?: string | null;
+  isStandalone: boolean;
+  taskCount: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+// Task creation and update types
+export type CreateTaskRequest = {
+  title: string;
+  description: string;
+  status?: 'backlog' | 'todo' | 'in_progress' | 'done';
+  priority?: 'low' | 'medium' | 'high';
+  position?: number;
+};
+
+export type UpdateTaskRequest = {
+  title?: string;
+  description?: string;
+  status?: 'backlog' | 'todo' | 'in_progress' | 'done';
+  priority?: 'low' | 'medium' | 'high';
+  position?: number;
+};
+
+export type CreateTaskBoardRequest = {
+  name: string;
+  description?: string;
+  noteId?: string | null;
+  isStandalone?: boolean;
+};
+
+export type UpdateTaskBoardRequest = {
+  name?: string;
+  description?: string;
+};
+
+// Task generation types
+export type GenerateTasksRequest = {
+  noteId: string;
+};
+
+export type GenerateTasksResponse = {
+  message: string;
+  taskBoard: TaskBoard;
+};
+
+// API response types with pagination
+export type GetUserTaskBoardsResponse = {
+  data: TaskBoardListItem[];
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+  hasNext: boolean;
+  hasPrev: boolean;
+};
+
+export type GetTasksForNoteResponse = {
+  taskBoard: TaskBoard | null;
+  tasks: Task[];
+};
+
+// Task Assignment Types
+export type OrganizationMemberForAssignment = {
+  id: string;
+  name: string;
+  email: string;
+  imageUrl?: string;
+  role: 'admin' | 'member';
+};
+
+export type AssignTaskRequest = {
+  userIds: string[];
+};
+
+export type AssignTaskResponse = {
+  message: string;
+  assignments: TaskAssignment[];
+};
+
+export type GetOrganizationMembersResponse = {
+  members: OrganizationMemberForAssignment[];
+  total: number;
 };

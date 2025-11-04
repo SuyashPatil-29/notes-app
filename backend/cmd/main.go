@@ -135,6 +135,30 @@ func main() {
 		protected.POST("/note/:id/generate-video", controllers.GenerateNoteVideo)
 		protected.DELETE("/note/:id/video", controllers.DeleteNoteVideo)
 
+		// Task management routes
+		// Note-associated task routes
+		protected.GET("/notes/:noteId/tasks", controllers.GetTasksForNote)
+		protected.POST("/notes/:noteId/tasks/generate", controllers.GenerateTasksFromNote)
+
+		// Task board routes
+		protected.POST("/kanban", controllers.CreateTaskBoard)
+		protected.GET("/kanban/:boardId", controllers.GetTaskBoard)
+		protected.PUT("/kanban/:boardId", controllers.UpdateTaskBoard)
+		protected.DELETE("/kanban/:boardId", controllers.DeleteTaskBoard)
+		protected.GET("/user/kanban", controllers.GetUserTaskBoards)
+
+		// Task routes
+		protected.POST("/kanban/:boardId/tasks", controllers.CreateTask)
+		protected.PUT("/tasks/:taskId", controllers.UpdateTask)
+		protected.DELETE("/tasks/:taskId", controllers.DeleteTask)
+
+		// Task assignment routes
+		protected.POST("/tasks/:taskId/assign", controllers.AssignTaskToUsers)
+		protected.DELETE("/tasks/:taskId/assign/:userId", controllers.UnassignUserFromTask)
+
+		// Organization member routes for task assignment
+		protected.GET("/organization/:orgId/members", controllers.GetOrganizationMembers)
+
 		// Yjs collaboration routes
 		protected.GET("/note/:id/yjs-state", controllers.GetYjsState)
 		protected.POST("/note/:id/yjs-init", controllers.InitializeYjsDocument)

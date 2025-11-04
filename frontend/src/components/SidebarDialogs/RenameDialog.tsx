@@ -20,7 +20,7 @@ interface RenameDialogProps {
   description?: string
   currentName?: string
   placeholder?: string
-  itemType: "Notebook" | "Chapter" | "Note"
+  itemType: "Notebook" | "Chapter" | "Note" | "Task Board"
 }
 
 export function RenameDialog({
