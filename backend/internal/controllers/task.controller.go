@@ -240,7 +240,7 @@ func GetUserTaskBoards(c *gin.Context) {
 	orgID := c.Query("organizationId")
 
 	// Build query
-	query := db.DB.Model(&models.TaskBoard{}).Where("clerk_user_id = ?", clerkUserID)
+	var query *gorm.DB
 
 	// Filter by organization context
 	if orgID != "" {
@@ -251,9 +251,11 @@ func GetUserTaskBoards(c *gin.Context) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "You are not a member of this organization"})
 			return
 		}
-		query = query.Where("task_boards.organization_id = ?", orgID)
+		// In organization context, return ALL task boards for the organization
+		query = db.DB.Model(&models.TaskBoard{}).Where("task_boards.organization_id = ?", orgID)
 	} else {
-		query = query.Where("task_boards.organization_id IS NULL")
+		// In personal context, return only user's personal task boards
+		query = db.DB.Model(&models.TaskBoard{}).Where("clerk_user_id = ? AND task_boards.organization_id IS NULL", clerkUserID)
 	}
 
 	// Get total count

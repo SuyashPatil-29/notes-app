@@ -1,11 +1,12 @@
 import { useState, useMemo } from 'react'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Book, BookOpen, FileText, Video } from 'lucide-react'
+import { Book, BookOpen, FileText, Video, Kanban } from 'lucide-react'
 import { Header } from '@/components/Header'
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { getUserNotebooks, createNotebook } from '@/utils/notebook'
+import { getUserTaskBoards } from '@/utils/tasks'
 import type { AuthenticatedUser } from '@/types/backend'
 import { createId } from '@paralleldrive/cuid2'
 import { useQueryClient } from '@tanstack/react-query'
@@ -19,6 +20,7 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { getPreviewText } from '@/utils/markdown'
 import { MeetingsList } from '@/components/MeetingsList'
+import { CreateTaskBoardDialog } from '@/components/CreateTaskBoardDialog'
 
 interface DashboardProps {
   user: AuthenticatedUser | null
@@ -28,7 +30,7 @@ interface DashboardProps {
 export function Dashboard({ user, userLoading = false }: DashboardProps) {
   const navigate = useNavigate()
   const { activeOrg } = useOrganizationContext()
-  const [activeTab, setActiveTab] = useState<'notebooks' | 'chapters' | 'notes' | 'meetings'>('notebooks')
+  const [activeTab, setActiveTab] = useState<'notebooks' | 'chapters' | 'notes' | 'meetings' | 'kanban'>('notebooks')
   const queryClient = useQueryClient()
 
   // Create Note modal state
@@ -46,11 +48,22 @@ export function Dashboard({ user, userLoading = false }: DashboardProps) {
   const [newChapterName, setNewChapterName] = useState('')
   const [selectedNotebookIdForChapter, setSelectedNotebookIdForChapter] = useState<string>('')
 
+  // Create Kanban Board modal state
+  const [createKanbanOpen, setCreateKanbanOpen] = useState(false)
+
   const { data: notebooks, isLoading } = useQuery({
     queryKey: ['userNotebooks', activeOrg?.id],
     queryFn: () => getUserNotebooks(activeOrg?.id),
     enabled: !!user,
   })
+
+  const { data: taskBoardsResponse, isLoading: taskBoardsLoading } = useQuery({
+    queryKey: ['userTaskBoards', activeOrg?.id],
+    queryFn: () => getUserTaskBoards(activeOrg?.id),
+    enabled: !!user,
+  })
+
+  const taskBoards = taskBoardsResponse?.data
 
   // Flatten all chapters and notes for the tabs
   const allChapters = useMemo(() => {
@@ -218,7 +231,7 @@ export function Dashboard({ user, userLoading = false }: DashboardProps) {
                 Welcome back, {user.name}!
               </h2>
               <p className="text-muted-foreground">
-                {notebooks?.length || 0} notebook{notebooks?.length !== 1 ? 's' : ''} • {allChapters.length} chapter{allChapters.length !== 1 ? 's' : ''} • {allNotes.length} note{allNotes.length !== 1 ? 's' : ''}
+                {notebooks?.length || 0} notebook{notebooks?.length !== 1 ? 's' : ''} • {allChapters.length} chapter{allChapters.length !== 1 ? 's' : ''} • {allNotes.length} note{allNotes.length !== 1 ? 's' : ''} • {taskBoards?.length || 0} kanban board{taskBoards?.length !== 1 ? 's' : ''}
               </p>
             </div>
 
@@ -277,6 +290,20 @@ export function Dashboard({ user, userLoading = false }: DashboardProps) {
                 <Video className="h-4 w-4" />
                 Meetings
                 {activeTab === 'meetings' && (
+                  <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-t-lg" />
+                )}
+              </button>
+              <button
+                onClick={() => setActiveTab('kanban')}
+                className={`flex items-center gap-2 px-4 py-3 font-medium transition-colors relative ${
+                  activeTab === 'kanban'
+                    ? 'text-primary'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                <Kanban className="h-4 w-4" />
+                Kanban Boards
+                {activeTab === 'kanban' && (
                   <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-t-lg" />
                 )}
               </button>
@@ -432,6 +459,59 @@ export function Dashboard({ user, userLoading = false }: DashboardProps) {
                     <MeetingsList />
                   </div>
                 )}
+
+                {/* Kanban Boards Tab */}
+                {activeTab === 'kanban' && (
+                  <>
+                    {taskBoardsLoading ? (
+                      <div className="flex items-center justify-center py-16">
+                        <div className="text-muted-foreground">Loading...</div>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                          {/* Create Kanban Board tile */}
+                          <button
+                            onClick={() => setCreateKanbanOpen(true)}
+                            className="border-2 border-dashed border-border/80 rounded-2xl p-6 h-40 flex items-center justify-center text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors"
+                            title="Create new kanban board"
+                          >
+                            <span className="text-4xl leading-none">+</span>
+                          </button>
+                          {(taskBoards ?? []).map((board) => (
+                            <button
+                              key={board.id}
+                              onClick={() => navigate(`/kanban/${board.id}`)}
+                              className="bg-card border border-border rounded-lg p-6 space-y-3 hover:border-primary/50 transition-colors text-left"
+                            >
+                              <div className="flex items-start justify-between">
+                                <Kanban className="h-8 w-8 text-primary" />
+                                <span className="text-sm text-muted-foreground">
+                                  {board.taskCount || 0} task{board.taskCount !== 1 ? 's' : ''}
+                                </span>
+                              </div>
+                              <div className="space-y-1">
+                                <h3 className="text-lg font-semibold text-card-foreground">{board.name}</h3>
+                                <p className="text-sm text-muted-foreground line-clamp-2">
+                                  {board.description || 'Click to view all tasks'}
+                                </p>
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                        {!taskBoards?.length && (
+                          <div className="flex flex-col items-center justify-center py-16 space-y-4">
+                            <Kanban className="h-16 w-16 text-muted-foreground" />
+                            <div className="text-center space-y-2">
+                              <h3 className="text-xl font-semibold text-foreground">No Kanban Boards Yet</h3>
+                              <p className="text-muted-foreground">Create your first kanban board to start organizing tasks.</p>
+                            </div>
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </>
+                )}
               </>
             )}
           </div>
@@ -560,6 +640,15 @@ export function Dashboard({ user, userLoading = false }: DashboardProps) {
           </form>
         </DialogContent>
       </Dialog>
+
+      {/* Create Kanban Board Modal */}
+      <CreateTaskBoardDialog
+        open={createKanbanOpen}
+        onOpenChange={setCreateKanbanOpen}
+        onTaskBoardCreated={() => {
+          queryClient.invalidateQueries({ queryKey: ['userTaskBoards'] })
+        }}
+      />
     </div>
   )
 }
