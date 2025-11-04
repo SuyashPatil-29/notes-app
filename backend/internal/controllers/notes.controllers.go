@@ -4,7 +4,7 @@ import (
 	"backend/db"
 	"backend/internal/middleware"
 	"backend/internal/models"
-	"backend/pkg/utils"
+	"backend/internal/services"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -519,27 +519,15 @@ type VideoStructure struct {
 	TransitionStyle string       `json:"transitionStyle"` // "fade", "slide", "zoom"
 }
 
-// getUserAPIKeyForVideo retrieves the user's API key for video generation
+// getUserAPIKeyForVideo retrieves the user's API key for video generation using the new APIKeyResolver
 func getUserAPIKeyForVideo(clerkUserID string, provider string) (string, error) {
-	var credential models.AICredential
-	if err := db.DB.Where("clerk_user_id = ? AND provider = ?", clerkUserID, provider).First(&credential).Error; err != nil {
-		return "", err
-	}
-
-	// Decrypt the API key
-	apiKey, err := utils.Decrypt(credential.KeyCipher)
+	// TODO: Add organization context support for video generation
+	resolver := services.NewAPIKeyResolver()
+	result, err := resolver.GetAPIKey(clerkUserID, nil, provider)
 	if err != nil {
-		log.Error().Err(err).Msg("Failed to decrypt API key")
 		return "", err
 	}
-
-	// Trim whitespace
-	apiKey = strings.TrimSpace(apiKey)
-	if apiKey == "" {
-		return "", fmt.Errorf("decrypted API key is empty")
-	}
-
-	return apiKey, nil
+	return result.APIKey, nil
 }
 
 // GenerateVideoDataWithAI uses AI to create a structured video from note content

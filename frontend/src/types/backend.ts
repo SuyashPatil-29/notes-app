@@ -264,3 +264,26 @@ export type ListUserInvitationsResponse = {
   invitations: OrganizationInvitation[];
   total: number;
 };
+// Organization API Key Types
+export type OrganizationAPIKeyStatus = {
+  provider: string;
+  hasKey: boolean;
+  maskedKey?: string;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type GetOrgAPICredentialsResponse = {
+  credentials: OrganizationAPIKeyStatus[];
+  total: number;
+};
+
+export type SetOrgAPICredentialRequest = {
+  provider: string;
+  apiKey: string;
+};
+
+export type DeleteOrgAPICredentialRequest = {
+  provider: string;
+};

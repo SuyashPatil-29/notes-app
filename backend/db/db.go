@@ -63,6 +63,7 @@ func InitDB() {
 		&models.Chapter{},
 		&models.Notes{},
 		&models.AICredential{},
+		&models.OrganizationAPICredential{},
 		&models.MeetingRecording{},
 		&models.Calendar{},
 		&models.CalendarEvent{},

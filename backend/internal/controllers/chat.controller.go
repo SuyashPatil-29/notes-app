@@ -12,8 +12,8 @@ import (
 	"backend/internal/middleware"
 	"backend/internal/models"
 	"backend/internal/services"
+	"backend/internal/types"
 	internalutils "backend/internal/utils"
-	"backend/pkg/utils"
 
 	"github.com/anthropics/anthropic-sdk-go"
 	anthropicoption "github.com/anthropics/anthropic-sdk-go/option"
@@ -66,28 +66,19 @@ func getGoogleClient(ctx context.Context, apiKey string) (*genai.Client, error) 
 	})
 }
 
-// getUserAPIKey retrieves the user's API key for a specific provider
+// getUserAPIKey retrieves the user's API key for a specific provider using the new APIKeyResolver
 func getUserAPIKey(clerkUserID string, provider string) (string, error) {
-	var credential models.AICredential
-	if err := db.DB.Where("clerk_user_id = ? AND provider = ?", clerkUserID, provider).First(&credential).Error; err != nil {
-		return "", err
-	}
+	return getUserAPIKeyWithOrg(clerkUserID, nil, provider)
+}
 
-	// Decrypt the API key
-	apiKey, err := utils.Decrypt(credential.KeyCipher)
+// getUserAPIKeyWithOrg retrieves the user's API key for a specific provider with organization context
+func getUserAPIKeyWithOrg(clerkUserID string, organizationID *string, provider string) (string, error) {
+	resolver := services.NewAPIKeyResolver()
+	result, err := resolver.GetAPIKey(clerkUserID, organizationID, provider)
 	if err != nil {
-		log.Error().Err(err).Msg("Failed to decrypt API key")
 		return "", err
 	}
-
-	// Trim whitespace (leading/trailing spaces/newlines that might have been accidentally saved)
-	apiKey = strings.TrimSpace(apiKey)
-
-	if apiKey == "" {
-		return "", fmt.Errorf("decrypted API key is empty")
-	}
-
-	return apiKey, nil
+	return result.APIKey, nil
 }
 
 // handleNotesToolCall handles tool calls for notes-related operations
@@ -1281,11 +1272,30 @@ func ChatHandler(c *gin.Context) {
 		return
 	}
 
-	// Get user's API key for the requested provider
-	apiKey, err := getUserAPIKey(clerkUserID, req.Provider)
+	// Get user's API key for the requested provider with organization context
+	apiKey, err := getUserAPIKeyWithOrg(clerkUserID, req.OrganizationID, req.Provider)
 	if err != nil {
 		log.Error().Err(err).Str("provider", req.Provider).Str("clerk_user_id", clerkUserID).Msg("Failed to get user API key")
-		c.JSON(http.StatusBadRequest, gin.H{"error": "API key not configured for this provider. Please set up your API key in settings."})
+
+		// Provide context-aware error message
+		var errorMsg string
+		var suggestion string
+
+		if req.OrganizationID != nil && *req.OrganizationID != "" {
+			errorMsg = "No API key configured for this provider in your organization or personal settings"
+			suggestion = "Ask your organization admin to configure API keys in Organization Settings, or set up your personal API key in Profile settings"
+		} else {
+			errorMsg = "API key not configured for this provider"
+			suggestion = "Please set up your API key in Profile settings"
+		}
+
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": gin.H{
+				"code":       "API_KEY_NOT_CONFIGURED",
+				"message":    errorMsg,
+				"suggestion": suggestion,
+			},
+		})
 		return
 	}
 
@@ -1671,26 +1681,27 @@ func ChatHandler(c *gin.Context) {
 		if err != nil {
 			log.Error().Err(err).Msg("Error piping AI response stream")
 
-			// Try to extract error message from the error
-			errorMsg := err.Error()
-			userFriendlyMsg := errorMsg
+			// Get appropriate API error based on the error message
+			apiErr := types.GetAPIKeyErrorFromMessage(err)
 
-			// Check if it's an API key error
-			if strings.Contains(errorMsg, "401") || strings.Contains(errorMsg, "Unauthorized") || strings.Contains(errorMsg, "invalid_api_key") || strings.Contains(errorMsg, "Incorrect API key") {
-				userFriendlyMsg = "Invalid API key. Please check your API key in Profile settings and ensure it's correct."
-			} else if strings.Contains(errorMsg, "insufficient_quota") {
-				userFriendlyMsg = "API quota exceeded. Please check your API usage limits."
-			} else if strings.Contains(errorMsg, "rate_limit") {
-				userFriendlyMsg = "Rate limit exceeded. Please try again in a moment."
-			} else if strings.Contains(errorMsg, "model_not_found") {
-				userFriendlyMsg = "The selected model is not available. Please try a different model."
-			} else {
-				// Generic error message
-				userFriendlyMsg = "An error occurred while processing your request. Please try again."
+			// Add context-specific suggestions
+			if apiErr.Code == types.ErrorCodeAPIKeyInvalid {
+				if req.OrganizationID != nil && *req.OrganizationID != "" {
+					apiErr = apiErr.WithSuggestion("Check your organization's API key settings or contact your admin")
+				} else {
+					apiErr = apiErr.WithSuggestion("Please check your API key in Profile settings and ensure it's correct")
+				}
 			}
 
-			// Return JSON error response instead of trying to write to stream
-			c.JSON(http.StatusInternalServerError, gin.H{"error": userFriendlyMsg})
+			// Return structured JSON error response
+			c.JSON(apiErr.HTTPStatus, gin.H{
+				"error": gin.H{
+					"code":       apiErr.Code,
+					"message":    apiErr.Message,
+					"details":    apiErr.Details,
+					"suggestion": apiErr.Suggestion,
+				},
+			})
 			return
 		}
 

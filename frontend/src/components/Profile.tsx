@@ -24,6 +24,12 @@ interface ApiKeyStatus {
   google: boolean;
 }
 
+interface EnhancedApiKeyStatus {
+  openai: { hasKey: boolean; source?: 'individual' | 'organization' };
+  anthropic: { hasKey: boolean; source?: 'individual' | 'organization' };
+  google: { hasKey: boolean; source?: 'individual' | 'organization' };
+}
+
 const AI_PROVIDERS = [
   {
     id: "openai",
@@ -64,10 +70,56 @@ export function Profile() {
     anthropic: false,
     google: false,
   });
+  const [enhancedApiKeyStatus, setEnhancedApiKeyStatus] = useState<EnhancedApiKeyStatus>({
+    openai: { hasKey: false },
+    anthropic: { hasKey: false },
+    google: { hasKey: false },
+  });
   const [calendarSyncTrigger, setCalendarSyncTrigger] = useState(0);
   const [hasCalendar, setHasCalendar] = useState(false);
 
   const isAdmin = membership?.role === 'org:admin';
+
+  const fetchEnhancedApiKeyStatus = async () => {
+    try {
+      // Fetch individual API key status
+      const individualResponse = await api.get("/settings/ai-credentials");
+      const individualProviders = individualResponse.data.providers || {};
+      
+      // Initialize enhanced status with individual keys
+      const enhanced: EnhancedApiKeyStatus = {
+        openai: { hasKey: individualProviders.openai || false, source: individualProviders.openai ? 'individual' : undefined },
+        anthropic: { hasKey: individualProviders.anthropic || false, source: individualProviders.anthropic ? 'individual' : undefined },
+        google: { hasKey: individualProviders.google || false, source: individualProviders.google ? 'individual' : undefined },
+      };
+
+      // If in organization context, check for organization API keys
+      if (activeOrg?.id) {
+        try {
+          const orgResponse = await api.get(`/organizations/${activeOrg.id}/api-credentials`);
+          // Backend wraps response in a "data" field
+          const orgCredentials = orgResponse.data.data?.credentials || [];
+          
+          // Organization keys take priority
+          orgCredentials.forEach((cred: any) => {
+            if (cred.hasKey && enhanced[cred.provider as keyof EnhancedApiKeyStatus]) {
+              enhanced[cred.provider as keyof EnhancedApiKeyStatus] = {
+                hasKey: true,
+                source: 'organization'
+              };
+            }
+          });
+        } catch (orgError) {
+          // Ignore organization API key errors (user might not have access)
+          console.debug("Could not fetch organization API keys:", orgError);
+        }
+      }
+
+      setEnhancedApiKeyStatus(enhanced);
+    } catch (error) {
+      console.error("Failed to fetch enhanced API key status:", error);
+    }
+  };
 
   // Fetch API key status and calendar status on mount
   useEffect(() => {
@@ -95,8 +147,9 @@ export function Profile() {
     };
     
     fetchApiKeyStatus();
+    fetchEnhancedApiKeyStatus();
     fetchCalendarStatus();
-  }, []);
+  }, [activeOrg?.id]);
 
   const handleSaveApiKey = async (provider: string) => {
     const apiKey = apiKeys[provider];
@@ -128,6 +181,10 @@ export function Profile() {
         anthropic: providers.anthropic || false,
         google: providers.google || false,
       });
+      
+      // Refresh enhanced API key status
+      await fetchEnhancedApiKeyStatus();
+      
       // Invalidate API key status query so other components update
       queryClient.invalidateQueries({ queryKey: ['api-key-status'] });
     } catch (error: any) {
@@ -162,6 +219,10 @@ export function Profile() {
         anthropic: providers.anthropic || false,
         google: providers.google || false,
       });
+      
+      // Refresh enhanced API key status
+      await fetchEnhancedApiKeyStatus();
+      
       // Invalidate API key status query so other components update
       queryClient.invalidateQueries({ queryKey: ['api-key-status'] });
     } catch (error: any) {
@@ -491,7 +552,9 @@ export function Profile() {
 
               <div className="grid gap-4 md:grid-cols-1 lg:grid-cols-1">
                 {AI_PROVIDERS.map((provider) => {
-                  const isConfigured = apiKeyStatus[provider.id as keyof ApiKeyStatus];
+                  const enhancedStatus = enhancedApiKeyStatus[provider.id as keyof EnhancedApiKeyStatus];
+                  const hasOrgKey = enhancedStatus.source === 'organization';
+                  const hasIndividualKey = enhancedStatus.source === 'individual';
                   const isSaving = isSavingKey === provider.id;
                   const isDeleting = isDeletingKey === provider.id;
                   
@@ -506,18 +569,50 @@ export function Profile() {
                             <div>
                               <div className="flex items-center gap-2 mb-1">
                                 <h3 className="text-lg font-semibold">{provider.name}</h3>
-                                {isConfigured && (
-                                  <Badge variant="secondary" className="text-xs">
-                                    <Key className="w-3 h-3 mr-1" />
-                                    Configured
-                                  </Badge>
+                                {enhancedStatus.hasKey && (
+                                  <div className="flex items-center gap-2">
+                                    <Badge variant="secondary" className="text-xs">
+                                      <Key className="w-3 h-3 mr-1" />
+                                      Configured
+                                    </Badge>
+                                    {hasOrgKey && (
+                                      <Badge variant="outline" className="text-xs">
+                                        <Building2 className="w-3 h-3 mr-1" />
+                                        Organization
+                                      </Badge>
+                                    )}
+                                    {hasIndividualKey && (
+                                      <Badge variant="outline" className="text-xs">
+                                        <UserIcon className="w-3 h-3 mr-1" />
+                                        Individual
+                                      </Badge>
+                                    )}
+                                  </div>
                                 )}
                               </div>
                               <p className="text-sm text-muted-foreground">{provider.description}</p>
                             </div>
                           </div>
 
-                          {!isConfigured ? (
+                          {hasOrgKey ? (
+                            <div className="p-3 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-md">
+                              <div className="flex items-center gap-2 mb-2">
+                                <Building2 className="w-4 h-4 text-blue-600" />
+                                <span className="text-sm font-medium text-blue-900 dark:text-blue-100">
+                                  Using Organization API Key
+                                </span>
+                              </div>
+                              <p className="text-xs text-blue-700 dark:text-blue-300">
+                                Your organization has configured an API key for {provider.name}. 
+                                Individual API keys are not needed when organization keys are available.
+                              </p>
+                              {activeOrg && isAdmin && (
+                                <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
+                                  Manage organization API keys in Organization Settings → API Keys
+                                </p>
+                              )}
+                            </div>
+                          ) : !enhancedStatus.hasKey ? (
                             <div className="flex gap-2">
                               <Input
                                 type="password"
@@ -547,7 +642,7 @@ export function Profile() {
                               <div className="flex items-center gap-2">
                                 <Check className="w-4 h-4 text-green-500" />
                                 <span className="text-sm text-muted-foreground">
-                                  API key is configured and ready to use
+                                  Individual API key is configured and ready to use
                                 </span>
                               </div>
                               <Button

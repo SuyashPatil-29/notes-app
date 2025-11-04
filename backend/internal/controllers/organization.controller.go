@@ -2,7 +2,12 @@ package controllers
 
 import (
 	"backend/internal/middleware"
+	"backend/internal/services"
+	"backend/internal/types"
+	internalutils "backend/internal/utils"
+	"backend/pkg/utils"
 	"net/http"
+	"strings"
 
 	"github.com/clerk/clerk-sdk-go/v2"
 	"github.com/clerk/clerk-sdk-go/v2/organization"
@@ -193,4 +198,152 @@ func DeleteOrganization(c *gin.Context) {
 
 	log.Info().Str("org_id", orgID).Msg("Organization deleted")
 	c.JSON(http.StatusOK, gin.H{"message": "Organization deleted successfully"})
+}
+
+// GetOrgAPICredentials returns the status of organization API credentials
+func GetOrgAPICredentials(c *gin.Context) {
+	orgID := c.Param("orgId")
+
+	// Get organization API key manager
+	orgAPIKeyManager := services.NewOrgAPIKeyManager()
+
+	// Get organization API credentials
+	credentials, err := orgAPIKeyManager.GetOrgAPICredentials(orgID)
+	if err != nil {
+		log.Error().Err(err).Str("org_id", orgID).Msg("Failed to get organization API credentials")
+		apiErr := types.ErrDatabaseError.WithDetails("Failed to retrieve organization API credentials")
+		internalutils.SendErrorResponse(c, apiErr)
+		return
+	}
+
+	// Return the credentials status
+	internalutils.SendSuccessResponse(c, gin.H{
+		"credentials": credentials,
+		"total":       len(credentials),
+	})
+}
+
+// SetOrgAPICredential sets an API credential for the organization (admin only)
+func SetOrgAPICredential(c *gin.Context) {
+	orgID := c.Param("orgId")
+
+	// Get authenticated user ID
+	clerkUserID, exists := middleware.GetClerkUserID(c)
+	if !exists {
+		internalutils.SendErrorResponse(c, types.ErrUnauthorized)
+		return
+	}
+
+	// Parse request body
+	var req struct {
+		Provider string `json:"provider" binding:"required"`
+		ApiKey   string `json:"apiKey" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		apiErr := types.ErrMissingFields.WithDetails("Provider and API key are required")
+		internalutils.SendErrorResponse(c, apiErr)
+		return
+	}
+
+	// Validate provider
+	validProviders := map[string]bool{
+		"openai":    true,
+		"anthropic": true,
+		"google":    true,
+	}
+	if !validProviders[req.Provider] {
+		internalutils.SendErrorResponse(c, types.ErrInvalidProvider)
+		return
+	}
+
+	// Validate API key format
+	if strings.TrimSpace(req.ApiKey) == "" {
+		apiErr := types.ErrAPIKeyInvalid.WithDetails("API key cannot be empty")
+		internalutils.SendErrorResponse(c, apiErr)
+		return
+	}
+
+	// Get organization API key manager
+	orgAPIKeyManager := services.NewOrgAPIKeyManager()
+
+	// Set the organization API credential
+	err := orgAPIKeyManager.SetOrgAPICredential(orgID, req.Provider, req.ApiKey, clerkUserID)
+	if err != nil {
+		log.Error().Err(err).Str("org_id", orgID).Str("provider", req.Provider).Msg("Failed to set organization API credential")
+
+		// Determine appropriate error response
+		var apiErr *types.APIError
+		if strings.Contains(err.Error(), "encrypt") {
+			apiErr = types.ErrEncryptionFailed.WithDetails(err.Error())
+		} else {
+			apiErr = types.ErrDatabaseError.WithDetails("Failed to save API credential")
+		}
+
+		internalutils.SendErrorResponse(c, apiErr)
+		return
+	}
+
+	// Return masked key for UI display
+	maskedKey := utils.MaskAPIKey(strings.TrimSpace(req.ApiKey))
+
+	log.Info().Str("org_id", orgID).Str("provider", req.Provider).Str("created_by", clerkUserID).Msg("Organization API credential set")
+
+	internalutils.SendSuccessMessageResponse(c, "Organization API key saved successfully", gin.H{
+		"provider":  req.Provider,
+		"maskedKey": maskedKey,
+	})
+}
+
+// DeleteOrgAPICredential removes an API credential from the organization (admin only)
+func DeleteOrgAPICredential(c *gin.Context) {
+	orgID := c.Param("orgId")
+
+	// Parse request body
+	var req struct {
+		Provider string `json:"provider" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		apiErr := types.ErrMissingFields.WithDetails("Provider is required")
+		internalutils.SendErrorResponse(c, apiErr)
+		return
+	}
+
+	// Validate provider
+	validProviders := map[string]bool{
+		"openai":    true,
+		"anthropic": true,
+		"google":    true,
+	}
+	if !validProviders[req.Provider] {
+		internalutils.SendErrorResponse(c, types.ErrInvalidProvider)
+		return
+	}
+
+	// Get organization API key manager
+	orgAPIKeyManager := services.NewOrgAPIKeyManager()
+
+	// Delete the organization API credential
+	err := orgAPIKeyManager.DeleteOrgAPICredential(orgID, req.Provider)
+	if err != nil {
+		log.Error().Err(err).Str("org_id", orgID).Str("provider", req.Provider).Msg("Failed to delete organization API credential")
+
+		// Determine appropriate error response
+		var apiErr *types.APIError
+		if strings.Contains(err.Error(), "not found") {
+			apiErr = types.ErrAPIKeyNotFound.WithDetails("API credential not found for this provider")
+		} else {
+			apiErr = types.ErrDatabaseError.WithDetails("Failed to delete API credential")
+		}
+
+		internalutils.SendErrorResponse(c, apiErr)
+		return
+	}
+
+	log.Info().Str("org_id", orgID).Str("provider", req.Provider).Msg("Organization API credential deleted")
+
+	internalutils.SendSuccessMessageResponse(c, "Organization API key deleted successfully", gin.H{
+		"provider": req.Provider,
+	})
 }

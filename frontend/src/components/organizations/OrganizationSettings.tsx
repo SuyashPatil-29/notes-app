@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useUser } from "@clerk/clerk-react";
+import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -32,9 +33,12 @@ import {
   Loader2,
   Plus,
   X,
-  Building2
+  Building2,
+  Key,
+  AlertTriangle
 } from "lucide-react";
 import { toast } from "sonner";
+import api from "@/utils/api";
 import {
   getOrgMembers,
   updateMemberRole,
@@ -45,6 +49,7 @@ import {
 } from "@/utils/organization-members";
 import type { OrganizationMember, OrganizationInvitation } from "@/types/backend";
 import type { Organization } from "@/types/backend";
+import { OrganizationAPIKeySettings } from "./OrganizationAPIKeySettings";
 
 interface OrganizationSettingsProps {
   organization: Organization;
@@ -56,10 +61,11 @@ export function OrganizationSettings({
   userRole,
 }: OrganizationSettingsProps) {
   const { user } = useUser();
+  const navigate = useNavigate();
   const { refreshOrganizations, setActiveOrg } = useOrganizationContext();
   const [orgName, setOrgName] = useState(organization.name);
   const [isSaving, setIsSaving] = useState(false);
-  const [activeTab, setActiveTab] = useState<'general' | 'members' | 'invitations'>('general');
+  const [activeTab, setActiveTab] = useState<'general' | 'members' | 'invitations' | 'api-keys'>('general');
 
   // Members and invitations state
   const [members, setMembers] = useState<OrganizationMember[]>([]);
@@ -71,6 +77,8 @@ export function OrganizationSettings({
   const [bulkInviteDialog, setBulkInviteDialog] = useState(false);
   const [removeMemberDialog, setRemoveMemberDialog] = useState<OrganizationMember | null>(null);
   const [revokeInviteDialog, setRevokeInviteDialog] = useState<OrganizationInvitation | null>(null);
+  const [deleteOrgDialog, setDeleteOrgDialog] = useState(false);
+  const [isDeletingOrg, setIsDeletingOrg] = useState(false);
   
   // Bulk invite state
   const [bulkEmails, setBulkEmails] = useState<string[]>([]);
@@ -246,6 +254,33 @@ export function OrganizationSettings({
     }
   };
 
+  const handleDeleteOrganization = async () => {
+    if (!organization?.id) return;
+    
+    setIsDeletingOrg(true);
+    try {
+      await api.delete(`/organizations/${organization.id}`);
+      toast.success("Organization deleted successfully");
+      setDeleteOrgDialog(false);
+      
+      // Navigate away immediately to unmount this component
+      // This prevents the useEffect hooks from trying to fetch data for a deleted org
+      navigate("/");
+      
+      // Update state in the background after navigation
+      // This ensures the org list is refreshed when user revisits
+      setTimeout(async () => {
+        setActiveOrg(null);
+        await refreshOrganizations();
+      }, 100);
+    } catch (error: any) {
+      console.error("Failed to delete organization:", error);
+      const errorMessage = error.response?.data?.error || "Failed to delete organization";
+      toast.error(errorMessage);
+      setIsDeletingOrg(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div>
@@ -308,6 +343,21 @@ export function OrganizationSettings({
             </Badge>
           )}
           {activeTab === 'invitations' && (
+            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-t-lg" />
+          )}
+        </button>
+
+        <button
+          onClick={() => setActiveTab('api-keys')}
+          className={`flex items-center gap-2 px-4 py-3 font-medium transition-colors relative ${
+            activeTab === 'api-keys'
+              ? 'text-primary'
+              : 'text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          <Key className="h-4 w-4" />
+          API Keys
+          {activeTab === 'api-keys' && (
             <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-t-lg" />
           )}
         </button>
@@ -385,7 +435,8 @@ export function OrganizationSettings({
               <CardContent>
                 <Button
                   variant="destructive"
-                  onClick={() => toast.info("Delete organization - coming soon")}
+                  onClick={() => setDeleteOrgDialog(true)}
+                  disabled={isDeletingOrg}
                 >
                   Delete Organization
                 </Button>
@@ -573,6 +624,14 @@ export function OrganizationSettings({
         </div>
       )}
 
+      {/* API Keys Tab */}
+      {activeTab === 'api-keys' && (
+        <OrganizationAPIKeySettings 
+          organizationId={organization.id}
+          isAdmin={isAdmin}
+        />
+      )}
+
       {/* Bulk Invite Dialog */}
       <Dialog open={bulkInviteDialog} onOpenChange={setBulkInviteDialog}>
         <DialogContent className="max-w-2xl">
@@ -682,6 +741,53 @@ export function OrganizationSettings({
             </Button>
             <Button variant="destructive" onClick={handleRevokeInvitation}>
               Revoke Invitation
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Organization Confirmation */}
+      <Dialog open={deleteOrgDialog} onOpenChange={setDeleteOrgDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <AlertTriangle className="h-5 w-5" />
+              Delete Organization
+            </DialogTitle>
+            <DialogDescription>
+              This action cannot be undone. This will permanently delete the <strong>{organization.name}</strong> organization and remove all associated data including:
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <ul className="list-disc list-inside space-y-1 text-sm text-muted-foreground">
+              <li>All notebooks and notes</li>
+              <li>All chapters and content</li>
+              <li>All member access</li>
+              <li>All pending invitations</li>
+              <li>All organization settings</li>
+            </ul>
+          </div>
+          <DialogFooter>
+            <Button 
+              variant="outline" 
+              onClick={() => setDeleteOrgDialog(false)}
+              disabled={isDeletingOrg}
+            >
+              Cancel
+            </Button>
+            <Button 
+              variant="destructive" 
+              onClick={handleDeleteOrganization}
+              disabled={isDeletingOrg}
+            >
+              {isDeletingOrg ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                "Delete Organization"
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>

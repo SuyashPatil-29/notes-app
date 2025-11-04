@@ -95,6 +95,11 @@ func main() {
 		protected.PUT("/organizations/:orgId/members/:userId", middleware.RequireOrgAdmin(), controllers.UpdateMemberRole)
 		protected.DELETE("/organizations/:orgId/members/:userId", middleware.RequireOrgAdmin(), controllers.RemoveMember)
 
+		// Organization API key management routes
+		protected.GET("/organizations/:orgId/api-credentials", middleware.RequireOrgMembership(), controllers.GetOrgAPICredentials)
+		protected.POST("/organizations/:orgId/api-credentials", middleware.RequireOrgAdmin(), controllers.SetOrgAPICredential)
+		protected.DELETE("/organizations/:orgId/api-credentials", middleware.RequireOrgAdmin(), controllers.DeleteOrgAPICredential)
+
 		// User invitations routes
 		protected.GET("/user/invitations", controllers.ListUserInvitations)
 		protected.POST("/user/invitations/:invitationId/accept", controllers.AcceptInvitation)
