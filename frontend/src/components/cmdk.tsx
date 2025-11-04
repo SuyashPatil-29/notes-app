@@ -140,7 +140,7 @@ const CommandMenu = ({ notebooks }: CommandMenuProps) => {
                 {notebookItems.map((item) => (
                   <Command.Item
                     key={item.id}
-                    value={`notebook-${item.name}`}
+                    value={`notebook-${item.id}-${item.name}`}
                     onSelect={() => handleSelect(item.path)}
                     className="flex items-center gap-3 rounded-lg px-3 py-3 cursor-pointer data-[selected=true]:bg-primary data-[selected=true]:text-primary-foreground transition-colors mb-1"
                   >
@@ -161,7 +161,7 @@ const CommandMenu = ({ notebooks }: CommandMenuProps) => {
                 {chapterItems.map((item) => (
                   <Command.Item
                     key={item.id}
-                    value={`chapter-${item.name}-${item.notebook}`}
+                    value={`chapter-${item.id}-${item.name}-${item.notebook}`}
                     onSelect={() => handleSelect(item.path)}
                     className="flex items-center gap-3 rounded-lg px-3 py-3 cursor-pointer data-[selected=true]:bg-primary data-[selected=true]:text-primary-foreground transition-colors mb-1"
                   >
@@ -185,7 +185,7 @@ const CommandMenu = ({ notebooks }: CommandMenuProps) => {
                 {noteItems.map((item) => (
                   <Command.Item
                     key={item.id}
-                    value={`note-${item.name}-${item.chapter}-${item.notebook}-${item.content}`}
+                    value={`note-${item.id}-${item.name}-${item.chapter}-${item.notebook}-${item.content}`}
                     onSelect={() => handleSelect(item.path)}
                     className="flex items-center gap-3 rounded-lg px-3 py-3 cursor-pointer data-[selected=true]:bg-primary data-[selected=true]:text-primary-foreground transition-colors mb-1"
                   >

@@ -495,7 +495,7 @@ export function NoteEditor({ user, userLoading = false }: NoteEditorProps) {
           <div className="sticky top-0 z-20 bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/80 border-b -mx-6 px-6 py-3 mb-6">
             <div className="flex items-center w-full justify-end">
               <div className='flex items-center gap-2'>
-                <TaskButton noteId={noteId!} />
+                {(charsCount ?? 0) > 0 && <TaskButton noteId={noteId!} />}
                 {!note.hasVideo && (
                   <Button
                     variant="outline"
@@ -672,7 +672,7 @@ export function NoteEditor({ user, userLoading = false }: NoteEditorProps) {
                           };
 
                           await waitForSync();
-                          
+
                           try {
                             await provider.current?.markInitialized();
                           } catch (error) {
@@ -739,7 +739,7 @@ export function NoteEditor({ user, userLoading = false }: NoteEditorProps) {
             ) : (
               <div className="relative min-h-[500px] w-full max-w-5xl border rounded-lg transition-colors border-border/40 flex items-center justify-center">
                 <div className="text-center space-y-2">
-                  <Loader2 className="h-8 w-8 animate-spin mx-auto text-blue-500" />
+                  <Loader2 className="h-8 w-8 animate-spin mx-auto text-primary" />
                   <p className="text-sm text-muted-foreground">Initializing collaboration...</p>
                 </div>
               </div>

@@ -67,7 +67,7 @@ export function Dashboard({ user, userLoading = false }: DashboardProps) {
 
   // Flatten all chapters and notes for the tabs
   const allChapters = useMemo(() => {
-    return notebooks?.flatMap(notebook => 
+    return notebooks?.flatMap(notebook =>
       notebook.chapters?.map(chapter => ({
         ...chapter,
         notebookName: notebook.name,
@@ -130,7 +130,7 @@ export function Dashboard({ user, userLoading = false }: DashboardProps) {
         chapter = notebook.chapters?.find((c) => c.id === selectedChapterId)
         if (chapter) break
       }
-      
+
       await createNote({
         id,
         name: newNoteName.trim(),
@@ -182,7 +182,7 @@ export function Dashboard({ user, userLoading = false }: DashboardProps) {
       const id = createId()
       // Get the notebook to inherit its organizationId
       const notebook = notebooks?.find((n) => n.id === selectedNotebookIdForChapter)
-      
+
       await createChapterApi({
         id,
         name: newChapterName.trim(),
@@ -206,7 +206,7 @@ export function Dashboard({ user, userLoading = false }: DashboardProps) {
   return (
     <div className="flex flex-col h-screen">
       <Header user={user} breadcrumbs={[{ label: 'Dashboard' }]} />
-      
+
       {/* Main Content */}
       <main className="flex-1 overflow-auto">
         {userLoading ? (
@@ -239,11 +239,10 @@ export function Dashboard({ user, userLoading = false }: DashboardProps) {
             <div className="flex items-center gap-1 border-b border-border">
               <button
                 onClick={() => setActiveTab('notebooks')}
-                className={`flex items-center gap-2 px-4 py-3 font-medium transition-colors relative ${
-                  activeTab === 'notebooks'
+                className={`flex items-center gap-2 px-4 py-3 font-medium transition-colors relative ${activeTab === 'notebooks'
                     ? 'text-primary'
                     : 'text-muted-foreground hover:text-foreground'
-                }`}
+                  }`}
               >
                 <Book className="h-4 w-4" />
                 Notebooks
@@ -253,11 +252,10 @@ export function Dashboard({ user, userLoading = false }: DashboardProps) {
               </button>
               <button
                 onClick={() => setActiveTab('chapters')}
-                className={`flex items-center gap-2 px-4 py-3 font-medium transition-colors relative ${
-                  activeTab === 'chapters'
+                className={`flex items-center gap-2 px-4 py-3 font-medium transition-colors relative ${activeTab === 'chapters'
                     ? 'text-primary'
                     : 'text-muted-foreground hover:text-foreground'
-                }`}
+                  }`}
               >
                 <BookOpen className="h-4 w-4" />
                 Chapters
@@ -267,11 +265,10 @@ export function Dashboard({ user, userLoading = false }: DashboardProps) {
               </button>
               <button
                 onClick={() => setActiveTab('notes')}
-                className={`flex items-center gap-2 px-4 py-3 font-medium transition-colors relative ${
-                  activeTab === 'notes'
+                className={`flex items-center gap-2 px-4 py-3 font-medium transition-colors relative ${activeTab === 'notes'
                     ? 'text-primary'
                     : 'text-muted-foreground hover:text-foreground'
-                }`}
+                  }`}
               >
                 <FileText className="h-4 w-4" />
                 Notes
@@ -280,30 +277,28 @@ export function Dashboard({ user, userLoading = false }: DashboardProps) {
                 )}
               </button>
               <button
-                onClick={() => setActiveTab('meetings')}
-                className={`flex items-center gap-2 px-4 py-3 font-medium transition-colors relative ${
-                  activeTab === 'meetings'
-                    ? 'text-primary'
-                    : 'text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                <Video className="h-4 w-4" />
-                Meetings
-                {activeTab === 'meetings' && (
-                  <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-t-lg" />
-                )}
-              </button>
-              <button
                 onClick={() => setActiveTab('kanban')}
-                className={`flex items-center gap-2 px-4 py-3 font-medium transition-colors relative ${
-                  activeTab === 'kanban'
+                className={`flex items-center gap-2 px-4 py-3 font-medium transition-colors relative ${activeTab === 'kanban'
                     ? 'text-primary'
                     : 'text-muted-foreground hover:text-foreground'
-                }`}
+                  }`}
               >
                 <Kanban className="h-4 w-4" />
                 Kanban Boards
                 {activeTab === 'kanban' && (
+                  <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-t-lg" />
+                )}
+              </button>
+              <button
+                onClick={() => setActiveTab('meetings')}
+                className={`flex items-center gap-2 px-4 py-3 font-medium transition-colors relative ${activeTab === 'meetings'
+                    ? 'text-primary'
+                    : 'text-muted-foreground hover:text-foreground'
+                  }`}
+              >
+                <Video className="h-4 w-4" />
+                Meetings
+                {activeTab === 'meetings' && (
                   <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-t-lg" />
                 )}
               </button>
@@ -319,7 +314,7 @@ export function Dashboard({ user, userLoading = false }: DashboardProps) {
                 {/* Notebooks Tab */}
                 {activeTab === 'notebooks' && (
                   <>
-                      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                       {/* Create Note tile */}
                       <button
                         onClick={openCreateNotebook}
@@ -329,26 +324,26 @@ export function Dashboard({ user, userLoading = false }: DashboardProps) {
                         <span className="text-4xl leading-none">+</span>
                       </button>
                       {(notebooks ?? []).map((notebook) => (
-                          <button
-                            key={notebook.id}
-                            onClick={() => navigate(`/${notebook.id}`)}
-                            className="bg-card border border-border rounded-lg p-6 space-y-3 hover:border-primary/50 transition-colors text-left"
-                          >
-                            <div className="flex items-start justify-between">
-                              <Book className="h-8 w-8 text-primary" />
-                              <span className="text-sm text-muted-foreground">
-                                {notebook.chapters?.length || 0} chapter{notebook.chapters?.length !== 1 ? 's' : ''}
-                              </span>
-                            </div>
-                            <div className="space-y-1">
-                              <h3 className="text-lg font-semibold text-card-foreground">{notebook.name}</h3>
-                              <p className="text-sm text-muted-foreground">
-                                Click to view all chapters
-                              </p>
-                            </div>
-                          </button>
-                        ))}
-                      </div>
+                        <button
+                          key={notebook.id}
+                          onClick={() => navigate(`/${notebook.id}`)}
+                          className="bg-card border border-border rounded-lg p-6 space-y-3 hover:border-primary/50 transition-colors text-left"
+                        >
+                          <div className="flex items-start justify-between">
+                            <Book className="h-8 w-8 text-primary" />
+                            <span className="text-sm text-muted-foreground">
+                              {notebook.chapters?.length || 0} chapter{notebook.chapters?.length !== 1 ? 's' : ''}
+                            </span>
+                          </div>
+                          <div className="space-y-1">
+                            <h3 className="text-lg font-semibold text-card-foreground">{notebook.name}</h3>
+                            <p className="text-sm text-muted-foreground">
+                              Click to view all chapters
+                            </p>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
                     {!notebooks?.length && (
                       <div className="flex flex-col items-center justify-center py-16 space-y-4">
                         <Book className="h-16 w-16 text-muted-foreground" />
@@ -364,7 +359,7 @@ export function Dashboard({ user, userLoading = false }: DashboardProps) {
                 {/* Chapters Tab */}
                 {activeTab === 'chapters' && (
                   <>
-                      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                       {/* Create Note tile */}
                       <button
                         onClick={openCreateChapter}
@@ -374,26 +369,26 @@ export function Dashboard({ user, userLoading = false }: DashboardProps) {
                         <span className="text-4xl leading-none">+</span>
                       </button>
                       {allChapters.length > 0 && allChapters.map((chapter) => (
-                          <button
-                            key={chapter.id}
-                            onClick={() => navigate(`/${chapter.notebookId}/${chapter.id}`)}
-                            className="bg-card border border-border rounded-lg p-6 space-y-3 hover:border-primary/50 transition-colors text-left"
-                          >
-                            <div className="flex items-start justify-between">
-                              <BookOpen className="h-8 w-8 text-primary" />
-                              <span className="text-sm text-muted-foreground">
-                                {chapter.notes?.length || 0} note{chapter.notes?.length !== 1 ? 's' : ''}
-                              </span>
-                            </div>
-                            <div className="space-y-1">
-                              <h3 className="text-lg font-semibold text-card-foreground">{chapter.name}</h3>
-                              <p className="text-sm text-muted-foreground">
-                                in {chapter.notebookName}
-                              </p>
-                            </div>
-                          </button>
-                        ))}
-                      </div>
+                        <button
+                          key={chapter.id}
+                          onClick={() => navigate(`/${chapter.notebookId}/${chapter.id}`)}
+                          className="bg-card border border-border rounded-lg p-6 space-y-3 hover:border-primary/50 transition-colors text-left"
+                        >
+                          <div className="flex items-start justify-between">
+                            <BookOpen className="h-8 w-8 text-primary" />
+                            <span className="text-sm text-muted-foreground">
+                              {chapter.notes?.length || 0} note{chapter.notes?.length !== 1 ? 's' : ''}
+                            </span>
+                          </div>
+                          <div className="space-y-1">
+                            <h3 className="text-lg font-semibold text-card-foreground">{chapter.name}</h3>
+                            <p className="text-sm text-muted-foreground">
+                              in {chapter.notebookName}
+                            </p>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
                     {allChapters.length === 0 && (
                       <div className="flex flex-col items-center justify-center py-16 space-y-4">
                         <BookOpen className="h-16 w-16 text-muted-foreground" />
@@ -409,7 +404,7 @@ export function Dashboard({ user, userLoading = false }: DashboardProps) {
                 {/* Notes Tab */}
                 {activeTab === 'notes' && (
                   <>
-                      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                       {/* Create Note tile */}
                       <button
                         onClick={openCreateNote}
@@ -419,28 +414,28 @@ export function Dashboard({ user, userLoading = false }: DashboardProps) {
                         <span className="text-4xl leading-none">+</span>
                       </button>
                       {allNotes.length > 0 && allNotes.map((note) => (
-                          <button
-                            key={note.id}
-                            onClick={() => navigate(`/${note.notebookId}/${note.chapterId}/${note.id}`)}
-                            className="bg-card border border-border rounded-lg p-6 hover:border-primary/50 transition-colors text-left h-40 flex flex-col justify-between"
-                          >
-                            <div className="space-y-2">
-                              <div className="flex items-start justify-between">
-                                <FileText className="h-8 w-8 text-primary" />
-                              </div>
-                              <div>
-                                <h3 className="text-lg font-semibold text-card-foreground line-clamp-1">{note.name}</h3>
-                                <p className="text-sm text-muted-foreground line-clamp-2 mt-1">
-                                  {getPreviewText(note.content, 100)}
-                                </p>
-                              </div>
+                        <button
+                          key={note.id}
+                          onClick={() => navigate(`/${note.notebookId}/${note.chapterId}/${note.id}`)}
+                          className="bg-card border border-border rounded-lg p-6 hover:border-primary/50 transition-colors text-left h-40 flex flex-col justify-between"
+                        >
+                          <div className="space-y-2">
+                            <div className="flex items-start justify-between">
+                              <FileText className="h-8 w-8 text-primary" />
                             </div>
-                            <p className="text-xs text-muted-foreground">
-                              {note.chapterName} • {note.notebookName}
-                            </p>
-                          </button>
-                        ))}
-                      </div>
+                            <div>
+                              <h3 className="text-lg font-semibold text-card-foreground line-clamp-1">{note.name}</h3>
+                              <p className="text-sm text-muted-foreground line-clamp-2 mt-1">
+                                {getPreviewText(note.content, 100)}
+                              </p>
+                            </div>
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            {note.chapterName} • {note.notebookName}
+                          </p>
+                        </button>
+                      ))}
+                    </div>
                     {allNotes.length === 0 && (
                       <div className="flex flex-col items-center justify-center py-16 space-y-4">
                         <FileText className="h-16 w-16 text-muted-foreground" />
