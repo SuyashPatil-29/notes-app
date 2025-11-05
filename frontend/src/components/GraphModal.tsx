@@ -1,21 +1,20 @@
 import { useEffect, useState } from 'react';
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet';
 import GraphVisualization from '@/components/GraphVisualization';
 import { useNavigate } from 'react-router-dom';
 
 interface GraphModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  centerNodeId?: string;
 }
 
-export function GraphModal({ open, onOpenChange, centerNodeId }: GraphModalProps) {
+export function GraphModal({ open, onOpenChange }: GraphModalProps) {
   const navigate = useNavigate();
 
   const handleNodeClick = (nodeId: string, metadata?: Record<string, string>) => {
@@ -30,22 +29,21 @@ export function GraphModal({ open, onOpenChange, centerNodeId }: GraphModalProps
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[95vw] w-[95vw] h-[90vh] p-0 flex flex-col">
-        <DialogHeader className="px-6 pt-6 pb-2 shrink-0">
-          <DialogTitle>Note Graph</DialogTitle>
-          <DialogDescription>
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent side="right" className="md:min-w-[50vw] max-w-none p-0 flex flex-col">
+        <SheetHeader className="px-6 pt-6 pb-2 shrink-0">
+          <SheetTitle>Note Graph</SheetTitle>
+          <SheetDescription>
             Explore the connections between your notes. Click a node to navigate to that note.
-          </DialogDescription>
-        </DialogHeader>
+          </SheetDescription>
+        </SheetHeader>
         <div className="flex-1 w-full overflow-hidden">
           <GraphVisualization
             onNodeClick={handleNodeClick}
-            centerNodeId={centerNodeId}
           />
         </div>
-      </DialogContent>
-    </Dialog>
+      </SheetContent>
+    </Sheet>
   );
 }
 

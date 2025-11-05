@@ -6,7 +6,6 @@ import { getGraphData, deleteNoteLink, updateNoteLink } from '@/utils/graphApi';
 import { useNavigate } from 'react-router-dom';
 import { useOrganizationContext } from '@/contexts/OrganizationContext';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
 import {
   ContextMenu,
@@ -14,11 +13,11 @@ import {
   ContextMenuItem,
   ContextMenuTrigger,
 } from '@/components/ui/context-menu';
-import { Loader2, Search, X, ZoomIn, ZoomOut, Maximize2 } from 'lucide-react';
+import { Loader2, ZoomIn, ZoomOut, Maximize2 } from 'lucide-react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 interface GraphVisualizationProps {
   onNodeClick?: (nodeId: string, metadata?: Record<string, string>) => void;
-  centerNodeId?: string;
   height?: number;
   width?: number;
 }
@@ -41,11 +40,7 @@ interface ExtendedLinkObject extends LinkObject {
 
 const GraphVisualization: React.FC<GraphVisualizationProps> = ({
   onNodeClick,
-  centerNodeId,
 }) => {
-  const [graphData, setGraphData] = useState<GraphData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState('');
   const [hoveredNode, setHoveredNode] = useState<string | null>(null);
   const [selectedLink, setSelectedLink] = useState<GraphLink | null>(null);
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
@@ -53,6 +48,7 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({
   const navigate = useNavigate();
   const graphRef = useRef<ForceGraphMethods | undefined>(undefined);
   const { activeOrg } = useOrganizationContext();
+  const queryClient = useQueryClient();
 
   // Measure container size
   useEffect(() => {
@@ -89,41 +85,23 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({
     };
   }, []);
 
-  // Fetch graph data
-  const fetchGraphData = useCallback(async () => {
-    try {
-      setLoading(true);
+  // Fetch graph data using TanStack Query
+  const { data: graphData, isLoading: loading } = useQuery<GraphData>({
+    queryKey: ['graphData', activeOrg?.id],
+    queryFn: async () => {
       console.log('[GraphVisualization] Fetching graph data for org:', activeOrg?.id);
-      const data = await getGraphData(searchQuery, activeOrg?.id);
+      const data = await getGraphData('', activeOrg?.id);
       console.log('[GraphVisualization] Received graph data:', {
         nodeCount: data.nodes.length,
         linkCount: data.links.length,
         nodes: data.nodes,
         links: data.links,
       });
-      setGraphData(data);
-    } catch (error) {
-      console.error('[GraphVisualization] Failed to fetch graph data:', error);
-      toast.error('Failed to load graph data');
-    } finally {
-      setLoading(false);
-    }
-  }, [searchQuery, activeOrg?.id]);
+      return data;
+    },
+    enabled: true,
+  });
 
-  useEffect(() => {
-    fetchGraphData();
-  }, [fetchGraphData]);
-
-  // Center on specific node if provided
-  useEffect(() => {
-    if (centerNodeId && graphData && graphRef.current) {
-      const node = graphData.nodes.find((n) => n.id === centerNodeId);
-      if (node) {
-        graphRef.current.centerAt(0, 0, 1000);
-        graphRef.current.zoom(2, 1000);
-      }
-    }
-  }, [centerNodeId, graphData]);
 
   // Prepare data for force graph
   const forceGraphData = useMemo(() => {
@@ -179,13 +157,13 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({
     try {
       await deleteNoteLink(selectedLink.id);
       toast.success('Link deleted successfully');
-      fetchGraphData();
+      queryClient.invalidateQueries({ queryKey: ['graphData', activeOrg?.id] });
       setSelectedLink(null);
     } catch (error) {
       console.error('Failed to delete link:', error);
       toast.error('Failed to delete link');
     }
-  }, [selectedLink, fetchGraphData]);
+  }, [selectedLink, queryClient, activeOrg?.id]);
 
   // Update link type
   const handleUpdateLinkType = useCallback(
@@ -195,14 +173,14 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({
       try {
         await updateNoteLink(selectedLink.id, newLinkType);
         toast.success('Link updated successfully');
-        fetchGraphData();
+        queryClient.invalidateQueries({ queryKey: ['graphData', activeOrg?.id] });
         setSelectedLink(null);
       } catch (error) {
         console.error('Failed to update link:', error);
         toast.error('Failed to update link');
       }
     },
-    [selectedLink, fetchGraphData]
+    [selectedLink, queryClient, activeOrg?.id]
   );
 
   // Node paint function
@@ -213,15 +191,11 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({
       const fontSize = 12 / globalScale;
       const nodeSize = Math.sqrt((extNode.linkCount || 1) * 4) + 4;
 
-      // Determine node color based on notebook
-      let nodeColor = '#3b82f6'; // Default blue
-      if (extNode.notebookName) {
-        const hash = extNode.notebookName.split('').reduce((acc, char) => {
-          return char.charCodeAt(0) + ((acc << 5) - acc);
-        }, 0);
-        const hue = Math.abs(hash % 360);
-        nodeColor = `hsl(${hue}, 70%, 60%)`;
-      }
+      // Get primary color from CSS variable
+      const primaryHsl = getComputedStyle(document.documentElement)
+        .getPropertyValue('--primary')
+        .trim();
+      const nodeColor = primaryHsl ? `hsl(${primaryHsl})` : '#3b82f6';
 
       // Highlight if hovered
       if (hoveredNode === extNode.id) {
@@ -339,28 +313,6 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({
 
   return (
     <div ref={containerRef} className="relative w-full h-full">
-      {/* Search and controls */}
-      <div className="absolute top-4 left-4 z-10 flex gap-2">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input
-            type="text"
-            placeholder="Search notes..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-9 pr-9 w-64 bg-background/95 backdrop-blur"
-          />
-          {searchQuery && (
-            <button
-              onClick={() => setSearchQuery('')}
-              className="absolute right-3 top-1/2 transform -translate-y-1/2"
-            >
-              <X className="w-4 h-4 text-muted-foreground hover:text-foreground" />
-            </button>
-          )}
-        </div>
-      </div>
-
       {/* Zoom controls */}
       <div className="absolute top-4 right-4 z-10 flex flex-col gap-2">
         <Button size="icon" variant="secondary" onClick={handleZoomIn}>
