@@ -8,8 +8,14 @@ import { toast } from 'sonner';
 /**
  * Hook to automatically create/delete note links when mentions are added/removed in the editor
  * Returns a function to be called from the editor's onUpdate callback
+ * 
+ * @param currentNoteId - The ID of the current note being edited
+ * @param onLinksChanged - Optional callback that fires when links are created or deleted (e.g., to auto-save)
  */
-export function useNoteMentions(currentNoteId: string | undefined) {
+export function useNoteMentions(
+  currentNoteId: string | undefined,
+  onLinksChanged?: () => void
+) {
   const processedMentions = useRef<Set<string>>(new Set());
   const linkIdMap = useRef<Map<string, string>>(new Map()); // Maps linkKey to linkId for deletion
   const previousMentions = useRef<Set<string>>(new Set());
@@ -18,10 +24,22 @@ export function useNoteMentions(currentNoteId: string | undefined) {
   const isProcessing = useRef(false);
   const lastProcessedContent = useRef<string>('');
   const isInitialized = useRef(false);
+  const lastNoteId = useRef<string | undefined>(undefined);
 
   const processMentions = useCallback(async (editor: Editor) => {
     if (!editor || !currentNoteId) {
       return;
+    }
+
+    // Reset state if note changed
+    if (lastNoteId.current !== currentNoteId) {
+      console.log('[useNoteMentions] Note changed, resetting state');
+      processedMentions.current.clear();
+      linkIdMap.current.clear();
+      previousMentions.current.clear();
+      isInitialized.current = false;
+      lastProcessedContent.current = '';
+      lastNoteId.current = currentNoteId;
     }
 
     // Prevent concurrent processing
@@ -55,6 +73,7 @@ export function useNoteMentions(currentNoteId: string | undefined) {
 
       // Initialize on first run - fetch existing links to populate linkIdMap
       if (!isInitialized.current) {
+        console.log('[useNoteMentions] Initializing - fetching existing links...');
         try {
           const allLinks = await getAllLinks();
           for (const link of allLinks) {
@@ -64,14 +83,18 @@ export function useNoteMentions(currentNoteId: string | undefined) {
               processedMentions.current.add(linkKey);
             }
           }
-          console.log('[useNoteMentions] Initialized with existing links:', Array.from(linkIdMap.current.keys()));
+          console.log('[useNoteMentions] Initialized with', processedMentions.current.size, 'existing links');
         } catch (error) {
           console.error('[useNoteMentions] Failed to fetch existing links:', error);
         }
-        isInitialized.current = true;
+        
+        // Set current mentions as previous to establish baseline
         previousMentions.current = currentMentionsSet;
+        isInitialized.current = true;
         isProcessing.current = false;
-        return;
+        
+        console.log('[useNoteMentions] Initialization complete - ready to track changes');
+        return; // Skip processing on initialization
       }
 
       // Find removed mentions (in previous but not in current)
@@ -178,11 +201,17 @@ export function useNoteMentions(currentNoteId: string | undefined) {
         } else if (linksDeleted > 0) {
           toast.success(`${linksDeleted} note link${linksDeleted > 1 ? 's' : ''} deleted`);
         }
+
+        // Trigger callback to save the note if provided
+        if (onLinksChanged) {
+          console.log('[useNoteMentions] Triggering onLinksChanged callback');
+          onLinksChanged();
+        }
       }
     } finally {
       isProcessing.current = false;
     }
-  }, [currentNoteId, activeOrg?.id, queryClient]);
+  }, [currentNoteId, activeOrg?.id, queryClient, onLinksChanged]);
 
   return { processMentions };
 }

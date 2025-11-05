@@ -5,6 +5,7 @@ import type { Instance as TippyInstance } from 'tippy.js';
 import type { SuggestionOptions } from '@tiptap/suggestion';
 import MentionList, { type MentionListRef } from '@/components/MentionList';
 import api from '@/utils/api';
+import { queryClient } from './query-client';
 
 interface MentionSuggestion {
   id: string;
@@ -14,6 +15,7 @@ interface MentionSuggestion {
 // Cache for notes to show immediately on subsequent searches
 let notesCache: MentionSuggestion[] = [];
 let cacheOrgId: string | null | undefined = null;
+let isLoading = false;
 
 export const createNoteMention = (organizationId?: string | null) => {
   return Mention.configure({
@@ -26,18 +28,28 @@ export const createNoteMention = (organizationId?: string | null) => {
     items: async ({ query }: { query: string }): Promise<MentionSuggestion[]> => {
       // Fetch notes from API (only if cache is empty or org changed)
       if (notesCache.length === 0 || cacheOrgId !== organizationId) {
+        isLoading = true;
         try {
-          console.log('[Mention] Fetching notebooks for org:', organizationId);
+          // First, try to get from React Query cache for instant loading
+          const cachedNotebooks = queryClient.getQueryData<any[]>(['userNotebooks', organizationId]);
           
-          const params: Record<string, string> = {};
-          if (organizationId) {
-            params.organizationId = organizationId;
-          }
+          let notebooks;
+          if (cachedNotebooks) {
+            console.log('[Mention] Using cached notebooks from React Query');
+            notebooks = cachedNotebooks;
+          } else {
+            console.log('[Mention] Fetching notebooks for org:', organizationId);
+            
+            const params: Record<string, string> = {};
+            if (organizationId) {
+              params.organizationId = organizationId;
+            }
 
-          const response = await api.get('/notebooks', { params });
-          const notebooks = response.data;
+            const response = await api.get('/notebooks', { params });
+            notebooks = response.data;
+          }
           
-          console.log('[Mention] Received notebooks:', notebooks.length, 'notebooks');
+          console.log('[Mention] Processing notebooks:', notebooks.length, 'notebooks');
           const notes: MentionSuggestion[] = [];
 
           // Extract all notes from notebooks
@@ -62,8 +74,10 @@ export const createNoteMention = (organizationId?: string | null) => {
           // Update cache
           notesCache = notes;
           cacheOrgId = organizationId;
+          isLoading = false;
         } catch (error) {
           console.error('[Mention] Error fetching notes for mention:', error);
+          isLoading = false;
           return [];
         }
       }
@@ -83,8 +97,14 @@ export const createNoteMention = (organizationId?: string | null) => {
 
       return {
         onStart: (props: any) => {
+          // Start with loading state if cache is empty
+          const initialLoading = notesCache.length === 0 || cacheOrgId !== organizationId;
+          
           component = new ReactRenderer(MentionList, {
-            props,
+            props: {
+              ...props,
+              loading: initialLoading,
+            },
             editor: props.editor,
           });
 
@@ -104,7 +124,10 @@ export const createNoteMention = (organizationId?: string | null) => {
         },
 
         onUpdate(props: any) {
-          component.updateProps(props);
+          component.updateProps({
+            ...props,
+            loading: isLoading,
+          });
 
           if (!props.clientRect) {
             return;

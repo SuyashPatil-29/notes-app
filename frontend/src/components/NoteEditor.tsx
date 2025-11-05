@@ -92,8 +92,17 @@ export function NoteEditor({ user, userLoading = false }: NoteEditorProps) {
   const [openLink, setOpenLink] = useState(false);
   const [editor, setEditor] = useState<any>(null);
 
+  // Ref to store the save handler for the mentions hook
+  const saveHandlerRef = useRef<(() => void) | null>(null);
+
   // Use note mentions hook for automatic link creation
-  const { processMentions } = useNoteMentions(noteId);
+  // Pass a callback to auto-save when links are created/deleted
+  const { processMentions } = useNoteMentions(noteId, () => {
+    // Auto-save silently when links change
+    if (saveHandlerRef.current) {
+      saveHandlerRef.current();
+    }
+  });
 
   // Yjs collaboration state
   const ydoc = useRef<Y.Doc | null>(null)
@@ -334,8 +343,12 @@ export function NoteEditor({ user, userLoading = false }: NoteEditorProps) {
       } else {
         setIsSaving(false)
       }
+      hasUnsavedChanges.current = false
     }
   }
+
+  // Set the save handler ref for the mentions hook
+  saveHandlerRef.current = () => handleSave(true);
 
   const handleGenerateVideo = async () => {
     if (!noteId) {
