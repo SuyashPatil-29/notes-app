@@ -321,11 +321,13 @@ func (s *NoteLinkService) GetGraphData(organizationID *string, searchQuery strin
 		// Access notebook through chapter relationship
 		if note.Chapter.Notebook.Name != "" {
 			node.NotebookName = note.Chapter.Notebook.Name
+			node.Metadata["notebookId"] = note.Chapter.Notebook.ID
 		}
 
-		// Access chapter name
+		// Access chapter name and ID
 		if note.Chapter.Name != "" {
 			node.ChapterName = note.Chapter.Name
+			node.Metadata["chapterId"] = note.Chapter.ID
 		}
 
 		graphNodes = append(graphNodes, node)
