@@ -1178,7 +1178,7 @@ export function LeftSidebarContent({
                           </TooltipTrigger>
                           <TooltipContent side="right" className="text-xs">
                             <p>Open the graph visualization</p>
-                            <p className="text-muted-foreground">Press ⌘G (Mac) or Ctrl+G (Windows)</p>
+                            <p className="text-muted">Press ⌘G (Mac) or Ctrl+G (Windows)</p>
                           </TooltipContent>
                         </Tooltip>
                       </TooltipProvider>

@@ -93,7 +93,7 @@ export function NoteEditor({ user, userLoading = false }: NoteEditorProps) {
   const [editor, setEditor] = useState<any>(null);
 
   // Use note mentions hook for automatic link creation
-  useNoteMentions(editor, noteId);
+  const { processMentions } = useNoteMentions(noteId);
 
   // Yjs collaboration state
   const ydoc = useRef<Y.Doc | null>(null)
@@ -695,6 +695,9 @@ export function NoteEditor({ user, userLoading = false }: NoteEditorProps) {
                   onUpdate={({ editor }) => {
                     hasUnsavedChanges.current = true;
                     debouncedUpdates(editor);
+
+                    // Process mentions for automatic link creation
+                    processMentions(editor);
 
                     // Reset auto-save timer on every update
                     if (autoSaveTimerRef.current) {

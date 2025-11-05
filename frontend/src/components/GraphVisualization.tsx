@@ -100,6 +100,9 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({
       return data;
     },
     enabled: true,
+    refetchOnWindowFocus: true,
+    staleTime: 30000,
+    gcTime: 60000, // Keep data in cache for 1 minute
   });
 
 
@@ -125,6 +128,21 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({
 
     return { nodes, links };
   }, [graphData]);
+
+  // Auto-fit graph when data changes
+  useEffect(() => {
+    if (graphRef.current && forceGraphData.nodes.length > 0) {
+      // Wait for the graph to stabilize before fitting
+      const timer = setTimeout(() => {
+        if (graphRef.current) {
+          console.log('[GraphVisualization] Fitting graph to viewport');
+          graphRef.current.zoomToFit(200, 100);
+        }
+      }, 500);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [forceGraphData]);
 
   // Handle node click
   const handleNodeClick = useCallback(
@@ -287,7 +305,7 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({
 
   const handleFitView = () => {
     if (graphRef.current) {
-      graphRef.current.zoomToFit(400, 50);
+      graphRef.current.zoomToFit(200, 100);
     }
   };
 
@@ -345,6 +363,12 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({
             onNodeClick={handleNodeClick}
             onNodeHover={(node) => setHoveredNode(node ? (node as ExtendedNodeObject).id : null)}
             onLinkRightClick={handleLinkRightClick}
+            onEngineStop={() => {
+              // Fit graph to viewport after initial layout stabilizes
+              if (graphRef.current) {
+                graphRef.current.zoomToFit(200, 100);
+              }
+            }}
             cooldownTicks={100}
             d3AlphaDecay={0.02}
             d3VelocityDecay={0.3}
