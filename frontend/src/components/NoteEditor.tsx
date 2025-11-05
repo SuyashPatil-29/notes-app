@@ -46,7 +46,7 @@ import GenerativeMenuSwitch from "./generative/generative-menu-switch";
 import * as Y from 'yjs'
 import { Awareness } from 'y-protocols/awareness'
 import Collaboration from '@tiptap/extension-collaboration'
-import CollaborationCaret from '@tiptap/extension-collaboration-caret'
+import CollaborationCursor from '@tiptap/extension-collaboration-cursor'
 import { SupabaseYjsProvider } from '@/lib/supabase-yjs-provider'
 import { useUser, useSession } from '@clerk/clerk-react'
 // import { uploadFn } from "./image-upload";
@@ -56,6 +56,8 @@ import { slashCommand, suggestionItems } from "./slash-command";
 import hljs from "highlight.js";
 import { Button } from './ui/button'
 import { TaskButton } from './TaskButton'
+import { createNoteMention } from '@/lib/mention-extension'
+import { useNoteMentions } from '@/hooks/use-note-mentions'
 
 // Extensions will be configured dynamically in the component to include collaboration
 // const extensions = [...defaultExtensions, slashCommand];
@@ -88,6 +90,10 @@ export function NoteEditor({ user, userLoading = false }: NoteEditorProps) {
   const [openNode, setOpenNode] = useState(false);
   const [openColor, setOpenColor] = useState(false);
   const [openLink, setOpenLink] = useState(false);
+  const [editor, setEditor] = useState<any>(null);
+
+  // Use note mentions hook for automatic link creation
+  useNoteMentions(editor, noteId);
 
   // Yjs collaboration state
   const ydoc = useRef<Y.Doc | null>(null)
@@ -607,10 +613,11 @@ export function NoteEditor({ user, userLoading = false }: NoteEditorProps) {
                   extensions={[
                     ...defaultExtensions,
                     slashCommand,
+                    createNoteMention(activeOrg?.id),
                     Collaboration.configure({
                       document: ydoc.current,
                     }),
-                    CollaborationCaret.configure({
+                    CollaborationCursor.configure({
                       provider: provider.current,
                       user: {
                         name: clerkUser?.fullName || clerkUser?.username || 'Anonymous',
@@ -631,6 +638,7 @@ export function NoteEditor({ user, userLoading = false }: NoteEditorProps) {
                     },
                   }}
                   onCreate={async ({ editor }) => {
+                    setEditor(editor);
                     debouncedUpdates(editor);
 
                     if (provider.current?.initialContent) {

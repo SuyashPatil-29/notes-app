@@ -14,6 +14,13 @@ export function setAuthTokenGetter(getter: () => Promise<string | null>) {
     getAuthToken = getter;
 }
 
+export function getStoredAuthToken(): Promise<string | null> {
+    if (getAuthToken) {
+        return getAuthToken();
+    }
+    return Promise.resolve(null);
+}
+
 // Track if we're currently refreshing to avoid multiple simultaneous refreshes
 let isRefreshing = false;
 let failedQueue: Array<{

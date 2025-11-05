@@ -62,6 +62,7 @@ func InitDB() {
 		&models.Notebook{},
 		&models.Chapter{},
 		&models.Notes{},
+		&models.NoteLink{},
 		&models.TaskBoard{},
 		&models.Task{},
 		&models.TaskAssignment{},

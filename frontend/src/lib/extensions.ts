@@ -156,6 +156,7 @@ import {
   
   // Note: Collaboration and CollaborationCaret extensions are added dynamically in NoteEditor
   // because they require runtime configuration (ydoc and provider instances)
+  // Note: NoteMention extension is also added dynamically with proper configuration
   export const defaultExtensions = [
     starterKit,
     placeholder,

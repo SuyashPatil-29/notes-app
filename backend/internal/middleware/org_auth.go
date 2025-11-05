@@ -192,3 +192,20 @@ func GetOrgRoleFromContext(c *gin.Context) (string, bool) {
 	roleStr, ok := role.(string)
 	return roleStr, ok
 }
+
+// GetOrganizationID retrieves organization ID from context (if set by middleware) or from query/headers
+func GetOrganizationID(c *gin.Context) (string, bool) {
+	// Try getting from context first (set by RequireOrgMembership/RequireOrgAdmin middleware)
+	orgID, exists := GetOrgIDFromContext(c)
+	if exists && orgID != "" {
+		return orgID, true
+	}
+
+	// Fall back to query parameter or header
+	orgID = GetActiveOrgID(c)
+	if orgID != "" {
+		return orgID, true
+	}
+
+	return "", false
+}

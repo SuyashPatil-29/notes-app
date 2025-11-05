@@ -135,6 +135,16 @@ func main() {
 		protected.POST("/note/:id/generate-video", controllers.GenerateNoteVideo)
 		protected.DELETE("/note/:id/video", controllers.DeleteNoteVideo)
 
+		// Note link routes
+		protected.POST("/api/notes/links", controllers.CreateNoteLink)
+		protected.GET("/api/notes/links", controllers.GetAllLinks)
+		protected.GET("/api/notes/:id/links", controllers.GetNoteLinksByNoteID)
+		protected.PUT("/api/notes/links/:id", controllers.UpdateNoteLink)
+		protected.DELETE("/api/notes/links/:id", controllers.DeleteNoteLink)
+
+		// Graph visualization routes
+		protected.GET("/api/graph/data", controllers.GetGraphData)
+
 		// Task management routes
 		// Note-associated task routes
 		protected.GET("/notes/:noteId/tasks", controllers.GetTasksForNote)

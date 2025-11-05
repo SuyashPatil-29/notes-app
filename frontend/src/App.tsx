@@ -42,6 +42,7 @@ import { SSOCallback } from '@/components/auth/sso-callback'
 import { LandingPage } from '@/pages/landing-page'
 import { PublicOnlyRoute } from '@/components/auth/protected-route'
 import { AcceptInvitationPage } from '@/pages/accept-invitation-page'
+import { GraphModal, useGraphModal } from '@/components/GraphModal'
 
 function App() {
   const { user, loading: userLoading, refetch: refetchUser } = useUser()
@@ -51,6 +52,9 @@ function App() {
   const [createNotebookDialog, setCreateNotebookDialog] = useState(false)
   const [createTaskBoardDialog, setCreateTaskBoardDialog] = useState(false)
   const [onboardingCompleted, setOnboardingCompleted] = useState(false)
+  
+  // Graph modal state and keyboard shortcut
+  const { isOpen: graphModalOpen, openGraph, closeGraph } = useGraphModal()
 
   // Set up auth token getter for API calls
   useEffect(() => {
@@ -662,6 +666,7 @@ function App() {
                   onCreateTaskBoard={handleCreateTaskBoard}
                   onRenameTaskBoard={handleRenameTaskBoard}
                   onDeleteTaskBoard={handleDeleteTaskBoard}
+                  onOpenGraph={openGraph}
                 />
                 <LeftSidebarInset>
                   <RightSidebarProvider defaultOpen={false}>
@@ -806,6 +811,11 @@ function App() {
             />
 
             <CommandMenu notebooks={userNotebooks} />
+            
+            <GraphModal
+              open={graphModalOpen}
+              onOpenChange={closeGraph}
+            />
           </SignedIn>
         } />
       </Routes>
