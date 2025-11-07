@@ -74,6 +74,10 @@ func InitDB() {
 		&models.CalendarOAuthState{},
 		&models.YjsDocument{},
 		&models.YjsUpdate{},
+		&models.WhatsAppUser{},
+		&models.WhatsAppConversationContext{},
+		&models.WhatsAppGroupLink{},
+		&models.WhatsAppMessage{},
 	); err != nil {
 		log.Fatal().Err(err).Msg("Failed to migrate schema")
 	}

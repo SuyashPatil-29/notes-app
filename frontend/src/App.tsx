@@ -42,6 +42,7 @@ import { SSOCallback } from '@/components/auth/sso-callback'
 import { LandingPage } from '@/pages/landing-page'
 import { PublicOnlyRoute } from '@/components/auth/protected-route'
 import { AcceptInvitationPage } from '@/pages/accept-invitation-page'
+import { WhatsAppAuthPage } from '@/pages/whatsapp-auth-page'
 import { GraphModal, useGraphModal } from '@/components/GraphModal'
 
 function App() {
@@ -169,7 +170,7 @@ function App() {
   const { data: userNotebooks, isLoading: userNotebooksLoading } = useQuery({
     queryKey: ['userNotebooks', activeOrg?.id],
     queryFn: () => getUserNotebooks(activeOrg?.id),
-    refetchOnWindowFocus: false,
+    refetchInterval: 30000,
     enabled: !!user,
   })
 
@@ -635,6 +636,9 @@ function App() {
         
         {/* Public invitation acceptance - must be public for Clerk redirect */}
         <Route path="/accept-invitation" element={<AcceptInvitationPage />} />
+        
+        {/* WhatsApp authentication - must be public to redirect to sign-in if needed */}
+        <Route path="/whatsapp-auth" element={<WhatsAppAuthPage />} />
 
         {/* Public content routes - accessible without auth */}
         <Route path="/public/:notebookId" element={<PublicNotebookView />} />

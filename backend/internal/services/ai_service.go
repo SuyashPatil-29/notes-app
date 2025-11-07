@@ -51,6 +51,15 @@ type TaskGenerationResponse struct {
 	Tasks     []GeneratedTask `json:"tasks"`
 }
 
+// NoteContentGenerationRequest represents a request to generate note content
+type NoteContentGenerationRequest struct {
+	NoteTitle   string  `json:"note_title"`
+	Context     string  `json:"context,omitempty"`      // Optional: additional context
+	ContentType string  `json:"content_type,omitempty"` // Optional: "outline", "detailed", "bullet_points"
+	UserID      string  `json:"user_id"`
+	OrgID       *string `json:"org_id,omitempty"`
+}
+
 // NewAIService creates a new AI service instance
 func NewAIService() *AIService {
 	apiKey := os.Getenv("OPENAI_API_KEY")
@@ -578,4 +587,246 @@ func (s *AIService) createFallbackTaskResponse(noteTitle string) *TaskGeneration
 			},
 		},
 	}
+}
+
+// GenerateNoteContent generates content for a note based on its title and optional context
+func (s *AIService) GenerateNoteContent(ctx context.Context, request NoteContentGenerationRequest) (string, error) {
+	// Try to get API key using the resolver
+	client, err := s.getClientForUser(request.UserID, request.OrgID)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to get OpenAI client for note content generation")
+		return "", fmt.Errorf("AI service unavailable: %w", err)
+	}
+
+	if strings.TrimSpace(request.NoteTitle) == "" {
+		return "", fmt.Errorf("note title cannot be empty")
+	}
+
+	// Default content type to "detailed" if not specified
+	contentType := request.ContentType
+	if contentType == "" {
+		contentType = "detailed"
+	}
+
+	systemPrompt := `You are an AI assistant that helps users create comprehensive note content.
+
+Your task:
+1. Generate well-structured, informative content based on the note title
+2. Make the content practical, actionable, and easy to understand
+3. Use markdown formatting for better readability
+4. Include relevant sections, lists, and examples where appropriate
+
+Content should be:
+- Clear and concise
+- Well-organized with headers and sections
+- Practical and actionable
+- Formatted in markdown
+
+IMPORTANT: Return ONLY the markdown content. Do NOT wrap it in code blocks or JSON.`
+
+	var userPrompt string
+	switch contentType {
+	case "outline":
+		userPrompt = fmt.Sprintf(`Create an outline for a note titled: "%s"
+
+Include:
+- Main sections and subsections
+- Key topics to cover
+- Important points to remember
+
+%s`,
+			request.NoteTitle,
+			formatContextPrompt(request.Context))
+
+	case "bullet_points":
+		userPrompt = fmt.Sprintf(`Create bullet-point notes for: "%s"
+
+Include:
+- Key facts and information
+- Important points
+- Quick reference items
+
+%s`,
+			request.NoteTitle,
+			formatContextPrompt(request.Context))
+
+	default: // "detailed"
+		userPrompt = fmt.Sprintf(`Create detailed note content for: "%s"
+
+Include:
+- Introduction
+- Main sections with explanations
+- Examples where relevant
+- Key takeaways or summary
+
+%s`,
+			request.NoteTitle,
+			formatContextPrompt(request.Context))
+	}
+
+	log.Info().
+		Str("note_title", request.NoteTitle).
+		Str("content_type", contentType).
+		Str("user_id", request.UserID).
+		Msg("Generating note content with AI")
+
+	resp, err := client.Chat.Completions.New(ctx, openai.ChatCompletionNewParams{
+		Messages: []openai.ChatCompletionMessageParamUnion{
+			openai.SystemMessage(systemPrompt),
+			openai.UserMessage(userPrompt),
+		},
+		Model:       openai.ChatModelGPT4o,
+		MaxTokens:   openai.Int(2000),
+		Temperature: openai.Float(0.7),
+	})
+
+	if err != nil {
+		log.Error().Err(err).Msg("OpenAI API error during note content generation")
+		return "", fmt.Errorf("failed to generate content: %w", err)
+	}
+
+	if len(resp.Choices) == 0 {
+		return "", fmt.Errorf("no response from OpenAI")
+	}
+
+	content := resp.Choices[0].Message.Content
+	content = strings.TrimSpace(content)
+
+	// Remove any code block markers if AI wrapped the content
+	if strings.HasPrefix(content, "```markdown") {
+		content = strings.TrimPrefix(content, "```markdown")
+		content = strings.TrimSuffix(content, "```")
+		content = strings.TrimSpace(content)
+	} else if strings.HasPrefix(content, "```") {
+		content = strings.TrimPrefix(content, "```")
+		content = strings.TrimSuffix(content, "```")
+		content = strings.TrimSpace(content)
+	}
+
+	log.Info().
+		Str("note_title", request.NoteTitle).
+		Int("content_length", len(content)).
+		Msg("Successfully generated note content")
+
+	return content, nil
+}
+
+// formatContextPrompt formats the context string for the prompt
+func formatContextPrompt(context string) string {
+	if strings.TrimSpace(context) == "" {
+		return ""
+	}
+	return fmt.Sprintf("\nAdditional context: %s", context)
+}
+
+// NoteOrganizationRequest represents a request to organize a note with AI
+type NoteOrganizationRequest struct {
+	NoteTitle         string   `json:"note_title"`
+	ExistingNotebooks []string `json:"existing_notebooks,omitempty"`
+	UserID            string   `json:"user_id"`
+	OrgID             *string  `json:"org_id,omitempty"`
+}
+
+// NoteOrganizationResponse represents AI's decision on note organization
+type NoteOrganizationResponse struct {
+	NotebookName string `json:"notebook_name"`
+	ChapterName  string `json:"chapter_name"`
+}
+
+// OrganizeNoteWithAI uses AI to determine the appropriate notebook and chapter for a note
+func (s *AIService) OrganizeNoteWithAI(ctx context.Context, request NoteOrganizationRequest) (*NoteOrganizationResponse, error) {
+	// Get appropriate API key
+	client, err := s.getClientForUser(request.UserID, request.OrgID)
+	if err != nil {
+		return nil, err
+	}
+
+	systemPrompt := `You are an AI assistant that helps organize notes into notebooks and chapters.
+
+Your task:
+1. Analyze the note title
+2. Suggest an appropriate notebook name (high-level category)
+3. Suggest an appropriate chapter name (sub-category)
+
+Guidelines:
+- Keep names concise and clear
+- Use title case for notebook and chapter names
+- If existing notebooks are provided and one fits well, prefer it
+- For work/professional notes: use notebooks like "Work", "Projects", "Meetings"
+- For personal notes: use notebooks like "Personal", "Learning", "Ideas"
+- For technical notes: use notebooks like "Development", "DevOps", "Documentation"
+- Chapter should be more specific than notebook
+
+Respond ONLY with valid JSON in this exact format:
+{
+  "notebook_name": "string",
+  "chapter_name": "string"
+}`
+
+	existingNotebooksStr := ""
+	if len(request.ExistingNotebooks) > 0 {
+		existingNotebooksStr = fmt.Sprintf("\n\nExisting notebooks: %s", strings.Join(request.ExistingNotebooks, ", "))
+	}
+
+	userPrompt := fmt.Sprintf(`Organize this note:
+
+Note title: "%s"%s
+
+Provide the best notebook and chapter names.`, request.NoteTitle, existingNotebooksStr)
+
+	log.Info().
+		Str("note_title", request.NoteTitle).
+		Str("user_id", request.UserID).
+		Msg("Organizing note with AI")
+
+	resp, err := client.Chat.Completions.New(ctx, openai.ChatCompletionNewParams{
+		Messages: []openai.ChatCompletionMessageParamUnion{
+			openai.SystemMessage(systemPrompt),
+			openai.UserMessage(userPrompt),
+		},
+		Model:       openai.ChatModelGPT4o,
+		MaxTokens:   openai.Int(200),
+		Temperature: openai.Float(0.7),
+	})
+
+	if err != nil {
+		log.Error().Err(err).Msg("OpenAI API error during note organization")
+		return nil, fmt.Errorf("failed to organize note: %w", err)
+	}
+
+	if len(resp.Choices) == 0 {
+		return nil, fmt.Errorf("no response from OpenAI")
+	}
+
+	content := resp.Choices[0].Message.Content
+	content = strings.TrimSpace(content)
+
+	// Remove markdown code block markers if present
+	if strings.HasPrefix(content, "```json") {
+		content = strings.TrimPrefix(content, "```json")
+		content = strings.TrimSuffix(content, "```")
+		content = strings.TrimSpace(content)
+	} else if strings.HasPrefix(content, "```") {
+		content = strings.TrimPrefix(content, "```")
+		content = strings.TrimSuffix(content, "```")
+		content = strings.TrimSpace(content)
+	}
+
+	// Parse JSON response
+	var organization NoteOrganizationResponse
+	if err := json.Unmarshal([]byte(content), &organization); err != nil {
+		log.Error().
+			Err(err).
+			Str("content", content).
+			Msg("Failed to parse AI organization response")
+		return nil, fmt.Errorf("failed to parse AI response: %w", err)
+	}
+
+	log.Info().
+		Str("note_title", request.NoteTitle).
+		Str("notebook", organization.NotebookName).
+		Str("chapter", organization.ChapterName).
+		Msg("Successfully organized note with AI")
+
+	return &organization, nil
 }

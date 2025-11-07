@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useSignIn } from '@clerk/clerk-react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -12,11 +12,15 @@ import { Separator } from '@/components/ui/separator'
 export function SignIn() {
   const { isLoaded, signIn, setActive } = useSignIn()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [isOAuthLoading, setIsOAuthLoading] = useState<string | null>(null)
+  
+  // Get redirect URL from query params
+  const redirectUrl = searchParams.get('redirect_url') || '/'
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -33,7 +37,7 @@ export function SignIn() {
 
       if (result.status === 'complete') {
         await setActive({ session: result.createdSessionId })
-        navigate('/')
+        navigate(redirectUrl)
       } else {
         // Handle other statuses if needed (e.g., 2FA)
         console.log('Sign in result:', result)
@@ -55,7 +59,7 @@ export function SignIn() {
       await signIn.authenticateWithRedirect({
         strategy,
         redirectUrl: '/sso-callback',
-        redirectUrlComplete: '/',
+        redirectUrlComplete: redirectUrl,
       })
     } catch (err: any) {
       console.error('OAuth error:', err)

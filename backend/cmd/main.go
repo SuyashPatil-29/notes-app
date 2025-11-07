@@ -3,14 +3,21 @@ package main
 import (
 	"backend/db"
 	"backend/internal/auth"
+	"backend/internal/config"
 	"backend/internal/controllers"
 	"backend/internal/middleware"
+	"backend/internal/services"
+	"backend/internal/whatsapp"
+	"backend/internal/whatsapp/commands"
+	whatsappclient "backend/pkg/whatsapp"
+	"context"
 	"os"
 
 	"github.com/clerk/clerk-sdk-go/v2"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/zerolog/log"
 )
 
@@ -33,6 +40,75 @@ func main() {
 		log.Fatal().Msg("CLERK_SECRET_KEY environment variable is required")
 	}
 	clerk.SetKey(clerkSecretKey)
+
+	// Initialize WhatsApp services
+	whatsappConfig, err := config.LoadWhatsAppConfig()
+	if err != nil {
+		log.Warn().Err(err).Msg("Failed to load WhatsApp config, WhatsApp features will be disabled")
+	} else {
+		// Initialize metrics service
+		whatsappMetricsService := services.NewWhatsAppMetricsService()
+
+		// Initialize audit service
+		whatsappAuditService := services.NewWhatsAppAuditService(db.DB)
+
+		// Initialize WhatsApp client with audit logging and metrics wrapper
+		baseClient := whatsappclient.NewClient(whatsappConfig)
+		whatsappClient := whatsappclient.NewAuditClient(baseClient, whatsappAuditService, whatsappMetricsService)
+
+		whatsappAuthService := services.NewWhatsAppAuthService()
+		whatsappContextService := services.NewWhatsAppContextService(db.DB, whatsappConfig)
+
+		// Initialize command registry and register commands
+		commandRegistry := whatsapp.NewCommandRegistry()
+		commandRegistry.Register(commands.NewHelpCommand(commandRegistry))
+		commandRegistry.Register(commands.NewAddNoteCommand(whatsappContextService))
+		commandRegistry.Register(commands.NewRetrieveNoteCommand(whatsappContextService))
+		commandRegistry.Register(commands.NewListCommand())
+		commandRegistry.Register(commands.NewDeleteNoteCommand(whatsappContextService))
+		commandRegistry.Register(commands.NewCreateCommand(whatsappContextService))
+		commandRegistry.Register(commands.NewDeleteEntityCommand(whatsappContextService))
+		commandRegistry.Register(commands.NewLinkOrganizationCommand(whatsappContextService, whatsappAuthService))
+		commandRegistry.Register(commands.NewCancelCommand(whatsappContextService))
+
+		// Initialize message processor
+		whatsappMessageProcessor := services.NewWhatsAppMessageProcessor(
+			db.DB,
+			whatsappConfig,
+			whatsappClient,
+			whatsappAuthService,
+			whatsappContextService,
+			commandRegistry,
+			whatsappAuditService,
+			whatsappMetricsService,
+		)
+
+		// Initialize WhatsApp controller
+		whatsappController := controllers.NewWhatsAppController(
+			whatsappMessageProcessor,
+			whatsappAuthService,
+			whatsappMetricsService,
+			whatsappClient,
+			whatsappConfig.VerifyToken,
+		)
+
+		// Initialize rate limiter (10 messages per minute)
+		whatsappRateLimiter := middleware.NewWhatsAppRateLimiter(10, whatsappMetricsService)
+
+		// Store controllers for route registration
+		controllers.SetWhatsAppController(whatsappController)
+		middleware.SetWhatsAppRateLimiter(whatsappRateLimiter)
+
+		// Start audit cleanup job in background
+		cleanupJob := services.NewWhatsAppCleanupJob(
+			whatsappAuditService,
+			whatsappConfig.AuditRetentionDays,
+			whatsappConfig.AuditCleanupInterval,
+		)
+		go cleanupJob.Start(context.Background())
+
+		log.Info().Msg("WhatsApp services initialized successfully with audit logging and metrics")
+	}
 
 	r := gin.Default()
 
@@ -206,6 +282,25 @@ func main() {
 		webhook.POST("/calendar/sync", controllers.HandleCalendarWebhook)
 		webhook.POST("/clerk", auth.UserCreatedWebhook) // Clerk user sync webhook
 	}
+
+	// WhatsApp webhook routes
+	whatsapp := r.Group("/api/whatsapp")
+	whatsapp.Use(middleware.WhatsAppRateLimiterMiddleware())
+	{
+		whatsapp.GET("/webhook", controllers.VerifyWhatsAppWebhook)
+		whatsapp.POST("/webhook", controllers.HandleWhatsAppWebhook)
+	}
+
+	// WhatsApp authentication routes (protected)
+	whatsappAuth := r.Group("/api/whatsapp")
+	whatsappAuth.Use(middleware.ClerkMiddleware())
+	whatsappAuth.Use(middleware.RequireAuth())
+	{
+		whatsappAuth.POST("/link", controllers.LinkWhatsAppAccount)
+	}
+
+	// Metrics endpoint (Prometheus)
+	r.GET("/metrics", gin.WrapH(promhttp.Handler()))
 
 	r.Run(":8080")
 }
