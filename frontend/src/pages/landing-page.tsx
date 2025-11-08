@@ -47,7 +47,9 @@ export function LandingPage() {
         <nav className="container mx-auto px-4 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2 group cursor-pointer">
             <BookOpen className="h-6 w-6 text-primary" />
-            <span className="font-bold text-lg bg-linear-to-r from-foreground to-foreground/70 bg-clip-text text-transparent">Atlas</span>
+            <Link to="/">
+              <span className="font-bold text-lg bg-linear-to-r from-foreground to-foreground/70 bg-clip-text text-transparent">Atlas</span>
+            </Link>
           </div>
           <div className="flex items-center gap-3">
             <ThemeSelector />
@@ -136,17 +138,17 @@ export function LandingPage() {
                 <div className="flex gap-2">
                   <div className="w-3 h-3 rounded-full bg-red-500/80" />
                   <div className="w-3 h-3 rounded-full bg-yellow-500/80" />
-                  <div className="w-3 h-3 rounded-full bg-green-500/80" />
+                  <div className="w-3 h-3 rounded-full bg-primary/80" />
                 </div>
                 <div className="flex-1 ml-4 bg-background/50 rounded px-3 py-1 text-xs text-muted-foreground">
                   tryatlas.ink/dashboard
                 </div>
               </div>
 
-              <img 
-                src={themeImages[theme as keyof typeof themeImages] || themeImages.notebook} 
-                alt={`Atlas Dashboard - ${theme} theme`} 
-                className="w-full h-auto object-cover rounded-lg" 
+              <img
+                src={themeImages[theme as keyof typeof themeImages] || themeImages.notebook}
+                alt={`Atlas Dashboard - ${theme} theme`}
+                className="w-full h-auto object-cover rounded-lg"
               />
             </div>
           </div>
@@ -203,10 +205,10 @@ export function LandingPage() {
                 {/* WhatsApp Example */}
                 <div className="mt-auto space-y-3 bg-background/50 backdrop-blur-sm rounded-xl p-4 border border-border/50">
                   <div className="flex items-start gap-2">
-                    <div className="w-6 h-6 rounded-full bg-green-500/20 flex items-center justify-center shrink-0 mt-0.5">
+                    <div className="w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center shrink-0 mt-0.5">
                       <span className="text-xs">📱</span>
                     </div>
-                    <div className="bg-green-500/10 rounded-lg px-3 py-2 text-xs border border-green-500/20">
+                    <div className="bg-primary/10 rounded-lg px-3 py-2 text-xs border border-primary/20">
                       Remember to refactor the auth flow tomorrow
                     </div>
                   </div>
@@ -286,7 +288,7 @@ export function LandingPage() {
                     Keep track of bugs, code snippets, and architecture decisions. Link related notes together to build your own project wiki.
                   </p>
                 </div>
-                
+
                 <div className="p-6 rounded-xl bg-background/50 backdrop-blur-sm border border-border/50 hover:border-primary/30 transition-colors">
                   <div className="text-2xl mb-3">📝</div>
                   <h3 className="font-bold text-foreground mb-2">Writers & Creators</h3>

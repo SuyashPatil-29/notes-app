@@ -90,7 +90,6 @@ export function NoteEditor({ user, userLoading = false }: NoteEditorProps) {
   const [openNode, setOpenNode] = useState(false);
   const [openColor, setOpenColor] = useState(false);
   const [openLink, setOpenLink] = useState(false);
-  const [editor, setEditor] = useState<any>(null);
 
   // Ref to store the save handler for the mentions hook
   const saveHandlerRef = useRef<(() => void) | null>(null);
@@ -651,7 +650,6 @@ export function NoteEditor({ user, userLoading = false }: NoteEditorProps) {
                     },
                   }}
                   onCreate={async ({ editor }) => {
-                    setEditor(editor);
                     debouncedUpdates(editor);
 
                     if (provider.current?.initialContent) {
