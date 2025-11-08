@@ -1,8 +1,33 @@
-# Notes App
+# Atlas
 
-A full-stack notes application with hierarchical organization (Users → Notebooks → Chapters → Notes) built with Go (Gin + GORM) backend and React (TypeScript + Vite) frontend.
+A full-stack knowledge management application with hierarchical organization (Users → Notebooks → Chapters → Notes) built with Go (Gin + GORM) backend and React (TypeScript + Vite) frontend. **Now featuring WhatsApp bot integration and AI-powered note creation!**
 
 ## ✨ Features
+
+### 📱 WhatsApp Bot Integration (NEW!)
+- **Natural Language Commands** - Create notes by simply typing in plain English
+- **AI-Powered Organization** - AI automatically decides notebook and chapter placement
+- **Auto Content Generation** - AI generates detailed content for your notes
+- **Instant Creation** - No confirmations, no steps - just type and go!
+- **Command Support**:
+  - `add [note title]` - Create a note with AI organization and content
+  - `/cancel` - Cancel any ongoing operation
+  - `/retrieve [note name]` - View note content in markdown
+  - `/list notes` - List all your notes
+  - `/help` - Get command help
+- **Smart Markdown Conversion** - Automatically converts between TipTap JSON and Markdown
+- **Auto-refresh Frontend** - See changes from WhatsApp instantly in the app
+
+**Example Usage:**
+```
+You: add steps to deploy app in backend go
+Bot: 🤖 Creating your note with AI...
+Bot: ✅ Note created successfully!
+     📝 Title: steps to deploy app in backend go
+     📓 Notebook: Development
+     📑 Chapter: Backend
+     🤖 AI-generated content added!
+```
 
 ### 🔐 Authentication & Security
 - **Clerk Authentication** - Modern, secure authentication with custom UI
@@ -10,6 +35,7 @@ A full-stack notes application with hierarchical organization (Users → Noteboo
 - **Email Verification** - Required verification for new accounts
 - **Session Management** - Secure JWT-based sessions handled by Clerk
 - **Protected Routes** - Client-side route protection for authenticated users
+- **WhatsApp Account Linking** - Secure token-based WhatsApp authentication
 
 ### 📚 Hierarchical Organization
 - **4-Level Structure** - Users → Notebooks → Chapters → Notes
@@ -23,6 +49,7 @@ A full-stack notes application with hierarchical organization (Users → Noteboo
 - **Auto-save** - Automatic saving with visual feedback
 - **Formatting Tools** - Bold, italic, headings, lists, code blocks, and more
 - **Keyboard Shortcuts** - Efficient editing with standard shortcuts
+- **Markdown Support** - Import/export and compatibility with markdown
 
 ### 🎨 Theming & Customization
 - **7 Beautiful Themes**:
@@ -54,17 +81,20 @@ A full-stack notes application with hierarchical organization (Users → Noteboo
 - **Error Handling** - Toast notifications for success/error states
 - **Loading States** - Clear indicators during data operations
 - **Keyboard Navigation** - Support for keyboard-first workflows
+- **Auto-refresh** - Frontend automatically updates every 30 seconds to catch WhatsApp changes
 
 ### 🤖 AI-Powered Features
-- **Intelligent Reorganization** - AI analyzes and reorganizes your entire note structure
-- **AI Chat Sidebar** - Interactive AI assistant for note management
+- **WhatsApp Natural Language** - Just type what you want to create
+- **Intelligent Organization** - AI analyzes note titles and chooses the best location
+- **Smart Notebook Selection** - Reuses existing notebooks when appropriate
+- **Auto Chapter Creation** - Creates chapters as needed for better organization
+- **Content Generation** - AI writes detailed, relevant content for your notes
 - **Multi-Provider Support** - Works with OpenAI, Anthropic (Claude), and Google (Gemini)
-- **Tool Calling** - AI can create, move, rename, and organize notebooks, chapters, and notes
-- **Content Analysis** - AI understands note content to suggest optimal organization
-- **Smart Naming** - Automatically generates clear, descriptive names
 - **Meeting Transcription** - AI-powered meeting recording and transcription
 - **Note Summarization** - Generate summaries and key points from meeting notes
 - **Video Generation** - Create explanatory videos from note content
+- **AI Chat Sidebar** - Interactive AI assistant for note management
+- **Tool Calling** - AI can create, move, rename, and organize notebooks, chapters, and notes
 
 ### 🗂️ Organization Tools
 - **Nested Structure** - Unlimited notebooks, chapters, and notes
@@ -78,13 +108,7 @@ A full-stack notes application with hierarchical organization (Users → Noteboo
 - **Cascade Delete** - Proper cleanup of child items
 - **Move Operations** - Reorganize content via drag & drop
 - **Query Optimization** - Efficient data fetching with React Query
-
-The app features a modern, intuitive interface with:
-- **Dual Sidebar Layout** - Navigation on the left, metadata on the right
-- **Rich Text Editor** - Full-featured TipTap editor with formatting toolbar
-- **Theme Selector** - Visual theme picker with color previews
-- **Context Menus** - Right-click menus throughout the interface
-- **Drag & Drop** - Intuitive content reorganization
+- **Real-time Sync** - Changes from WhatsApp appear in the app automatically
 
 ## 🏗️ Architecture
 
@@ -104,6 +128,16 @@ Users
 6. TanStack Query manages caching and optimistic updates
 7. User edits are auto-saved to the backend
 8. Changes sync across all components via query invalidation
+9. WhatsApp bot creates notes independently with AI assistance
+
+**WhatsApp Integration Flow:**
+1. User links WhatsApp account via secure token
+2. User sends natural language command (e.g., "add meeting notes")
+3. Bot parses command and uses AI to determine notebook/chapter
+4. AI generates relevant content for the note
+5. Backend creates notebook/chapter if needed, saves note
+6. Frontend auto-refreshes to show new content
+7. User can retrieve and manage notes via WhatsApp or web
 
 ## 🛠️ Tech Stack
 
@@ -113,7 +147,10 @@ Users
 - **GORM** - Feature-rich ORM for database operations
 - **Clerk Go SDK** - Modern authentication and user management
 - **SQLite** - Lightweight embedded database (development)
+- **PostgreSQL** - Production database with full-text search
 - **Zerolog** - High-performance structured logging
+- **OpenAI Go SDK** - AI integration for content generation
+- **WhatsApp Business API** - Official Meta WhatsApp API integration
 
 ### Frontend
 - **React 19** - Modern UI library with hooks
@@ -132,29 +169,50 @@ Users
 - **Lucide React** - Beautiful icon library
 - **Zod** - TypeScript-first schema validation
 
+### AI & WhatsApp
+- **OpenAI GPT-4** - Content generation and organization
+- **Meta WhatsApp Business API** - Message sending and webhooks
+- **Natural Language Processing** - Command parsing and intent detection
+- **TipTap ↔ Markdown Conversion** - Bidirectional content format conversion
+
 ## 📁 Project Structure
 
 ```
-notes-app/
+atlas/
 ├── backend/
 │   ├── cmd/
 │   │   └── main.go                      # Application entry point
 │   │
-│   ├── db/
-│   │   ├── db.go                        # Database connection setup
-│   │   └── migrations/                  # SQL migration files
-│   │
 │   ├── internal/
-│   │   ├── auth/
-│   │   │   └── auth.go                  # OAuth configuration
-│   │   │
 │   │   ├── controllers/
+│   │   │   ├── whatsapp.controller.go   # WhatsApp webhook handlers
 │   │   │   ├── notebook.controller.go   # Notebook HTTP handlers
 │   │   │   ├── chapter.controller.go    # Chapter HTTP handlers
 │   │   │   └── note.controller.go       # Note HTTP handlers
 │   │   │
+│   │   ├── services/
+│   │   │   ├── ai_service.go            # AI content generation & organization
+│   │   │   ├── whatsapp_message_processor.go  # Message routing
+│   │   │   ├── whatsapp_auth_service.go # WhatsApp authentication
+│   │   │   └── whatsapp_audit_service.go # Message logging
+│   │   │
+│   │   ├── whatsapp/
+│   │   │   ├── commands/
+│   │   │   │   ├── add_note_command.go  # /add command with AI
+│   │   │   │   ├── cancel_command.go    # /cancel command
+│   │   │   │   ├── retrieve_note_command.go  # /retrieve command
+│   │   │   │   ├── list_command.go      # /list command
+│   │   │   │   └── help_command.go      # /help command
+│   │   │   ├── command.go               # Command registry
+│   │   │   └── natural_language_parser.go # NL command parsing
+│   │   │
+│   │   ├── utils/
+│   │   │   ├── markdown_to_tiptap.go    # Markdown → TipTap JSON
+│   │   │   └── tiptap_to_markdown.go    # TipTap JSON → Markdown
+│   │   │
 │   │   ├── models/
-│   │   │   ├── user.model.go            # User entity
+│   │   │   ├── whatsapp_user.model.go   # WhatsApp users
+│   │   │   ├── whatsapp_message.model.go # Message audit log
 │   │   │   ├── notebook.model.go        # Notebook entity
 │   │   │   ├── chapter.model.go         # Chapter entity
 │   │   │   └── note.model.go            # Note entity
@@ -162,47 +220,23 @@ notes-app/
 │   │   └── middleware/
 │   │       └── auth.middleware.go       # Authentication middleware
 │   │
-│   ├── .env.example                     # Environment template
-│   ├── go.mod                           # Go dependencies
-│   ├── go.sum                           # Dependency checksums
-│   └── README.md                        # Backend documentation
+│   └── pkg/whatsapp/
+│       └── client.go                    # WhatsApp API client
 │
 └── frontend/
     ├── src/
+    │   ├── pages/
+    │   │   └── whatsapp-auth-page.tsx   # WhatsApp linking page
+    │   │
     │   ├── components/
-    │   │   ├── ui/                      # shadcn/ui components
     │   │   ├── Dashboard.tsx            # Main dashboard layout
     │   │   ├── Header.tsx               # Top navigation bar
-    │   │   ├── left-sidebar-content.tsx # Navigation sidebar
-    │   │   ├── right-sidebar-content.tsx# Metadata sidebar
-    │   │   ├── ThemeSelector.tsx        # Theme picker dropdown
-    │   │   ├── ModeToggle.tsx           # Light/dark mode toggle
-    │   │   └── theme-provider.tsx       # Theme context provider
+    │   │   └── ... (other components)
     │   │
-    │   ├── hooks/
-    │   │   └── auth.ts                  # Authentication hooks
-    │   │
-    │   ├── types/
-    │   │   └── backend.ts               # TypeScript type definitions
-    │   │
-    │   ├── utils/
-    │   │   ├── api.ts                   # Axios instance configuration
-    │   │   ├── auth.ts                  # Auth utilities
-    │   │   ├── notebook.ts              # Notebook API calls
-    │   │   ├── chapter.ts               # Chapter API calls
-    │   │   └── notes.ts                 # Notes API calls
-    │   │
-    │   ├── index.css                    # Global styles & theme tokens
-    │   ├── App.tsx                      # Root component
-    │   └── main.tsx                     # Application entry point
+    │   └── utils/
+    │       └── api.ts                   # API client with auto-refresh
     │
-    ├── public/                          # Static assets
-    ├── .env.example                     # Environment variables template
-    ├── package.json                     # Dependencies
-    ├── tsconfig.json                    # TypeScript configuration
-    ├── tailwind.config.js               # Tailwind CSS configuration
-    ├── vite.config.ts                   # Vite configuration
-    └── README.md                        # Frontend documentation
+    └── ...
 ```
 
 ## Getting Started
@@ -212,7 +246,8 @@ notes-app/
 - **Go** 1.21 or higher
 - **Node.js** 18 or higher (or **Bun** for faster installs)
 - **Clerk Account** - [Sign up for free](https://clerk.com/)
-- **AI API Key** (Optional, for AI features) - Get from [OpenAI](https://platform.openai.com/), [Anthropic](https://console.anthropic.com/), or [Google AI](https://ai.google.dev/)
+- **OpenAI API Key** - Get from [OpenAI](https://platform.openai.com/)
+- **WhatsApp Business Account** (Optional, for WhatsApp features) - [Get started](https://business.whatsapp.com/)
 
 ### Backend Setup
 
@@ -227,9 +262,26 @@ notes-app/
    ```
 
 3. **Configure `.env` file:**
-   - Add your Clerk Secret Key from the [Clerk Dashboard](https://dashboard.clerk.com/)
-   - Set up database path (SQLite by default)
-   - Configure encryption key for API credentials
+   ```env
+   # Clerk Authentication
+   CLERK_SECRET_KEY=sk_test_...
+   
+   # OpenAI
+   OPENAI_API_KEY=sk-proj-...
+   
+   # WhatsApp (Optional)
+   WHATSAPP_ACCESS_TOKEN=your_meta_access_token
+   WHATSAPP_PHONE_NUMBER_ID=your_phone_number_id
+   WHATSAPP_VERIFY_TOKEN=your_verify_token
+   WHATSAPP_WEBHOOK_SECRET=your_webhook_secret
+   
+   # Database
+   DATABASE_URL=sqlite.db
+   
+   # Server
+   PORT=8080
+   FRONTEND_URL=http://localhost:5173
+   ```
 
 4. **Install dependencies:**
    ```bash
@@ -258,11 +310,10 @@ notes-app/
    ```
 
 3. **Configure environment variables:**
-   Create a `.env.local` file with your Clerk Publishable Key:
+   Create a `.env.local` file:
    ```bash
    VITE_CLERK_PUBLISHABLE_KEY=pk_test_...
    ```
-   Get your key from the [Clerk Dashboard](https://dashboard.clerk.com/)
 
 4. **Start development server:**
    ```bash
@@ -273,33 +324,45 @@ notes-app/
 
    Frontend will start on `http://localhost:5173`
 
-### AI Features Setup (Optional)
+### WhatsApp Bot Setup (Optional)
 
-To enable AI-powered features like intelligent reorganization:
+1. **Set up WhatsApp Business Account:**
+   - Go to [Meta Business Suite](https://business.facebook.com/)
+   - Create a WhatsApp Business app
+   - Get your access token and phone number ID
 
-1. **Login** to the app with Google OAuth
-2. **Go to Profile** → Click your avatar in the top-right
-3. **Navigate to Settings** → AI Credentials
-4. **Add your API key** for one or more providers:
-   - OpenAI (for GPT models)
-   - Anthropic (for Claude models)
-   - Google (for Gemini models)
-5. **Open AI Chat** → Click the chat icon in the right sidebar
-6. **Try reorganization** → Ask: "Please reorganize my notes"
+2. **Configure Webhook:**
+   - Set webhook URL to `https://yourdomain.com/api/whatsapp/webhook`
+   - Use your `WHATSAPP_VERIFY_TOKEN` for verification
+   - Subscribe to `messages` events
 
-**Note:** API keys are encrypted and stored securely in the database.
+3. **Link Your WhatsApp Account:**
+   - Login to the web app
+   - Send any message to your WhatsApp Business number
+   - Bot will send you an authentication link
+   - Click the link to complete linking
+
+4. **Start Creating Notes:**
+   ```
+   add meeting notes from today
+   add recipe for chocolate cake
+   add deployment checklist
+   ```
 
 ## 🔌 API Endpoints
 
+### WhatsApp Endpoints
+- `GET /api/whatsapp/webhook` - Webhook verification
+- `POST /api/whatsapp/webhook` - Receive messages
+- `POST /api/whatsapp/link` - Link WhatsApp account
+
 ### Authentication
 - `GET /auth/user` - Get current authenticated user details
-- `POST /auth/onboarding/complete` - Mark user onboarding as complete
-- `GET /auth/onboarding/status` - Get onboarding completion status
-- `POST /auth/api-keys` - Set encrypted AI API credentials
-- `GET /auth/api-keys` - Get list of configured AI providers
-- `DELETE /auth/api-keys` - Delete an AI API credential
-
-**Note:** Authentication is handled by Clerk with custom UI pages. See [Custom Auth Setup](./docs/CUSTOM-AUTH-SETUP.md) for details.
+- `POST /onboarding` - Mark user onboarding as complete
+- `GET /onboarding` - Get onboarding completion status
+- `POST /settings/ai-credentials` - Set encrypted AI API credentials
+- `GET /settings/ai-credentials` - Get list of configured AI providers
+- `DELETE /settings/ai-credentials` - Delete an AI API credential
 
 ### Notebooks
 - `POST /notebook` - Create a new notebook
@@ -322,136 +385,28 @@ To enable AI-powered features like intelligent reorganization:
 - `PUT /note/:id/move` - Move note to different chapter
 - `DELETE /note/:id` - Delete note
 
-**Authentication:** All endpoints (except public routes) require valid Clerk session token in the Authorization header.
+**Authentication:** All endpoints (except public routes and webhooks) require valid Clerk session token in the Authorization header.
 
-## Database Models
+## 🤖 WhatsApp Bot Commands
 
-### User
-
-**Note:** User data is managed by Clerk. The backend uses `clerk_user_id` to associate data with users. No local user table is stored in the database.
-
-### Notebook
-```go
-type Notebook struct {
-    ID          string  // CUID
-    Name        string
-    ClerkUserID string  // References Clerk user
-    IsPublic    bool
-    Chapters    []Chapter
-    CreatedAt   time.Time
-    UpdatedAt   time.Time
-}
+### Natural Language (No Slash)
 ```
-
-### Chapter
-```go
-type Chapter struct {
-    ID         string  // CUID
-    Name       string
-    NotebookID string
-    IsPublic   bool
-    Notes      []Notes
-    CreatedAt  time.Time
-    UpdatedAt  time.Time
-}
+add [note title]
 ```
+**Example:** `add steps to deploy app in backend go`
+- AI automatically organizes into appropriate notebook and chapter
+- AI generates detailed content
+- Creates notebooks/chapters as needed
+- Instant creation with one command
 
-### Notes
-```go
-type Notes struct {
-    ID        string  // CUID
-    Name      string
-    Content   string
-    ChapterID string
-    IsPublic  bool
-    CreatedAt time.Time
-    UpdatedAt time.Time
-}
-```
-
-## Environment Variables
-
-See `.env.example` files in `backend/` and `frontend/` directories for required environment variables.
-
-## Authentication Setup
-
-This app uses [Clerk](https://clerk.com/) for authentication with a fully custom UI.
-
-### Quick Setup
-
-1. **Create a Clerk account** at [clerk.com](https://clerk.com/)
-2. **Create an application** in the Clerk Dashboard
-3. **Copy your keys:**
-   - Publishable Key → Frontend `.env.local` as `VITE_CLERK_PUBLISHABLE_KEY`
-   - Secret Key → Backend `.env` as `CLERK_SECRET_KEY`
-4. **Enable OAuth providers** (optional):
-   - Go to "Social Connections" in Clerk Dashboard
-   - Enable Google and/or GitHub
-5. **Test the auth flow:**
-   - Visit `http://localhost:5173/sign-up`
-   - Create an account or sign in with OAuth
-
-For detailed setup instructions and customization options, see [Custom Auth Setup Documentation](./docs/CUSTOM-AUTH-SETUP.md).
-
-## Development
-
-### Running Tests
-```bash
-# Backend
-cd backend
-go test ./...
-
-# Frontend
-cd frontend
-bun test
-# or
-npm test
-```
-
-### Building for Production
-
-**Backend:**
-```bash
-cd backend
-go build -o bin/server cmd/main.go
-./bin/server
-```
-
-**Frontend:**
-```bash
-cd frontend
-bun build
-# or
-npm run build
-```
-
-## Security Considerations
-
-⚠️ **This application is currently in development mode**
-
-Before deploying to production:
-- [ ] Use HTTPS everywhere (required for OAuth)
-- [ ] Use production database (PostgreSQL recommended)
-- [ ] Configure Clerk production instance
-- [ ] Add rate limiting middleware
-- [ ] Implement proper secret management
-- [ ] Enable security headers (HSTS, CSP, etc.)
-- [ ] Add audit logging
-- [ ] Set up proper CORS policies
-- [ ] Configure database backups
-- [ ] Implement monitoring and alerting
-
-## Contributing
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
-## License
-
-This project is licensed under the MIT License.
+### Slash Commands
+- `/help` - Show all available commands
+- `/cancel` - Cancel any ongoing operation
+- `/retrieve [note name]` - View note content in markdown
+- `/list notes` - List all your notes
+- `/list notebooks` - List all notebooks
+- `/list chapters` - List chapters in a notebook
+- `/delete [note name]` - Delete a note
 
 ## ⌨️ Keyboard Shortcuts
 
@@ -469,78 +424,35 @@ This project is licensed under the MIT License.
 - `Ctrl/Cmd + Z` - Undo
 - `Ctrl/Cmd + Shift + Z` - Redo
 
-## 🎯 Key Features Explained
-
-### AI-Powered Reorganization 🤖
-**The standout feature that makes this notes app unique!**
-
-- **Intelligent Analysis** - AI reads all your notes and understands their content
-- **Automatic Organization** - Creates optimal notebook/chapter structure
-- **Smart Naming** - Suggests clear, descriptive names for better discoverability
-- **Content-Based Grouping** - Groups notes by topic, project, or theme
-- **One Command** - Just ask: "Please reorganize my notes"
-
-**Example prompts:**
-```
-"Reorganize my notes by topic"
-"Create separate notebooks for work and personal"
-"Organize my meeting notes by project"
-"Clean up my messy structure"
-```
-
-**What the AI can do:**
-- Create new notebooks and chapters
-- Move notes and chapters to better locations
-- Rename items for clarity
-- Analyze content to determine themes
-- Provide a summary of all changes
-
-See [AI Reorganization Documentation](./docs/AI_REORGANIZATION_FEATURE.md) for detailed guide.
-
-### Drag & Drop
-- **Chapters** - Drag chapters between notebooks to reorganize
-- **Notes** - Drag notes between chapters for better organization
-- **Visual Feedback** - Highlighted drop zones during drag operations
-
-### Auto-save
-- Debounced saving (500ms after last edit)
-- Visual indicator shows save status
-- Optimistic updates for instant feedback
-
-### Theme System
-- CSS custom properties for consistent theming
-- Separate light/dark variants per theme
-- System preference detection
-- Persistent storage in localStorage
-
-### Context Menus
-- Right-click on notebooks for notebook actions
-- Right-click on chapters for chapter actions
-- Right-click on notes for note actions
-- Right-click on empty space to create notebooks
-
 ## 🚀 Future Enhancements
 
+- [ ] Voice note transcription via WhatsApp
+- [ ] Image upload and OCR via WhatsApp
+- [ ] Collaborative editing in real-time
+- [ ] Mobile app (iOS/Android)
+- [ ] WhatsApp group integration for team notes
+- [ ] Scheduled reminders via WhatsApp
 - [ ] Full-text search across all notes
 - [ ] Tags and categories
 - [ ] Markdown import/export
-- [ ] Real-time collaboration
 - [ ] Version history
 - [ ] File attachments
-- [ ] Mobile responsive design
 - [ ] Offline support with PWA
-- [ ] Keyboard shortcuts customization
-- [ ] Templates for common note types
 
 ## 📝 Acknowledgments
 
 - [Gin Web Framework](https://gin-gonic.com/)
 - [GORM](https://gorm.io/)
-- [Goth](https://github.com/markbates/goth)
+- [Clerk](https://clerk.com/)
 - [React](https://react.dev/)
 - [Vite](https://vitejs.dev/)
 - [TipTap](https://tiptap.dev/)
 - [shadcn/ui](https://ui.shadcn.com/)
 - [TanStack Query](https://tanstack.com/query)
 - [dnd-kit](https://dndkit.com/)
+- [OpenAI](https://openai.com/)
+- [Meta WhatsApp Business API](https://developers.facebook.com/docs/whatsapp)
 
+## License
+
+This project is licensed under the MIT License.

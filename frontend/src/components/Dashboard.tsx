@@ -513,7 +513,7 @@ export function Dashboard({ user, userLoading = false }: DashboardProps) {
         ) : (
           <div className="flex flex-col items-center justify-center min-h-[calc(100vh-80px)] space-y-6">
             <div className="text-center space-y-3">
-              <h2 className="text-4xl font-bold text-foreground">Welcome to Notes App</h2>
+              <h2 className="text-4xl font-bold text-foreground">Welcome to Atlas</h2>
               <p className="text-lg text-muted-foreground max-w-md">
                 Get started by creating your first notebook
               </p>

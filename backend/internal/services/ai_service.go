@@ -138,7 +138,7 @@ Analyze this transcript and provide the organizational structure and summary.`, 
 			openai.SystemMessage(systemPrompt),
 			openai.UserMessage(userPrompt),
 		},
-		Model: openai.ChatModelGPT4o,
+		Model: openai.ChatModelGPT4oMini,
 
 		MaxTokens:   openai.Int(1000),
 		Temperature: openai.Float(0.3), // Lower temperature for more consistent results
@@ -446,7 +446,7 @@ Analyze this note and generate relevant tasks that can be derived from the conte
 			openai.SystemMessage(systemPrompt),
 			openai.UserMessage(userPrompt),
 		},
-		Model:       openai.ChatModelGPT4o,
+		Model:       openai.ChatModelGPT4oMini,
 		MaxTokens:   openai.Int(1500),
 		Temperature: openai.Float(0.3), // Lower temperature for more consistent results
 	})
@@ -675,7 +675,7 @@ Include:
 			openai.SystemMessage(systemPrompt),
 			openai.UserMessage(userPrompt),
 		},
-		Model:       openai.ChatModelGPT4o,
+		Model:       openai.ChatModelGPT4oMini,
 		MaxTokens:   openai.Int(2000),
 		Temperature: openai.Float(0.7),
 	})
@@ -784,7 +784,7 @@ Provide the best notebook and chapter names.`, request.NoteTitle, existingNotebo
 			openai.SystemMessage(systemPrompt),
 			openai.UserMessage(userPrompt),
 		},
-		Model:       openai.ChatModelGPT4o,
+		Model:       openai.ChatModelGPT4oMini,
 		MaxTokens:   openai.Int(200),
 		Temperature: openai.Float(0.7),
 	})

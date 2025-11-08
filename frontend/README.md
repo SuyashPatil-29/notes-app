@@ -1,6 +1,6 @@
-# Notes App - Frontend
+# Atlas - Frontend
 
-Modern React frontend for a hierarchical note-taking application with rich text editing, drag & drop, and beautiful theming.
+Modern React frontend for Atlas, a hierarchical knowledge management application with rich text editing, drag & drop, and beautiful theming.
 
 ## 🛠️ Tech Stack
 

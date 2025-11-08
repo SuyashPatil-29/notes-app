@@ -669,7 +669,7 @@ func generateWithOpenAI(apiKey, prompt string) (string, error) {
 		Messages: []openai.ChatCompletionMessageParamUnion{
 			openai.UserMessage(prompt),
 		},
-		Model: openai.ChatModelGPT4o,
+		Model: openai.ChatModelGPT4oMini,
 	})
 
 	if err != nil {

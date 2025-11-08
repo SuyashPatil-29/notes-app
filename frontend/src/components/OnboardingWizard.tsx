@@ -68,10 +68,10 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
         if (apiKeyErrors.length > 0) {
           toast.warning(`Onboarding complete! However, failed to save ${apiKeyErrors.join(" and ")} API key(s). You can add them later in settings.`);
         } else {
-          toast.success("Welcome to Notes App!");
+          toast.success("Welcome to Atlas!");
         }
       } else {
-        toast.success("Welcome to Notes App! You can set up API keys later in settings.");
+        toast.success("Welcome to Atlas! You can set up API keys later in settings.");
       }
       
       // Reload Clerk user data to get updated publicMetadata
@@ -140,9 +140,9 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
         {step === 1 && (
           <>
             <div className="text-center mb-6">
-              <h1 className="text-2xl font-semibold mb-2">Welcome to Notes App!</h1>
+              <h1 className="text-2xl font-semibold mb-2">Welcome to Atlas!</h1>
               <p className="text-muted-foreground">
-                Let's get you set up. What will you primarily use Notes App for?
+                Let's get you set up. What will you primarily use Atlas for?
               </p>
             </div>
             <div className="space-y-6">

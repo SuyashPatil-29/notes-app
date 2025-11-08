@@ -1,6 +1,6 @@
-# Notes App - Backend
+# Atlas - Backend
 
-Go backend API for a hierarchical note-taking application with Google OAuth authentication and RESTful endpoints.
+Go backend API for Atlas, a hierarchical knowledge management application with Google OAuth authentication and RESTful endpoints.
 
 ## 🛠️ Tech Stack
 

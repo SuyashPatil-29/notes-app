@@ -15,7 +15,7 @@ export function AuthLayout({ children }: AuthLayoutProps) {
         <div className="flex h-14 items-center justify-between px-6">
           <div className="flex items-center gap-2">
             <BookOpen className="h-6 w-6 text-primary" />
-            <span className="text-xl font-bold">Notes App</span>
+            <span className="text-xl font-bold">Atlas</span>
           </div>
           <div className="flex items-center gap-2">
             <ModeToggle />
