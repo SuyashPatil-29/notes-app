@@ -1158,35 +1158,6 @@ export function LeftSidebarContent({
                 </>
               )}
 
-              {/* Graph View Section */}
-              <Separator className="my-2" />
-              <LeftSidebarGroup>
-                <LeftSidebarGroupContent>
-                  <LeftSidebarMenu>
-                    <LeftSidebarMenuItem>
-                      <TooltipProvider delayDuration={300}>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <LeftSidebarMenuButton
-                              onClick={onOpenGraph}
-                              tooltip="View Note Graph (⌘G)"
-                            >
-                              <Network className="h-4 w-4" />
-                              <span className="flex-1">Graph View</span>
-                              <span className="text-xs text-muted-foreground">⌘G</span>
-                            </LeftSidebarMenuButton>
-                          </TooltipTrigger>
-                          <TooltipContent side="right" className="text-xs">
-                            <p>Open the graph visualization</p>
-                            <p className="text-muted">Press ⌘G (Mac) or Ctrl+G (Windows)</p>
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
-                    </LeftSidebarMenuItem>
-                  </LeftSidebarMenu>
-                </LeftSidebarGroupContent>
-              </LeftSidebarGroup>
-
               {/* Task Boards Section */}
               <Separator className="my-2" />
               <LeftSidebarGroup>
@@ -1275,6 +1246,7 @@ export function LeftSidebarContent({
                   </LeftSidebarMenu>
                 </LeftSidebarGroupContent>
               </LeftSidebarGroup>
+
             </LeftSidebarContentWrapper>
           </ContextMenuTrigger>
           <ContextMenuContent>
@@ -1288,6 +1260,35 @@ export function LeftSidebarContent({
             </ContextMenuItem>
           </ContextMenuContent>
         </ContextMenu>
+        {/* Graph View - Fixed at Bottom */}
+        <div className="mt-auto border-t">
+          <LeftSidebarGroup>
+            <LeftSidebarGroupContent>
+              <LeftSidebarMenu>
+                <LeftSidebarMenuItem>
+                  <TooltipProvider delayDuration={300}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <LeftSidebarMenuButton
+                          onClick={onOpenGraph}
+                          tooltip="View Note Graph (⌘G)"
+                        >
+                          <Network className="h-4 w-4" />
+                          <span className="flex-1">Graph View</span>
+                          <span className="text-xs text-muted-foreground">⌘G</span>
+                        </LeftSidebarMenuButton>
+                      </TooltipTrigger>
+                      <TooltipContent side="right" className="text-xs">
+                        <p>Open the graph visualization</p>
+                        <p className="text-muted">Press ⌘G (Mac) or Ctrl+G (Windows)</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </LeftSidebarMenuItem>
+              </LeftSidebarMenu>
+            </LeftSidebarGroupContent>
+          </LeftSidebarGroup>
+        </div>
         <LeftSidebarRail />
       </LeftSidebar>
     </DndContext>

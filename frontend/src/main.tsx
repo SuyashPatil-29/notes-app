@@ -39,7 +39,7 @@ createRoot(document.getElementById('root')!).render(
               <App />
             </ClerkThemeWrapper>
           </ThemeProvider>
-          <ReactQueryDevtools initialIsOpen={false} />
+          {/* <ReactQueryDevtools initialIsOpen={false} /> */}
         </QueryClientProvider>
       </BrowserRouter>
       </OrganizationProvider>
