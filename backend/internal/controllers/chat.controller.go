@@ -1185,6 +1185,11 @@ func GenerateHandler(c *gin.Context) {
 	// Set data stream headers
 	aisdk.WriteDataStreamHeaders(c.Writer)
 
+	// Add additional headers to prevent buffering in production (nginx, reverse proxies, etc.)
+	c.Header("X-Accel-Buffering", "no")
+	c.Header("Cache-Control", "no-cache, no-transform")
+	c.Header("Connection", "keep-alive")
+
 	// Create OpenAI messages directly using the SDK
 	client := getOpenAIClient(apiKey)
 
@@ -1561,6 +1566,11 @@ func ChatHandler(c *gin.Context) {
 
 	// Set data stream headers
 	aisdk.WriteDataStreamHeaders(c.Writer)
+
+	// Add additional headers to prevent buffering in production (nginx, reverse proxies, etc.)
+	c.Header("X-Accel-Buffering", "no")
+	c.Header("Cache-Control", "no-cache, no-transform")
+	c.Header("Connection", "keep-alive")
 
 	// Add system message if not present
 	if len(req.Messages) == 0 || req.Messages[0].Role != "system" {
