@@ -4,7 +4,7 @@ import { createClient } from '@/lib/supabase/client'
 import { RealtimeChannel, REALTIME_SUBSCRIBE_STATES } from '@supabase/supabase-js'
 import axios from 'axios'
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'
+const API_BASE_URL = 'https://notes-app-suyashpatil-295761-0ye3wo77.apn.leapcell.dev'
 
 /**
  * Custom Yjs provider that uses Supabase Realtime for synchronization

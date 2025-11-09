@@ -1,7 +1,7 @@
 import type { GraphData, NoteLink, CreateNoteLinkRequest } from '@/types/graph';
 import { getStoredAuthToken } from './api';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
+const API_BASE_URL = 'https://notes-app-suyashpatil-295761-0ye3wo77.apn.leapcell.dev';
 
 async function fetchWithAuth(url: string, options: RequestInit = {}) {
   const token = await getStoredAuthToken();

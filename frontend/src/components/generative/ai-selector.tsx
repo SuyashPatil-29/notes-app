@@ -43,7 +43,7 @@ export function AISelector({ onOpenChange }: AISelectorProps) {
 
     try {
       const token = await getToken();
-      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'}/api/generate`, {
+      const response = await fetch(`https://notes-app-suyashpatil-295761-0ye3wo77.apn.leapcell.dev/api/generate`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

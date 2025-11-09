@@ -159,12 +159,8 @@ func (p *WhatsAppMessageProcessor) handleUnauthenticatedUser(msg *IncomingMessag
 		return p.sendErrorMessage(msg.PhoneNumber, "An error occurred. Please try again.")
 	}
 
-	// Build authentication URL
-	// In production, this should be the actual frontend URL from config
-	baseURL := p.config.FrontendURL
-	if baseURL == "" {
-		baseURL = "http://localhost:5173"
-	}
+	// Build authentication URL - hardcoded for production
+	baseURL := "https://atlasnotes-eta.vercel.app"
 	authURL := fmt.Sprintf("%s/whatsapp-auth?token=%s", baseURL, linkToken)
 
 	message := "👋 *Welcome to NotesApp!*\n\n" +
@@ -207,11 +203,8 @@ func (p *WhatsAppMessageProcessor) handleExpiredSession(msg *IncomingMessage) er
 		return p.sendErrorMessage(msg.PhoneNumber, "An error occurred. Please try again.")
 	}
 
-	// Build authentication URL
-	baseURL := p.config.FrontendURL
-	if baseURL == "" {
-		baseURL = "http://localhost:5173"
-	}
+	// Build authentication URL - hardcoded for production
+	baseURL := "https://atlasnotes-eta.vercel.app"
 	authURL := fmt.Sprintf("%s/whatsapp-auth?token=%s", baseURL, linkToken)
 
 	message := "🔒 *Your session has expired*\n\n" +
