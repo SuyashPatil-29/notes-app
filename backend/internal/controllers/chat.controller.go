@@ -1203,13 +1203,18 @@ func GenerateHandler(c *gin.Context) {
 		Str("userMessage", userMessage).
 		Msg("Messages prepared for OpenAI")
 
-	// Set data stream headers
-	aisdk.WriteDataStreamHeaders(c.Writer)
-
-	// Add additional headers to prevent buffering in production (nginx, reverse proxies, etc.)
+	// IMPORTANT: Set anti-buffering headers FIRST, before WriteDataStreamHeaders
 	c.Header("X-Accel-Buffering", "no")
 	c.Header("Cache-Control", "no-cache, no-transform")
 	c.Header("Connection", "keep-alive")
+
+	// Set data stream headers (Content-Type, etc.)
+	aisdk.WriteDataStreamHeaders(c.Writer)
+
+	// Flush headers immediately to start streaming
+	if flusher, ok := c.Writer.(http.Flusher); ok {
+		flusher.Flush()
+	}
 
 	// Create OpenAI messages directly using the SDK
 	client := getOpenAIClient(apiKey)
@@ -1588,13 +1593,18 @@ func ChatHandler(c *gin.Context) {
 		return handleNotesToolCall(toolCall, clerkUserID, req.OrganizationID)
 	}
 
-	// Set data stream headers
-	aisdk.WriteDataStreamHeaders(c.Writer)
-
-	// Add additional headers to prevent buffering in production (nginx, reverse proxies, etc.)
+	// IMPORTANT: Set anti-buffering headers FIRST, before WriteDataStreamHeaders
 	c.Header("X-Accel-Buffering", "no")
 	c.Header("Cache-Control", "no-cache, no-transform")
 	c.Header("Connection", "keep-alive")
+
+	// Set data stream headers (Content-Type, etc.)
+	aisdk.WriteDataStreamHeaders(c.Writer)
+
+	// Flush headers immediately to start streaming
+	if flusher, ok := c.Writer.(http.Flusher); ok {
+		flusher.Flush()
+	}
 
 	// Add system message if not present
 	if len(req.Messages) == 0 || req.Messages[0].Role != "system" {
