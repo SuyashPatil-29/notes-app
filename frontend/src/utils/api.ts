@@ -1,7 +1,7 @@
 import axios, { AxiosError, type InternalAxiosRequestConfig } from "axios";
 
 const api = axios.create({
-    baseURL: "https://notes-app-suyashpatil-295761-0ye3wo77.apn.leapcell.dev",
+    baseURL: import.meta.env.VITE_API_BASE_URL || "http://localhost:8080",
     headers: {
         "Content-Type": "application/json",
     },

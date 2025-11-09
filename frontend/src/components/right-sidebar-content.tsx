@@ -927,7 +927,7 @@ export function RightSidebarContent() {
     error,
   } = useChat({
     key: authToken || "no-token", // Force re-initialization when token changes
-    api: `https://notes-app-suyashpatil-295761-0ye3wo77.apn.leapcell.dev/api/chat`,
+    api: `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'}/api/chat`,
     body: chatBody,
     credentials: "include",
     fetch: chatFetch,

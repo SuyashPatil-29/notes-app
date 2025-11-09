@@ -129,12 +129,18 @@ func main() {
 	// Performance monitoring middleware
 	r.Use(middleware.ResponseTimeMiddleware())
 
-	// CORS configuration - hardcoded for production
-	allowedOrigins := []string{
-		"https://atlasnotes-eta.vercel.app",
-		"http://localhost:5173",
+	// CORS configuration - read from environment variable
+	corsOrigins := os.Getenv("CORS_ORIGINS")
+	allowedOrigins := []string{"http://localhost:5173"} // Default for local development
+	if corsOrigins != "" {
+		// Split multiple origins by comma
+		origins := splitAndTrim(corsOrigins, ",")
+		// Include localhost for development along with production origins
+		allowedOrigins = append(origins, "http://localhost:5173")
+		log.Info().Strs("origins", allowedOrigins).Msg("CORS configured with environment origins")
+	} else {
+		log.Info().Strs("origins", allowedOrigins).Msg("CORS configured with default localhost origin")
 	}
-	log.Info().Strs("origins", allowedOrigins).Msg("CORS configured with hardcoded origins")
 
 	r.Use(cors.New(cors.Config{
 		AllowOrigins:     allowedOrigins,

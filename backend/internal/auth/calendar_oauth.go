@@ -50,10 +50,9 @@ func getEnvOrDefault(key, defaultValue string) string {
 	return defaultValue
 }
 
-// getFrontendURL returns the frontend URL - hardcoded for production
+// getFrontendURL returns the frontend URL from environment variable or default
 func getFrontendURL() string {
-	// Hardcoded production URL
-	return "https://atlasnotes-eta.vercel.app"
+	return getEnvOrDefault("FRONTEND_URL", "http://localhost:5173")
 }
 
 // generateSecureState generates a cryptographically secure random state string
