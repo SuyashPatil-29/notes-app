@@ -1203,10 +1203,12 @@ func GenerateHandler(c *gin.Context) {
 		Str("userMessage", userMessage).
 		Msg("Messages prepared for OpenAI")
 
-	// IMPORTANT: Set anti-buffering headers FIRST, before WriteDataStreamHeaders
-	c.Header("X-Accel-Buffering", "no")
-	c.Header("Cache-Control", "no-cache, no-transform")
-	c.Header("Connection", "keep-alive")
+	// IMPORTANT: Set anti-buffering and anti-compression headers FIRST
+	c.Header("X-Accel-Buffering", "no")                 // Disable nginx buffering
+	c.Header("Cache-Control", "no-cache, no-transform") // Prevent caching and transformation
+	c.Header("Connection", "keep-alive")                // Keep connection open
+	c.Header("Content-Encoding", "identity")            // Disable compression (critical for streaming!)
+	c.Header("X-Content-Type-Options", "nosniff")       // Prevent MIME sniffing
 
 	// Set data stream headers (Content-Type, etc.)
 	aisdk.WriteDataStreamHeaders(c.Writer)
@@ -1593,10 +1595,12 @@ func ChatHandler(c *gin.Context) {
 		return handleNotesToolCall(toolCall, clerkUserID, req.OrganizationID)
 	}
 
-	// IMPORTANT: Set anti-buffering headers FIRST, before WriteDataStreamHeaders
-	c.Header("X-Accel-Buffering", "no")
-	c.Header("Cache-Control", "no-cache, no-transform")
-	c.Header("Connection", "keep-alive")
+	// IMPORTANT: Set anti-buffering and anti-compression headers FIRST
+	c.Header("X-Accel-Buffering", "no")                 // Disable nginx buffering
+	c.Header("Cache-Control", "no-cache, no-transform") // Prevent caching and transformation
+	c.Header("Connection", "keep-alive")                // Keep connection open
+	c.Header("Content-Encoding", "identity")            // Disable compression (critical for streaming!)
+	c.Header("X-Content-Type-Options", "nosniff")       // Prevent MIME sniffing
 
 	// Set data stream headers (Content-Type, etc.)
 	aisdk.WriteDataStreamHeaders(c.Writer)
