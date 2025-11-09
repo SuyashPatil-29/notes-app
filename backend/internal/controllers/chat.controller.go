@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"strings"
@@ -37,6 +38,26 @@ type ChatRequest struct {
 var (
 	lastMessages []aisdk.Message
 )
+
+// autoFlushWriter wraps an io.Writer and automatically flushes after each write
+// This is essential for real-time streaming responses in production environments
+type autoFlushWriter struct {
+	Writer io.Writer
+}
+
+func (w *autoFlushWriter) Write(p []byte) (n int, err error) {
+	n, err = w.Writer.Write(p)
+	if err != nil {
+		return n, err
+	}
+
+	// Flush immediately after writing to ensure data is sent to client
+	if flusher, ok := w.Writer.(http.Flusher); ok {
+		flusher.Flush()
+	}
+
+	return n, nil
+}
 
 // Helper function to check if user has access to a notebook (personal or org) - chat version
 func userCanAccessNotebookChat(ctx context.Context, notebook *models.Notebook, clerkUserID string) bool {
@@ -1219,8 +1240,11 @@ func GenerateHandler(c *gin.Context) {
 		return
 	}
 
-	// Pipe the stream to the response writer
-	err = stream.Pipe(c.Writer)
+	// Wrap the writer to auto-flush for real-time streaming
+	flushWriter := &autoFlushWriter{Writer: c.Writer}
+
+	// Pipe the stream to the auto-flushing writer
+	err = stream.Pipe(flushWriter)
 	if err != nil {
 		log.Error().Err(err).Msg("Error piping AI response stream")
 
@@ -1686,8 +1710,11 @@ func ChatHandler(c *gin.Context) {
 		stream = stream.WithToolCalling(handleToolCall)
 		stream = stream.WithAccumulator(&acc)
 
-		// Pipe the stream to the response writer
-		err := stream.Pipe(c.Writer)
+		// Wrap the writer to auto-flush for real-time streaming
+		flushWriter := &autoFlushWriter{Writer: c.Writer}
+
+		// Pipe the stream to the auto-flushing writer
+		err := stream.Pipe(flushWriter)
 		if err != nil {
 			log.Error().Err(err).Msg("Error piping AI response stream")
 
