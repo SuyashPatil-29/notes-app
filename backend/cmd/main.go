@@ -12,6 +12,7 @@ import (
 	whatsappclient "backend/pkg/whatsapp"
 	"context"
 	"os"
+	"strings"
 
 	"github.com/clerk/clerk-sdk-go/v2"
 	"github.com/gin-contrib/cors"
@@ -20,6 +21,19 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/zerolog/log"
 )
+
+// splitAndTrim splits a string by delimiter and trims whitespace from each part
+func splitAndTrim(s string, delimiter string) []string {
+	parts := strings.Split(s, delimiter)
+	result := make([]string, 0, len(parts))
+	for _, part := range parts {
+		trimmed := strings.TrimSpace(part)
+		if trimmed != "" {
+			result = append(result, trimmed)
+		}
+	}
+	return result
+}
 
 func main() {
 	// Load environment variables
@@ -115,9 +129,19 @@ func main() {
 	// Performance monitoring middleware
 	r.Use(middleware.ResponseTimeMiddleware())
 
-	// CORS configuration
+	// CORS configuration - read from environment variable
+	corsOrigins := os.Getenv("CORS_ORIGINS")
+	allowedOrigins := []string{"http://localhost:5173"} // Default for local development
+	if corsOrigins != "" {
+		// Split multiple origins by comma
+		origins := splitAndTrim(corsOrigins, ",")
+		// Include localhost for development along with production origins
+		allowedOrigins = append(origins, "http://localhost:5173")
+		log.Info().Strs("origins", allowedOrigins).Msg("CORS configured with multiple origins")
+	}
+
 	r.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"http://localhost:5173"},
+		AllowOrigins:     allowedOrigins,
 		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization"},
 		ExposeHeaders:    []string{"Content-Length", "X-Response-Time"},
