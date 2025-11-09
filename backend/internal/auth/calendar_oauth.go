@@ -50,6 +50,11 @@ func getEnvOrDefault(key, defaultValue string) string {
 	return defaultValue
 }
 
+// getFrontendURL returns the frontend URL from environment variable or default
+func getFrontendURL() string {
+	return getEnvOrDefault("FRONTEND_URL", "http://localhost:5173")
+}
+
 // generateSecureState generates a cryptographically secure random state string
 func generateSecureState() (string, error) {
 	b := make([]byte, 32)
@@ -153,8 +158,10 @@ func GoogleCalendarCallback(c *gin.Context) {
 		Bool("has_state", state != "").
 		Msg("OAuth callback parameters received")
 
+	frontendURL := getFrontendURL()
+
 	if code == "" || state == "" {
-		c.Redirect(http.StatusTemporaryRedirect, "http://localhost:5173/profile?calendar_error=missing_params")
+		c.Redirect(http.StatusTemporaryRedirect, frontendURL+"/profile?calendar_error=missing_params")
 		return
 	}
 
@@ -163,7 +170,7 @@ func GoogleCalendarCallback(c *gin.Context) {
 	result := db.DB.Where("state = ? AND platform = ? AND expires_at > ?", state, "google", time.Now()).First(&oauthState)
 	if result.Error != nil {
 		log.Error().Err(result.Error).Msg("Invalid or expired OAuth state")
-		c.Redirect(http.StatusTemporaryRedirect, "http://localhost:5173/profile?calendar_error=invalid_state")
+		c.Redirect(http.StatusTemporaryRedirect, frontendURL+"/profile?calendar_error=invalid_state")
 		return
 	}
 
@@ -174,7 +181,7 @@ func GoogleCalendarCallback(c *gin.Context) {
 	tokenResp, err := exchangeGoogleCode(code)
 	if err != nil {
 		log.Error().Err(err).Msg("Error exchanging Google code")
-		c.Redirect(http.StatusTemporaryRedirect, "http://localhost:5173/profile?calendar_error=token_exchange_failed")
+		c.Redirect(http.StatusTemporaryRedirect, frontendURL+"/profile?calendar_error=token_exchange_failed")
 		return
 	}
 
@@ -182,7 +189,7 @@ func GoogleCalendarCallback(c *gin.Context) {
 	userEmail, err := getGoogleUserEmail(tokenResp.AccessToken)
 	if err != nil {
 		log.Error().Err(err).Msg("Error getting Google user email")
-		c.Redirect(http.StatusTemporaryRedirect, "http://localhost:5173/profile?calendar_error=email_fetch_failed")
+		c.Redirect(http.StatusTemporaryRedirect, frontendURL+"/profile?calendar_error=email_fetch_failed")
 		return
 	}
 
@@ -193,14 +200,14 @@ func GoogleCalendarCallback(c *gin.Context) {
 	encryptedClientSecret, err := utils.EncryptString(CalendarConfig.GoogleClientSecret)
 	if err != nil {
 		log.Error().Err(err).Msg("Error encrypting client secret")
-		c.Redirect(http.StatusTemporaryRedirect, "http://localhost:5173/profile?calendar_error=encryption_failed")
+		c.Redirect(http.StatusTemporaryRedirect, frontendURL+"/profile?calendar_error=encryption_failed")
 		return
 	}
 
 	encryptedRefreshToken, err := utils.EncryptString(tokenResp.RefreshToken)
 	if err != nil {
 		log.Error().Err(err).Msg("Error encrypting refresh token")
-		c.Redirect(http.StatusTemporaryRedirect, "http://localhost:5173/profile?calendar_error=encryption_failed")
+		c.Redirect(http.StatusTemporaryRedirect, frontendURL+"/profile?calendar_error=encryption_failed")
 		return
 	}
 
@@ -214,7 +221,7 @@ func GoogleCalendarCallback(c *gin.Context) {
 	})
 	if err != nil {
 		log.Error().Err(err).Msg("Error creating calendar in Recall")
-		c.Redirect(http.StatusTemporaryRedirect, "http://localhost:5173/profile?calendar_error=recall_api_failed")
+		c.Redirect(http.StatusTemporaryRedirect, frontendURL+"/profile?calendar_error=recall_api_failed")
 		return
 	}
 
@@ -225,7 +232,7 @@ func GoogleCalendarCallback(c *gin.Context) {
 	allCalendars, err := recallClient.ListCalendars(userEmail)
 	if err != nil {
 		log.Error().Err(err).Msg("Error fetching calendars from Recall")
-		c.Redirect(http.StatusTemporaryRedirect, "http://localhost:5173/profile?calendar_error=fetch_calendars_failed")
+		c.Redirect(http.StatusTemporaryRedirect, frontendURL+"/profile?calendar_error=fetch_calendars_failed")
 		return
 	}
 
@@ -284,7 +291,7 @@ func GoogleCalendarCallback(c *gin.Context) {
 		log.Error().
 			Str("clerk_user_id", oauthState.ClerkUserID).
 			Msg("No calendars were saved to database")
-		c.Redirect(http.StatusTemporaryRedirect, "http://localhost:5173/profile?calendar_error=no_calendars_saved")
+		c.Redirect(http.StatusTemporaryRedirect, frontendURL+"/profile?calendar_error=no_calendars_saved")
 		return
 	}
 
@@ -302,16 +309,18 @@ func GoogleCalendarCallback(c *gin.Context) {
 		}
 	}
 
-	c.Redirect(http.StatusTemporaryRedirect, "http://localhost:5173/profile?calendar_success=google")
+	c.Redirect(http.StatusTemporaryRedirect, frontendURL+"/profile?calendar_success=google")
 }
 
 // MicrosoftCalendarCallback handles the OAuth callback from Microsoft
 func MicrosoftCalendarCallback(c *gin.Context) {
+	frontendURL := getFrontendURL()
+
 	code := c.Query("code")
 	state := c.Query("state")
 
 	if code == "" || state == "" {
-		c.Redirect(http.StatusTemporaryRedirect, "http://localhost:5173/profile?calendar_error=missing_params")
+		c.Redirect(http.StatusTemporaryRedirect, frontendURL+"/profile?calendar_error=missing_params")
 		return
 	}
 
@@ -320,7 +329,7 @@ func MicrosoftCalendarCallback(c *gin.Context) {
 	result := db.DB.Where("state = ? AND platform = ? AND expires_at > ?", state, "microsoft", time.Now()).First(&oauthState)
 	if result.Error != nil {
 		log.Error().Err(result.Error).Msg("Invalid or expired OAuth state")
-		c.Redirect(http.StatusTemporaryRedirect, "http://localhost:5173/profile?calendar_error=invalid_state")
+		c.Redirect(http.StatusTemporaryRedirect, frontendURL+"/profile?calendar_error=invalid_state")
 		return
 	}
 
@@ -331,7 +340,7 @@ func MicrosoftCalendarCallback(c *gin.Context) {
 	tokenResp, err := exchangeMicrosoftCode(code)
 	if err != nil {
 		log.Error().Err(err).Msg("Error exchanging Microsoft code")
-		c.Redirect(http.StatusTemporaryRedirect, "http://localhost:5173/profile?calendar_error=token_exchange_failed")
+		c.Redirect(http.StatusTemporaryRedirect, frontendURL+"/profile?calendar_error=token_exchange_failed")
 		return
 	}
 
@@ -339,7 +348,7 @@ func MicrosoftCalendarCallback(c *gin.Context) {
 	userEmail, err := getMicrosoftUserEmail(tokenResp.AccessToken)
 	if err != nil {
 		log.Error().Err(err).Msg("Error getting Microsoft user email")
-		c.Redirect(http.StatusTemporaryRedirect, "http://localhost:5173/profile?calendar_error=email_fetch_failed")
+		c.Redirect(http.StatusTemporaryRedirect, frontendURL+"/profile?calendar_error=email_fetch_failed")
 		return
 	}
 
@@ -350,14 +359,14 @@ func MicrosoftCalendarCallback(c *gin.Context) {
 	encryptedClientSecret, err := utils.EncryptString(CalendarConfig.MicrosoftClientSecret)
 	if err != nil {
 		log.Error().Err(err).Msg("Error encrypting client secret")
-		c.Redirect(http.StatusTemporaryRedirect, "http://localhost:5173/profile?calendar_error=encryption_failed")
+		c.Redirect(http.StatusTemporaryRedirect, frontendURL+"/profile?calendar_error=encryption_failed")
 		return
 	}
 
 	encryptedRefreshToken, err := utils.EncryptString(tokenResp.RefreshToken)
 	if err != nil {
 		log.Error().Err(err).Msg("Error encrypting refresh token")
-		c.Redirect(http.StatusTemporaryRedirect, "http://localhost:5173/profile?calendar_error=encryption_failed")
+		c.Redirect(http.StatusTemporaryRedirect, frontendURL+"/profile?calendar_error=encryption_failed")
 		return
 	}
 
@@ -371,7 +380,7 @@ func MicrosoftCalendarCallback(c *gin.Context) {
 	})
 	if err != nil {
 		log.Error().Err(err).Msg("Error creating calendar in Recall")
-		c.Redirect(http.StatusTemporaryRedirect, "http://localhost:5173/profile?calendar_error=recall_api_failed")
+		c.Redirect(http.StatusTemporaryRedirect, frontendURL+"/profile?calendar_error=recall_api_failed")
 		return
 	}
 
@@ -382,7 +391,7 @@ func MicrosoftCalendarCallback(c *gin.Context) {
 	allCalendars, err := recallClient.ListCalendars(userEmail)
 	if err != nil {
 		log.Error().Err(err).Msg("Error fetching calendars from Recall")
-		c.Redirect(http.StatusTemporaryRedirect, "http://localhost:5173/profile?calendar_error=fetch_calendars_failed")
+		c.Redirect(http.StatusTemporaryRedirect, frontendURL+"/profile?calendar_error=fetch_calendars_failed")
 		return
 	}
 
@@ -441,7 +450,7 @@ func MicrosoftCalendarCallback(c *gin.Context) {
 		log.Error().
 			Str("clerk_user_id", oauthState.ClerkUserID).
 			Msg("No calendars were saved to database")
-		c.Redirect(http.StatusTemporaryRedirect, "http://localhost:5173/profile?calendar_error=no_calendars_saved")
+		c.Redirect(http.StatusTemporaryRedirect, frontendURL+"/profile?calendar_error=no_calendars_saved")
 		return
 	}
 
@@ -459,7 +468,7 @@ func MicrosoftCalendarCallback(c *gin.Context) {
 		}
 	}
 
-	c.Redirect(http.StatusTemporaryRedirect, "http://localhost:5173/profile?calendar_success=microsoft")
+	c.Redirect(http.StatusTemporaryRedirect, frontendURL+"/profile?calendar_success=microsoft")
 }
 
 // TokenResponse represents OAuth token response
