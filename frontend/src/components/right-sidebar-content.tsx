@@ -813,11 +813,11 @@ export function RightSidebarContent() {
   const { data: fetchedApiKeyStatus } = useQuery<ApiKeyStatus>({
     queryKey: ["api-key-status", activeOrg?.id],
     queryFn: async () => {
-      
+
       // Fetch individual API key status
       const individualResponse = await api.get("/settings/ai-credentials");
       const individualProviders = individualResponse.data.providers || {};
-      
+
       // Initialize status with individual keys
       let status = {
         openai: individualProviders.openai || false,
@@ -843,7 +843,7 @@ export function RightSidebarContent() {
               status[cred.provider as keyof ApiKeyStatus] = true;
             }
           });
-        } catch (orgError: any) {          
+        } catch (orgError: any) {
           // If it's a 403 or 404, the user might not have access
           if (orgError?.response?.status === 403) {
             console.warn("[API Key Status] User does not have access to organization API keys");
@@ -927,7 +927,7 @@ export function RightSidebarContent() {
     error,
   } = useChat({
     key: authToken || "no-token", // Force re-initialization when token changes
-    api: "http://localhost:8080/api/chat",
+    api: `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'}/api/chat`,
     body: chatBody,
     credentials: "include",
     fetch: chatFetch,
@@ -1618,24 +1618,24 @@ export function RightSidebarContent() {
                             {nonToolParts.some(
                               (p) => p.type === "text" && p.text
                             ) && (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => {
-                                  const textPart = nonToolParts.find(
-                                    (p) => p.type === "text" && p.text
-                                  );
-                                  if (textPart?.type === "text") {
-                                    handleCopyResponse(textPart.text);
-                                  }
-                                }}
-                                className="h-8 gap-1.5"
-                                title="Copy response"
-                              >
-                                <Copy className="h-3.5 w-3.5" />
-                                <span className="text-xs">Copy</span>
-                              </Button>
-                            )}
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => {
+                                    const textPart = nonToolParts.find(
+                                      (p) => p.type === "text" && p.text
+                                    );
+                                    if (textPart?.type === "text") {
+                                      handleCopyResponse(textPart.text);
+                                    }
+                                  }}
+                                  className="h-8 gap-1.5"
+                                  title="Copy response"
+                                >
+                                  <Copy className="h-3.5 w-3.5" />
+                                  <span className="text-xs">Copy</span>
+                                </Button>
+                              )}
                           </div>
                         </MessageContent>
                       </Message>

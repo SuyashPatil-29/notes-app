@@ -241,7 +241,7 @@ export function LandingPage() {
                 Link notes together
               </h3>
               <p className="text-sm text-muted-foreground mb-4">
-                Build a web of connected ideas. Type [[ to link any note—your own personal wiki.
+                Build a web of connected ideas. Type @ to link any note—your own personal wiki.
               </p>
             </div>
 
@@ -462,14 +462,14 @@ export function LandingPage() {
                   </a>
                 </li>
                 <li>
-                  <a href="#privacy" className="text-sm text-muted-foreground hover:text-primary transition-colors">
+                  <Link to="/privacy" className="text-sm text-muted-foreground hover:text-primary transition-colors">
                     Privacy Policy
-                  </a>
+                  </Link>
                 </li>
                 <li>
-                  <a href="#terms" className="text-sm text-muted-foreground hover:text-primary transition-colors">
+                  <Link to="/terms" className="text-sm text-muted-foreground hover:text-primary transition-colors">
                     Terms of Service
-                  </a>
+                  </Link>
                 </li>
                 <li>
                   <a href="#contact" className="text-sm text-muted-foreground hover:text-primary transition-colors">

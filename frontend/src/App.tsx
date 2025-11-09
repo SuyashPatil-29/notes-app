@@ -43,6 +43,8 @@ import { LandingPage } from '@/pages/landing-page'
 import { PublicOnlyRoute } from '@/components/auth/protected-route'
 import { AcceptInvitationPage } from '@/pages/accept-invitation-page'
 import { WhatsAppAuthPage } from '@/pages/whatsapp-auth-page'
+import { PrivacyPolicyPage } from '@/pages/privacy-policy-page'
+import { TermsOfServicePage } from '@/pages/terms-of-service-page'
 import { GraphModal, useGraphModal } from '@/components/GraphModal'
 
 function App() {
@@ -639,6 +641,10 @@ function App() {
         
         {/* WhatsApp authentication - must be public to redirect to sign-in if needed */}
         <Route path="/whatsapp-auth" element={<WhatsAppAuthPage />} />
+
+        {/* Legal pages - publicly accessible */}
+        <Route path="/privacy" element={<PrivacyPolicyPage />} />
+        <Route path="/terms" element={<TermsOfServicePage />} />
 
         {/* Public content routes - accessible without auth */}
         <Route path="/public/:notebookId" element={<PublicNotebookView />} />
